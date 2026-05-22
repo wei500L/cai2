@@ -28,7 +28,9 @@ export function useRelationDelta(activeFactionId: FactionId) {
 
   useEffect(() => {
     previousValues.current = snapshotRelationships()
-    setDeltas({})
+    const resetFrame = window.requestAnimationFrame(() => setDeltas({}))
+
+    return () => window.cancelAnimationFrame(resetFrame)
   }, [activeFactionId])
 
   useEffect(() => {

@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useState } from 'react'
+import { memo, useMemo, useState } from 'react'
 import type { CSSProperties, MouseEvent } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import clsx from 'clsx'
@@ -57,18 +57,10 @@ function FactionRowComponent({
 }: FactionRowProps) {
   const isSelf = actorId === factionId
   const relationship =
-    useGameStore(
-      useCallback(
-        (state) =>
-          state.relationships.find(
-            (item) => item.from === actorId && item.to === factionId,
-          ),
-        [actorId, factionId],
-      ),
+    useGameStore((state) =>
+      state.relationships.find((item) => item.from === actorId && item.to === factionId),
     ) ?? getSelfRelationship(actorId)
-  const factionState = useGameStore(
-    useCallback((state) => state.factions.find((item) => item.id === factionId), [factionId]),
-  )
+  const factionState = useGameStore((state) => state.factions.find((item) => item.id === factionId))
   const turn = useGameStore((state) => state.epoch.turn)
   const [hovered, setHovered] = useState(false)
   const [pinned, setPinned] = useState(false)

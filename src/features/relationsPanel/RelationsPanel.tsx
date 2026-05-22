@@ -33,6 +33,43 @@ const tabs: RelationsTab[] = ['factions', 'treaties', 'intel']
 
 const treatyDraftKind: TreatyKind = 'non_aggression'
 
+function FilterToggle({
+  checked,
+  label,
+  onChange,
+}: {
+  checked: boolean
+  label: string
+  onChange: (checked: boolean) => void
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={checked}
+      className="inline-flex h-7 items-center gap-2 border border-[color:rgba(255,255,255,0.1)] bg-white/[0.025] px-2 font-hud text-[0.54rem] tracking-[0.1em] text-[color:rgba(196,228,255,0.62)]"
+      onClick={() => onChange(!checked)}
+    >
+      <span
+        className="relative h-3 w-6 border"
+        style={{
+          borderColor: checked ? 'var(--border-glow)' : 'rgba(255,255,255,0.18)',
+          background: checked ? 'rgba(51,170,255,0.18)' : 'rgba(0,0,0,0.25)',
+        }}
+      >
+        <span
+          className="absolute top-[2px] h-[6px] w-[6px] bg-[color:var(--text-primary)] transition-transform duration-150"
+          style={{
+            left: 2,
+            transform: checked ? 'translateX(12px)' : 'translateX(0)',
+            boxShadow: checked ? '0 0 8px rgba(51,170,255,0.72)' : 'none',
+          }}
+        />
+      </span>
+      {label}
+    </button>
+  )
+}
+
 export function RelationsPanel({
   collapsed = false,
   onToggleCollapsed,
@@ -171,22 +208,8 @@ export function RelationsPanel({
 
         {activeTab === 'factions' ? (
           <div className="flex flex-wrap gap-2 px-3 pb-2 xl:px-4">
-            <label className="inline-flex h-7 items-center gap-2 border border-[color:rgba(255,255,255,0.1)] bg-white/[0.025] px-2 font-hud text-[0.54rem] tracking-[0.1em] text-[color:rgba(196,228,255,0.62)]">
-              <input
-                type="checkbox"
-                checked={onlyTreaties}
-                onChange={(event) => setOnlyTreaties(event.target.checked)}
-              />
-              仅有条约
-            </label>
-            <label className="inline-flex h-7 items-center gap-2 border border-[color:rgba(255,255,255,0.1)] bg-white/[0.025] px-2 font-hud text-[0.54rem] tracking-[0.1em] text-[color:rgba(196,228,255,0.62)]">
-              <input
-                type="checkbox"
-                checked={onlyHostile}
-                onChange={(event) => setOnlyHostile(event.target.checked)}
-              />
-              仅敌对
-            </label>
+            <FilterToggle checked={onlyTreaties} label="仅有条约" onChange={setOnlyTreaties} />
+            <FilterToggle checked={onlyHostile} label="仅敌对" onChange={setOnlyHostile} />
           </div>
         ) : null}
 

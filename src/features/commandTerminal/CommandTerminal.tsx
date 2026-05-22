@@ -206,20 +206,24 @@ export function CommandTerminal() {
     }
 
     appliedDraftId.current = commandTerminalDraft.id
-    setMode(commandTerminalDraft.mode)
-    setError('')
+    const frame = window.requestAnimationFrame(() => {
+      setMode(commandTerminalDraft.mode)
+      setError('')
 
-    if (commandTerminalDraft.mode === 'speech' || commandTerminalDraft.mode === 'military') {
-      setTargets([])
-    } else {
-      setTargets(commandTerminalDraft.targets.slice(0, commandTerminalDraft.mode === 'treaty' ? 3 : 1))
-    }
+      if (commandTerminalDraft.mode === 'speech' || commandTerminalDraft.mode === 'military') {
+        setTargets([])
+      } else {
+        setTargets(commandTerminalDraft.targets.slice(0, commandTerminalDraft.mode === 'treaty' ? 3 : 1))
+      }
 
-    if (commandTerminalDraft.treatyKind) {
-      setTreatyKind(commandTerminalDraft.treatyKind)
-    }
+      if (commandTerminalDraft.treatyKind) {
+        setTreatyKind(commandTerminalDraft.treatyKind)
+      }
 
-    setContent(commandTerminalDraft.content)
+      setContent(commandTerminalDraft.content)
+    })
+
+    return () => window.cancelAnimationFrame(frame)
   }, [commandTerminalDraft])
 
   const handleContentChange = useCallback(

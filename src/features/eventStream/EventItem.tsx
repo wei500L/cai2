@@ -172,7 +172,7 @@ export function EventItem({ event, selected, relativeTime, onFocus }: EventItemP
 
           <div className="mb-1 min-w-0 truncate font-hud text-[0.62rem] tracking-[0.04em] text-[color:rgba(244,251,255,0.92)]">
             <span style={{ color: faction.glow }}>{actorLabel}</span>
-            <span className="px-1 text-[color:rgba(196,228,255,0.42)]">-&gt;</span>
+            <span className="px-1 text-[color:rgba(196,228,255,0.42)]">→</span>
             <span>{targetLabel}</span>
           </div>
 
