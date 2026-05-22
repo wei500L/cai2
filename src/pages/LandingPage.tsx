@@ -1,320 +1,128 @@
-import type { CSSProperties } from 'react'
-import { useEffect, useState } from 'react'
-import { GlowPanel } from '@/components/GlowPanel'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { motion } from 'framer-motion'
 import { HoloDivider } from '@/components/HoloDivider'
-import { PixelButton } from '@/components/PixelButton'
-import { Scanlines } from '@/components/Scanlines'
-import { ScrollNumber } from '@/components/ScrollNumber'
 import { StatusBadge } from '@/components/StatusBadge'
-import {
-  factionIds,
-  factionLabels,
-  factionTokens,
-  relationLabels,
-  type RelationState,
-} from '@/components/hudTheme'
+import { BootSequence } from '@/features/landing/BootSequence'
+import { EnterButton } from '@/features/landing/EnterButton'
+import { ScanlinesOverlay } from '@/features/landing/ScanlinesOverlay'
+import { StarfieldCanvas, type ParticleAttractor } from '@/features/landing/StarfieldCanvas'
+import { TitleBlock } from '@/features/landing/TitleBlock'
 
-const semanticTokens = [
-  { label: '--bg-space', value: 'var(--bg-space)' },
-  { label: '--bg-panel', value: 'var(--bg-panel)' },
-  { label: '--bg-panel-strong', value: 'var(--bg-panel-strong)' },
-  { label: '--border-glow', value: 'var(--border-glow)' },
-  { label: '--text-primary', value: 'var(--text-primary)' },
-  { label: '--text-muted', value: 'var(--text-muted)' },
-  { label: '--text-warn', value: 'var(--text-warn)' },
-  { label: '--text-hostile', value: 'var(--text-hostile)' },
-]
+const bootStorageKey = 'diplomacy.boot-sequence.v1'
 
-const relationStates: RelationState[] = ['hostile', 'neutral', 'friendly', 'ally']
-
-function GlyphIcon({
-  kind,
-}: {
-  kind: 'arrow' | 'alert' | 'shield'
-}) {
-  if (kind === 'alert') {
-    return (
-      <svg aria-hidden viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-none stroke-current stroke-[1.8]">
-        <path d="M12 3 2.8 20h18.4L12 3Z" />
-        <path d="M12 9v4" />
-        <path d="M12 16h.01" />
-      </svg>
-    )
+const bootAlreadyPlayed = () => {
+  if (typeof window === 'undefined') {
+    return true
   }
 
-  if (kind === 'shield') {
-    return (
-      <svg aria-hidden viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-none stroke-current stroke-[1.8]">
-        <path d="M12 3 19 6v6c0 4.4-3 8.3-7 9-4-.7-7-4.6-7-9V6l7-3Z" />
-        <path d="M8.5 12h7" />
-      </svg>
-    )
-  }
-
-  return (
-    <svg aria-hidden viewBox="0 0 24 24" className="h-3.5 w-3.5 fill-none stroke-current stroke-[1.8]">
-      <path d="M5 12h12" />
-      <path d="m13 6 6 6-6 6" />
-    </svg>
-  )
-}
-
-function FactionSwatch({ factionId }: { factionId: (typeof factionIds)[number] }) {
-  const tokens = factionTokens[factionId]
-
-  return (
-    <div
-      className="border px-4 py-4 shadow-glow-sm"
-      style={{
-        borderColor: tokens.glow,
-        background: 'var(--bg-panel)',
-        '--border-glow': tokens.glow,
-      } as CSSProperties}
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <p className="font-hud text-[0.68rem] uppercase tracking-[0.28em] text-[color:var(--text-muted)]">
-            {factionId}
-          </p>
-          <p className="mt-1 text-sm text-[color:var(--text-primary)]">
-            {factionLabels[factionId]}
-          </p>
-        </div>
-        <StatusBadge state="neutral">TOKEN</StatusBadge>
-      </div>
-
-      <div className="mt-4 grid gap-2">
-        {[
-          ['Primary', tokens.primary],
-          ['Glow', tokens.glow],
-          ['Shadow', tokens.shadow],
-        ].map(([label, value]) => (
-          <div key={label} className="grid grid-cols-[4.5rem_1fr_auto] items-center gap-3">
-            <span className="font-hud text-[0.62rem] uppercase tracking-[0.24em] text-[color:var(--text-muted)]">
-              {label}
-            </span>
-            <div className="h-3 border border-[color:var(--border-glow)]" style={{ background: value }} />
-            <code className="font-mono text-[0.68rem] text-[color:var(--text-muted)]">{value}</code>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
+  return window.sessionStorage.getItem(bootStorageKey) === 'complete'
 }
 
 export default function LandingPage() {
-  const [counter, setCounter] = useState(48290)
-  const currentPath = typeof window === 'undefined' ? '/' : window.location.pathname
+  const [booting, setBooting] = useState(() => !bootAlreadyPlayed())
+  const [attractor, setAttractor] = useState<ParticleAttractor>({ active: false, x: 0, y: 0 })
 
   useEffect(() => {
-    const interval = window.setInterval(() => {
-      setCounter((value) => value + 137)
-    }, 1250)
-
-    return () => window.clearInterval(interval)
+    if (import.meta.env.DEV) {
+      window.__DIPLOMACY_DEBUG__ = window.__DIPLOMACY_DEBUG__ ?? { particleDensity: 1 }
+    }
   }, [])
 
+  const completeBoot = useCallback(() => {
+    window.sessionStorage.setItem(bootStorageKey, 'complete')
+    setBooting(false)
+  }, [])
+
+  const handleHoverChange = useCallback((active: boolean, center?: { x: number; y: number }) => {
+    setAttractor((current) => ({
+      active,
+      x: center?.x ?? current.x,
+      y: center?.y ?? current.y,
+    }))
+  }, [])
+
+  const signalRows = useMemo(
+    () => [
+      ['SIGNAL', 'NLP COMMAND CORE'],
+      ['COLONY', 'EDEN-7 ORBITAL NET'],
+      ['FACTIONS', '8 CIVILIZATION LINKS'],
+    ],
+    [],
+  )
+
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[color:var(--bg-space)] text-[color:var(--text-primary)]">
-      <Scanlines />
+    <main className="relative min-h-screen overflow-hidden bg-[color:#02040a] text-[color:var(--text-primary)]">
+      <StarfieldCanvas attractor={attractor} />
 
-      <div className="relative mx-auto flex min-h-screen w-full max-w-[1680px] flex-col gap-6 px-4 py-4 sm:px-6 lg:px-8">
-        <GlowPanel className="p-5">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="font-hud text-[0.68rem] uppercase tracking-[0.34em] text-[color:var(--text-muted)]">
-                DESIGN SYSTEM
-              </p>
-              <h1 className="mt-2 text-3xl leading-none text-[color:var(--text-primary)] sm:text-4xl">
-                外交风云
-              </h1>
-              <p className="mt-2 max-w-[68ch] text-sm leading-6 text-[color:var(--text-muted)]">
-                AI Diplomacy / HUD tokens / faction palettes / base components
-              </p>
-            </div>
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0 z-10"
+        style={{
+          background:
+            'linear-gradient(90deg, rgba(2,4,10,0.92) 0%, rgba(2,4,10,0.28) 18%, transparent 50%, rgba(2,4,10,0.28) 82%, rgba(2,4,10,0.92) 100%)',
+        }}
+      />
 
-            <div className="flex flex-col items-end gap-2">
-              <StatusBadge state="neutral">{currentPath}</StatusBadge>
-              <StatusBadge state="ally">VALIDATION VIEW</StatusBadge>
-            </div>
+      <div
+        aria-hidden
+        className="pointer-events-none fixed inset-0 z-20 border border-[color:rgba(75,202,255,0.22)]"
+      >
+        <div className="absolute left-3 top-3 h-12 w-12 border-l border-t border-[color:rgba(141,235,255,0.62)] sm:left-6 sm:top-6 sm:h-20 sm:w-20" />
+        <div className="absolute right-3 top-3 h-12 w-12 border-r border-t border-[color:rgba(141,235,255,0.62)] sm:right-6 sm:top-6 sm:h-20 sm:w-20" />
+        <div className="absolute bottom-3 left-3 h-12 w-12 border-b border-l border-[color:rgba(141,235,255,0.62)] sm:bottom-6 sm:left-6 sm:h-20 sm:w-20" />
+        <div className="absolute bottom-3 right-3 h-12 w-12 border-b border-r border-[color:rgba(141,235,255,0.62)] sm:bottom-6 sm:right-6 sm:h-20 sm:w-20" />
+      </div>
+
+      <section className="relative z-20 grid min-h-screen grid-rows-[auto_1fr_auto] px-4 py-5 sm:px-8 sm:py-7">
+        <header className="flex items-start justify-between gap-4 font-hud">
+          <div className="min-w-0">
+            <p className="text-[0.62rem] uppercase tracking-[0.34em] text-[color:rgba(157,226,244,0.68)] sm:text-xs">
+              DIPLOMACY COMMAND ACCESS
+            </p>
+            <HoloDivider className="mt-3 max-w-[18rem]" />
           </div>
-        </GlowPanel>
+          <div className="flex flex-col items-end gap-2">
+            <StatusBadge state="friendly">LINK READY</StatusBadge>
+            <StatusBadge state="neutral">2147.EDEN-7</StatusBadge>
+          </div>
+        </header>
 
-        <section className="grid gap-6 xl:grid-cols-[1.08fr_0.92fr]">
-          <GlowPanel className="p-5">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="font-hud text-[0.68rem] uppercase tracking-[0.28em] text-[color:var(--text-muted)]">
-                  TOKENS
-                </p>
-                <h2 className="mt-2 text-xl leading-none">Semantic Surface</h2>
-              </div>
-              <StatusBadge state="neutral">CSS VARS</StatusBadge>
-            </div>
+        <div className="grid place-items-center">
+          <div className="grid w-full max-w-5xl justify-items-center gap-8 sm:gap-10">
+            <TitleBlock bootComplete={!booting} />
 
-            <HoloDivider className="my-4" />
-
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {semanticTokens.map((token) => (
-                <div
-                  key={token.label}
-                  className="border border-[color:rgba(255,255,255,0.12)] bg-[color:var(--bg-panel-strong)] p-3"
-                >
-                  <p className="font-hud text-[0.62rem] uppercase tracking-[0.24em] text-[color:var(--text-muted)]">
-                    {token.label}
-                  </p>
-                  <p className="mt-2 break-all font-mono text-[0.72rem] text-[color:var(--text-primary)]">
-                    {token.value}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </GlowPanel>
-
-          <GlowPanel tone="faction" factionId="starlight" className="p-5">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="font-hud text-[0.68rem] uppercase tracking-[0.28em] text-[color:var(--text-muted)]">
-                  COUNTER
-                </p>
-                <h2 className="mt-2 text-xl leading-none">Scroll Number</h2>
-              </div>
-              <StatusBadge state="friendly">LIVE</StatusBadge>
-            </div>
-
-            <HoloDivider className="my-4" />
-
-            <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-              <div className="border border-[color:var(--border-glow)] bg-[color:var(--bg-panel-strong)] p-4">
-                <p className="font-hud text-[0.64rem] uppercase tracking-[0.28em] text-[color:var(--text-muted)]">
-                  SIGNAL
-                </p>
-                <div className="mt-3 flex items-end gap-2">
-                  <ScrollNumber className="text-4xl leading-none text-[color:var(--text-primary)]" value={counter} />
-                  <span className="pb-1 font-hud text-[0.68rem] uppercase tracking-[0.24em] text-[color:var(--text-muted)]">
-                    units
-                  </span>
-                </div>
-              </div>
-
-              <div className="grid gap-3">
-                <div className="border border-[color:rgba(255,255,255,0.12)] bg-[color:var(--bg-panel)] p-4">
-                  <p className="font-hud text-[0.62rem] uppercase tracking-[0.24em] text-[color:var(--text-muted)]">
-                    RELATION
-                  </p>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {relationStates.map((state) => (
-                      <StatusBadge key={state} state={state}>
-                        {relationLabels[state]}
-                      </StatusBadge>
-                    ))}
+            <motion.div
+              className="grid justify-items-center gap-6"
+              initial={{ opacity: 0, y: 12 }}
+              animate={{ opacity: booting ? 0 : 1, y: booting ? 12 : 0 }}
+              transition={{ delay: 0.08, duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
+            >
+              <EnterButton onHoverChange={handleHoverChange} />
+              <div className="grid w-full max-w-[42rem] grid-cols-1 gap-2 border-y border-[color:rgba(83,206,255,0.22)] py-3 font-hud sm:grid-cols-3">
+                {signalRows.map(([label, value]) => (
+                  <div key={label} className="grid gap-1 px-2 text-center sm:text-left">
+                    <span className="text-[0.58rem] uppercase tracking-[0.28em] text-[color:rgba(156,221,240,0.48)]">
+                      {label}
+                    </span>
+                    <span className="truncate text-[0.68rem] uppercase tracking-[0.16em] text-[color:rgba(232,250,255,0.78)]">
+                      {value}
+                    </span>
                   </div>
-                </div>
-
-                <div className="border border-[color:rgba(255,255,255,0.12)] bg-[color:var(--bg-panel)] p-4">
-                  <p className="font-hud text-[0.62rem] uppercase tracking-[0.24em] text-[color:var(--text-muted)]">
-                    LIVE STRIP
-                  </p>
-                  <div className="mt-3 h-1 w-full bg-[color:rgba(255,255,255,0.08)]">
-                    <div className="h-full w-2/3 animate-pulse-glow bg-[color:var(--border-glow)]" />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </GlowPanel>
-        </section>
-
-        <GlowPanel className="p-5">
-          <div className="flex items-center justify-between gap-4">
-            <div>
-              <p className="font-hud text-[0.68rem] uppercase tracking-[0.28em] text-[color:var(--text-muted)]">
-                FACTIONS
-              </p>
-              <h2 className="mt-2 text-xl leading-none">Primary / Glow / Shadow</h2>
-            </div>
-            <StatusBadge state="neutral">8 SETS</StatusBadge>
-          </div>
-
-          <HoloDivider className="my-4" />
-
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            {factionIds.map((factionId) => (
-              <FactionSwatch key={factionId} factionId={factionId} />
-            ))}
-          </div>
-        </GlowPanel>
-
-        <section className="grid gap-6 xl:grid-cols-[1.15fr_0.85fr]">
-          <GlowPanel className="p-5">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <p className="font-hud text-[0.68rem] uppercase tracking-[0.28em] text-[color:var(--text-muted)]">
-                  COMPONENTS
-                </p>
-                <h2 className="mt-2 text-xl leading-none">Core Controls</h2>
-              </div>
-              <StatusBadge state="ally">HUD</StatusBadge>
-            </div>
-
-            <HoloDivider className="my-4" />
-
-            <div className="grid gap-5">
-              <div className="flex flex-wrap items-center gap-3">
-                <PixelButton icon={<GlyphIcon kind="arrow" />}>Primary</PixelButton>
-                <PixelButton tone="danger" icon={<GlyphIcon kind="alert" />}>
-                  Danger
-                </PixelButton>
-                <PixelButton tone="ghost" icon={<GlyphIcon kind="shield" />}>
-                  Ghost
-                </PixelButton>
-              </div>
-
-              <div className="flex h-12 items-stretch gap-4">
-                <HoloDivider orientation="vertical" className="h-full" />
-                <div className="flex flex-col justify-center">
-                  <p className="font-hud text-[0.62rem] uppercase tracking-[0.24em] text-[color:var(--text-muted)]">
-                    Divider Horizontal
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-center gap-2">
-                {relationStates.map((state) => (
-                  <StatusBadge key={state} state={state} />
                 ))}
               </div>
-            </div>
-          </GlowPanel>
+            </motion.div>
+          </div>
+        </div>
 
-          <GlowPanel tone="warn" className="relative p-5">
-            <Scanlines />
-            <div className="relative">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <p className="font-hud text-[0.68rem] uppercase tracking-[0.28em] text-[color:var(--text-muted)]">
-                    PANEL
-                  </p>
-                  <h2 className="mt-2 text-xl leading-none">Overlay Check</h2>
-                </div>
-                <StatusBadge state="friendly">SCANNING</StatusBadge>
-              </div>
+        <footer className="grid gap-3 font-hud text-[0.6rem] uppercase tracking-[0.26em] text-[color:rgba(155,217,236,0.58)] sm:grid-cols-[1fr_auto_1fr] sm:text-xs">
+          <span>VOICE · WHISPER · TREATY · DECLARE</span>
+          <span className="hidden text-[color:rgba(86,203,255,0.5)] sm:block">◆</span>
+          <span className="sm:text-right">NATURAL LANGUAGE COMMAND ONLY</span>
+        </footer>
+      </section>
 
-              <HoloDivider className="my-4" />
-
-              <div className="grid gap-4">
-                <div className="border border-[color:var(--text-warn)] bg-[color:rgba(0,0,0,0.28)] p-4">
-                  <p className="font-hud text-[0.62rem] uppercase tracking-[0.24em] text-[color:var(--text-warn)]">
-                    OVERLAY
-                  </p>
-                  <p className="mt-2 text-sm leading-6 text-[color:var(--text-muted)]">
-                    Scanlines are mounted in the container and the global body overlay remains active.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </GlowPanel>
-        </section>
-      </div>
+      <ScanlinesOverlay />
+      {booting ? <BootSequence onComplete={completeBoot} /> : null}
     </main>
   )
 }

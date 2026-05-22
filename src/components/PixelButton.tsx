@@ -1,3 +1,4 @@
+import { forwardRef } from 'react'
 import type { ButtonHTMLAttributes, CSSProperties, ReactNode } from 'react'
 import clsx from 'clsx'
 import { motion } from 'framer-motion'
@@ -28,18 +29,22 @@ const toneStyles: Record<Tone, { border: string; background: string; glow: strin
   },
 }
 
-export function PixelButton({
-  tone = 'primary',
-  icon,
-  children,
-  className,
-  type = 'button',
-  ...props
-}: PixelButtonProps) {
+export const PixelButton = forwardRef<HTMLButtonElement, PixelButtonProps>(function PixelButton(
+  {
+    tone = 'primary',
+    icon,
+    children,
+    className,
+    type = 'button',
+    ...props
+  },
+  ref,
+) {
   const style = toneStyles[tone]
 
   return (
     <motion.button
+      ref={ref}
       {...(props as Record<string, unknown>)}
       type={type}
       className={clsx(
@@ -62,9 +67,9 @@ export function PixelButton({
         scale: 0.985,
       }}
       transition={{ duration: 0.16, ease: 'easeInOut' }}
-    >
+      >
       {icon ? <span className="inline-flex items-center justify-center">{icon}</span> : null}
       <span className="leading-none">{children}</span>
     </motion.button>
   )
-}
+})
