@@ -40,3 +40,7 @@ class FactionAlreadyTakenError(DiplomacyError):
 
 class MessageFormatError(DiplomacyError):
     """Raised when an incoming message cannot be parsed."""
+
+
+class ModelOutputError(DiplomacyError):
+    """Raised when a settlement model output cannot be parsed or validated."""

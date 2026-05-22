@@ -215,6 +215,14 @@ class FactionStatChange(DomainModel):
     diplomacy_delta: float
     culture_delta: float
     morale_delta: float
+    resulting_military: float | None = None
+    resulting_economy: float | None = None
+    resulting_diplomacy: float | None = None
+    resulting_culture: float | None = None
+    resulting_morale: float | None = None
+    resulting_total_power: float | None = None
+    crisis: bool = False
+    reason: str | None = None
 
 
 class AISpeechItem(DomainModel):
@@ -231,6 +239,7 @@ class SettlementResult(DomainModel):
     generated_at_ms: int
     relationship_deltas: list[RelationshipDelta] = Field(default_factory=list)
     treaty_decisions: list[TreatyDecision] = Field(default_factory=list)
+    created_treaties: list[Treaty] = Field(default_factory=list)
     battle_results: list[BattleEvent] = Field(default_factory=list)
     region_changes: list[RegionChange] = Field(default_factory=list)
     faction_stat_changes: list[FactionStatChange] = Field(default_factory=list)
@@ -240,6 +249,7 @@ class SettlementResult(DomainModel):
     @field_validator(
         "relationship_deltas",
         "treaty_decisions",
+        "created_treaties",
         "battle_results",
         "region_changes",
         "faction_stat_changes",

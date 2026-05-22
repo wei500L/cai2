@@ -10,6 +10,7 @@ import { factionById, type FactionId } from '@/mock/factions'
 import type { TreatyKind } from '@/mock/types'
 import { useGameStore } from '@/store/gameStore'
 import { useUIStore } from '@/store/uiStore'
+import { getPhaseLabel, getPhaseUIConfig } from '@/features/phaseSystem/PhaseStateMachine'
 import { FactionRow } from './FactionRow'
 import { IntelHints } from './IntelHints'
 import { getRelationStatus } from './relationVisuals'
@@ -83,12 +84,14 @@ export function RelationsPanel({
   const setFocusedPanel = useUIStore((state) => state.setFocusedPanel)
   const setFocusToast = useUIStore((state) => state.setFocusToast)
   const setCommandTerminalDraft = useUIStore((state) => state.setCommandTerminalDraft)
+  const hudMode = useUIStore((state) => state.hudMode)
   const [activeTab, setActiveTab] = useState<RelationsTab>('factions')
   const [onlyTreaties, setOnlyTreaties] = useState(false)
   const [onlyHostile, setOnlyHostile] = useState(false)
   const [modalFactionId, setModalFactionId] = useState<FactionId | null>(null)
   const [menu, setMenu] = useState<ContextMenuState>(null)
   const deltas = useRelationDelta(actorId)
+  const phaseConfig = getPhaseUIConfig(hudMode)
 
   const rows = useMemo(() => {
     const relationshipByTarget = new Map(
@@ -152,6 +155,50 @@ export function RelationsPanel({
   )
 
   const modalFaction = modalFactionId ? factionById[modalFactionId] : null
+
+  if (!phaseConfig.relationsVisible || phaseConfig.relationsMode === 'hidden') {
+    return null
+  }
+
+  if (phaseConfig.relationsMode === 'compact') {
+    return (
+      <GlowPanel className="h-full rounded-none">
+        <div className="flex h-full min-w-0 flex-col">
+          <div className="px-3 py-3">
+            <div className="truncate font-hud text-[0.62rem] uppercase tracking-[0.2em] text-[color:var(--text-primary)]">
+              势力关系
+            </div>
+            <div className="mt-1 truncate font-hud text-[0.5rem] tracking-[0.14em] text-[color:rgba(196,228,255,0.42)]">
+              {getPhaseLabel(hudMode)} / 快照
+            </div>
+          </div>
+          <HoloDivider />
+          <div className="event-stream-scroll min-h-0 flex-1 overflow-y-auto px-2 py-2">
+            <div className="grid gap-2">
+              {rows.slice(0, 6).map((row) => (
+                <button
+                  key={row.factionId}
+                  type="button"
+                  className="border border-[color:rgba(255,255,255,0.08)] bg-[color:rgba(255,255,255,0.03)] px-2 py-2 text-left"
+                  onClick={() => focusFaction(row.factionId)}
+                >
+                  <div className="truncate font-hud text-[0.54rem] tracking-[0.08em] text-[color:rgba(196,228,255,0.72)]">
+                    {factionById[row.factionId].name}
+                  </div>
+                  <div className="mt-1 h-1 bg-[color:rgba(255,255,255,0.08)]">
+                    <div
+                      className="h-full bg-[color:var(--border-glow)]"
+                      style={{ width: `${Math.max(0, Math.min(100, row.value))}%` }}
+                    />
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </GlowPanel>
+    )
+  }
 
   return (
     <GlowPanel className="h-full rounded-none">

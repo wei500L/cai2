@@ -5,7 +5,7 @@ import importlib
 import importlib.abc
 import sys
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import pytest
 
@@ -30,7 +30,6 @@ from app.domain.models import (
     GameEvent,
     GameRoom,
     IntelAction,
-    MapRegion,
     MessageVisibility,
     MilitaryAction,
     Player,
@@ -81,7 +80,9 @@ def _room(player: Player) -> GameRoom:
         mode="solo_1v7",
         max_players=1,
         players=[player],
-        ai_factions=[faction_id for faction_id in all_faction_ids() if faction_id != player.faction_id],
+        ai_factions=[
+            faction_id for faction_id in all_faction_ids() if faction_id != player.faction_id
+        ],
         current=EpochTurn(
             epoch=1,
             turn=2,
@@ -148,7 +149,10 @@ def _speech(index: int) -> SpeechAction:
 def _private(index: int) -> PrivateMessageAction:
     return PrivateMessageAction(
         **_base_payload(action_id=f"private-{index}"),
-        visibility=_visibility(VisibilityScope.faction_pair, [FactionId.ironCrown, FactionId.starlight]),
+        visibility=_visibility(
+            VisibilityScope.faction_pair,
+            [FactionId.ironCrown, FactionId.starlight],
+        ),
         mode="private",
         content=f"private message {index}",
         target_faction=FactionId.starlight,
@@ -158,7 +162,10 @@ def _private(index: int) -> PrivateMessageAction:
 def _treaty(index: int) -> TreatyAction:
     return TreatyAction(
         **_base_payload(action_id=f"treaty-{index}"),
-        visibility=_visibility(VisibilityScope.faction_set, [FactionId.ironCrown, FactionId.starlight]),
+        visibility=_visibility(
+            VisibilityScope.faction_set,
+            [FactionId.ironCrown, FactionId.starlight],
+        ),
         mode="treaty",
         treaty_kind=TreatyKind.trade,
         target_factions=[FactionId.starlight],

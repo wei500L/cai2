@@ -5,6 +5,7 @@ import { factionById, type FactionId } from '@/mock/factions'
 import type { TreatyKind } from '@/mock/types'
 import { useGameStore } from '@/store/gameStore'
 import { useUIStore } from '@/store/uiStore'
+import { getPhaseLabel, getPhaseUIConfig } from '@/features/phaseSystem/PhaseStateMachine'
 import { ContextHint } from './ContextHint'
 import { getRateSnapshot } from './RateLimiter'
 import { MessageInput } from './MessageInput'
@@ -153,8 +154,10 @@ export function CommandTerminal() {
   const pendingSubmission = useRef<CommandSubmission | null>(null)
   const appliedDraftId = useRef<number | null>(null)
   const commandTerminalDraft = useUIStore((state) => state.commandTerminalDraft)
+  const hudMode = useUIStore((state) => state.hudMode)
+  const phaseConfig = getPhaseUIConfig(hudMode)
   const tone = useToneAnalyzer(content, mode)
-  const isActionPhase = epoch.phase === 'action'
+  const isActionPhase = epoch.phase === 'action' && phaseConfig.commandTerminalMode === 'expanded'
   const actorCanDirectIntel = directIntelFactions.has(actorId)
   const resolvedMilitary = useMemo(() => {
     const ownedRegion = regions.find((region) => region.owner === actorId)
@@ -335,6 +338,30 @@ export function CommandTerminal() {
     setError('')
     setReboundKey((value) => value + 1)
   }, [submitSpeech])
+
+  if (!phaseConfig.commandTerminalVisible || phaseConfig.commandTerminalMode === 'hidden') {
+    return null
+  }
+
+  if (phaseConfig.commandTerminalMode === 'collapsed') {
+    return (
+      <GlowPanel className="h-full rounded-none">
+        <div className="flex h-full items-center justify-between gap-3 px-4 font-hud">
+          <div className="min-w-0">
+            <div className="truncate text-[0.68rem] uppercase tracking-[0.2em] text-[color:var(--text-primary)]">
+              CommandTerminal / standby
+            </div>
+            <div className="mt-1 truncate text-[0.54rem] tracking-[0.14em] text-[color:rgba(196,228,255,0.46)]">
+              {getPhaseLabel(hudMode)}期不可输入，行动期自动展开
+            </div>
+          </div>
+          <div className="flex-none border border-[color:rgba(255,204,102,0.28)] bg-[color:rgba(255,204,102,0.07)] px-3 py-1.5 text-[0.56rem] tracking-[0.16em] text-[color:var(--text-warn)]">
+            INPUT LOCKED
+          </div>
+        </div>
+      </GlowPanel>
+    )
+  }
 
   return (
     <GlowPanel className="h-full rounded-none">

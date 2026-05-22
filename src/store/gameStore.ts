@@ -27,6 +27,13 @@ type GameStoreActions = {
   tickPhase: (deltaMs: number) => void
   updateRelationship: (from: FactionId, to: FactionId, delta: number) => void
   updateRegionOwner: (regionId: string, newOwner: FactionId | null) => void
+  applyBattleOutcome: (outcome: {
+    attacker: FactionId
+    defender: FactionId
+    atkLoss?: number
+    defLoss?: number
+    moraleShift?: number | { attacker?: number; defender?: number }
+  }) => void
   triggerBattle: (attackerId: FactionId, defenderId: FactionId, regionId: string) => void
   addPrivateMessage: (message: PrivateMessage) => void
   submitSpeech: (submission: CommandSubmission) => SubmitSpeechResult
@@ -363,6 +370,35 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     }))
   },
 
+  applyBattleOutcome: ({ attacker, defender, atkLoss = 0, defLoss = 0, moraleShift = 0 }) => {
+    const attackerMoraleShift =
+      typeof moraleShift === 'number' ? Math.max(1, Math.round(moraleShift)) : moraleShift.attacker ?? 0
+    const defenderMoraleShift =
+      typeof moraleShift === 'number' ? -Math.max(1, Math.round(moraleShift)) : moraleShift.defender ?? 0
+
+    set((state) => ({
+      factions: state.factions.map((faction) => {
+        if (faction.id === attacker) {
+          return recalculateFaction({
+            ...faction,
+            military: clamp(faction.military - Math.max(0, Math.round(atkLoss)), 0, 100),
+            morale: clamp(faction.morale + attackerMoraleShift, 0, 100),
+          })
+        }
+
+        if (faction.id === defender) {
+          return recalculateFaction({
+            ...faction,
+            military: clamp(faction.military - Math.max(0, Math.round(defLoss)), 0, 100),
+            morale: clamp(faction.morale + defenderMoraleShift, 0, 100),
+          })
+        }
+
+        return faction
+      }),
+    }))
+  },
+
   triggerBattle: (attackerId, defenderId, regionId) => {
     set((state) => {
       const attacker = state.factions.find((faction) => faction.id === attackerId)
@@ -436,7 +472,15 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
             attacker: attackerCasualties,
             defender: defenderCasualties,
           },
+          atk_loss: attackerCasualties,
+          def_loss: defenderCasualties,
+          territory_captured: regionOwnerChanged,
+          morale_shift: {
+            attacker: winner === attackerId ? 4 : -6,
+            defender: winner === defenderId ? 3 : -7,
+          },
           regionOwnerChanged,
+          stateApplied: true,
         },
         narration: `${factionById[attackerId].name}与${factionById[defenderId].name}在${regionId}爆发战斗，${factionById[winner].name}取得优势`,
       }

@@ -22,7 +22,6 @@ from app.domain.models import (
 )
 from app.repositories.factory import Repositories
 
-
 _ACTION_BUCKETS = ("speech", "private", "treaty", "military", "intel", "lock")
 _PERSONALITY_KEYS = (
     "aggression",
@@ -185,7 +184,10 @@ class SettlementAggregator:
         if not relationships:
             return "No relationships recorded."
 
-        ordered = sorted(relationships, key=lambda rel: (str(rel.from_faction), str(rel.to_faction)))
+        ordered = sorted(
+            relationships,
+            key=lambda rel: (str(rel.from_faction), str(rel.to_faction)),
+        )
         return "\n".join(format_relationship_line(rel) for rel in ordered)
 
     def _build_faction_stats_summary_text(self, factions: list[FactionState]) -> str:

@@ -1,9 +1,14 @@
 import { GlowPanel } from '@/components/GlowPanel'
+import { EffectsLayer } from '@/effects/EffectsLayer'
 import { PublicSpeechBubble } from '@/features/aiSpeech/PublicSpeechBubble'
 import { ReactionTag } from '@/features/aiSpeech/ReactionTag'
+import { motion } from 'framer-motion'
 import type { FactionId } from '@/mock/factions'
 import type { GameEvent } from '@/mock/types'
+import { MapStage2D } from '@/render/MapStage2D'
 import { useGameStore } from '@/store/gameStore'
+import { useUIStore } from '@/store/uiStore'
+import { getPhaseUIConfig } from '@/features/phaseSystem/PhaseStateMachine'
 
 function getPublicSpeechText(event: GameEvent) {
   if (event.kind !== 'speech' || !event.actor || event.payload.channel !== 'public') {
@@ -24,56 +29,56 @@ function getReactionLabel(event: GameEvent) {
 export function MapStage() {
   const epoch = useGameStore((state) => state.epoch)
   const events = useGameStore((state) => state.events)
+  const mapQuality = useUIStore((state) => state.mapQuality)
+  const hudMode = useUIStore((state) => state.hudMode)
+  const phaseConfig = getPhaseUIConfig(hudMode)
   const allowFloatingSpeech = epoch.phase !== 'arbitrate'
   const latestSpeech = allowFloatingSpeech ? events.find((event) => getPublicSpeechText(event)) : null
   const latestReaction = allowFloatingSpeech ? events.find((event) => getReactionLabel(event)) : null
+  const MapRenderer = MapStage2D
 
   return (
     <GlowPanel className="h-full w-full rounded-none">
       <div className="relative flex h-full min-h-[18rem] items-center justify-center overflow-hidden">
-        <div
-          aria-hidden
-          className="absolute inset-[10%] border border-[color:rgba(255,255,255,0.08)]"
-          style={{
-            background:
-              'radial-gradient(circle at 50% 50%, rgba(12,18,28,0.92) 0%, rgba(4,7,12,0.98) 62%, rgba(1,2,5,1) 100%)',
-          }}
-        />
-        <div
-          aria-hidden
-          className="absolute inset-[19%] border border-[color:rgba(51,170,255,0.12)]"
-          style={{
-            background:
-              'radial-gradient(circle at 50% 50%, rgba(0,0,0,0.88) 0%, rgba(2,4,10,0.96) 70%, rgba(1,1,2,1) 100%)',
-            boxShadow: '0 0 0 1px rgba(51,170,255,0.08), 0 0 40px rgba(51,170,255,0.06)',
-          }}
-        />
-        <div
-          aria-hidden
-          className="absolute h-[1px] w-[32%] bg-[color:rgba(255,255,255,0.08)]"
-        />
-        <div
-          aria-hidden
-          className="absolute h-[32%] w-[1px] bg-[color:rgba(255,255,255,0.08)]"
-        />
-        <div className="relative z-10 grid place-items-center text-center font-hud">
-          <div
-            className="grid place-items-center border border-[color:rgba(51,170,255,0.18)] bg-[color:rgba(0,0,0,0.42)] text-[color:var(--text-primary)]"
-            style={{
-              width: 'clamp(18rem, 42vmin, 34rem)',
-              height: 'clamp(18rem, 42vmin, 34rem)',
+        <motion.div
+          className="absolute inset-0"
+          animate={{ scale: phaseConfig.mapZoom }}
+          transition={{ duration: phaseConfig.transitionMs / 1000, ease: [0.22, 1, 0.36, 1] }}
+          style={{ transformOrigin: 'center' }}
+        >
+          <MapRenderer />
+        </motion.div>
+        {phaseConfig.borderSparkBoost > 1 ? (
+          <motion.div
+            aria-hidden
+            className="pointer-events-none absolute inset-0 z-20 border-2 border-[color:rgba(255,102,102,0.56)]"
+            animate={{
+              opacity: [0.35, 0.92, 0.35],
+              boxShadow: [
+                'inset 0 0 28px rgba(255,102,102,0.18), 0 0 18px rgba(255,102,102,0.2)',
+                'inset 0 0 48px rgba(255,102,102,0.36), 0 0 38px rgba(255,102,102,0.34)',
+                'inset 0 0 28px rgba(255,102,102,0.18), 0 0 18px rgba(255,102,102,0.2)',
+              ],
             }}
-          >
-            <div className="grid gap-2 px-6">
-              <div className="text-[0.62rem] uppercase tracking-[0.26em] text-[color:rgba(196,228,255,0.48)]">
-                战略地图
-              </div>
-              <div className="text-[0.92rem] tracking-[0.1em] text-[color:var(--text-primary)]">
-                战略地图待接入
-              </div>
-            </div>
-          </div>
+            transition={{ duration: 0.9 / phaseConfig.borderSparkBoost, repeat: Infinity, ease: 'easeInOut' }}
+          />
+        ) : null}
+        <div className="pointer-events-none absolute left-3 top-3 z-20 border border-[color:rgba(196,228,255,0.16)] bg-[color:rgba(1,3,8,0.68)] px-2 py-1 font-hud text-[0.52rem] uppercase tracking-[0.16em] text-[color:rgba(196,228,255,0.58)]">
+          MAP / CANVAS2D / {mapQuality} / Z{phaseConfig.mapZoom.toFixed(2)}
         </div>
+        <div className="pointer-events-none absolute inset-0 z-10">
+          <div className="absolute left-1/2 top-0 h-full w-[1px] -translate-x-1/2 bg-[color:rgba(196,228,255,0.04)]" />
+          <div className="absolute left-0 top-1/2 h-[1px] w-full -translate-y-1/2 bg-[color:rgba(196,228,255,0.04)]" />
+          <div
+            className="absolute inset-[7%] border border-[color:rgba(51,170,255,0.08)]"
+            style={{ boxShadow: 'inset 0 0 38px rgba(51,170,255,0.06)' }}
+          />
+          <div
+            className="absolute inset-[15%] border border-[color:rgba(255,255,255,0.05)]"
+            style={{ boxShadow: '0 0 44px rgba(255,204,102,0.035)' }}
+          />
+        </div>
+        <EffectsLayer mapQuality={mapQuality} />
         {latestSpeech?.actor ? (
           <div className="pointer-events-none absolute left-1/2 top-[18%] z-20 -translate-x-1/2">
             <PublicSpeechBubble

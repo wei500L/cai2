@@ -2,11 +2,12 @@ import { create } from 'zustand'
 import type { FactionId } from '@/mock/factions'
 import type { TreatyKind } from '@/mock/types'
 import type { CommandMode } from '@/features/commandTerminal/types'
+import type { HudMode } from '@/features/phaseSystem/PhaseStateMachine'
 
-export type HudMode = 'observe' | 'action' | 'resolve' | 'arbitrate'
 export type HudFocusTarget = 'left' | 'center' | 'right' | 'bottom'
 export type EventFilter = 'all' | 'P0' | 'P1' | 'mine'
 export type EventStreamScrollMode = 'auto' | 'manual'
+export type MapQuality = 'low' | 'mid' | 'high'
 export type MapFocus = { regionId?: string; factionId?: FactionId } | null
 export type CommandTerminalDraft = {
   id: number
@@ -24,6 +25,7 @@ type UIStoreState = {
   hudMode: HudMode
   focusedPanel: HudFocusTarget
   eventFilter: EventFilter
+  mapQuality: MapQuality
   mapFocus: MapFocus
   focusToast: string | null
   commandTerminalDraft: CommandTerminalDraft | null
@@ -40,6 +42,7 @@ type UIStoreState = {
   setFocusedPanel: (panel: HudFocusTarget) => void
   cycleFocusedPanel: () => void
   setEventFilter: (filter: EventFilter) => void
+  setMapQuality: (quality: MapQuality) => void
   setMapFocus: (focus: MapFocus) => void
   setFocusToast: (message: string | null) => void
   setCommandTerminalDraft: (draft: CommandTerminalDraft) => void
@@ -55,9 +58,10 @@ export const useUIStore = create<UIStoreState>((set) => ({
   rightPanelOpen: getInitialPanelOpen(),
   privateDrawerOpen: false,
   unreadPrivateCount: 0,
-  hudMode: 'action',
+  hudMode: 'observe',
   focusedPanel: 'center',
   eventFilter: 'all',
+  mapQuality: 'mid',
   mapFocus: null,
   focusToast: null,
   commandTerminalDraft: null,
@@ -110,6 +114,9 @@ export const useUIStore = create<UIStoreState>((set) => ({
   },
   setEventFilter: (eventFilter) => {
     set({ eventFilter })
+  },
+  setMapQuality: (mapQuality) => {
+    set({ mapQuality })
   },
   setMapFocus: (mapFocus) => {
     set({ mapFocus })

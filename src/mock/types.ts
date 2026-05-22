@@ -56,6 +56,7 @@ export type EventKind =
   | 'battle'
   | 'economy'
   | 'intel'
+  | 'peace'
   | 'phase_change'
 
 export type GameEvent = {
@@ -88,7 +89,15 @@ export type BattleEvent = GameEvent & {
       attacker: number
       defender: number
     }
+    atk_loss?: number
+    def_loss?: number
+    territory_captured?: boolean
+    morale_shift?: number | {
+      attacker?: number
+      defender?: number
+    }
     regionOwnerChanged: boolean
+    stateApplied?: boolean
   }
 }
 

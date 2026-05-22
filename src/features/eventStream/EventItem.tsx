@@ -27,6 +27,7 @@ const kindLabels: Record<EventKind, string> = {
   battle: '战斗',
   economy: '经济',
   intel: '情报',
+  peace: '和平',
   phase_change: '阶段',
 }
 
@@ -44,6 +45,7 @@ const kindIcons: Record<EventKind, string> = {
   battle: 'B',
   economy: 'E',
   intel: 'I',
+  peace: 'P',
   phase_change: 'P',
 }
 

@@ -6,6 +6,7 @@ import type { EventFilter } from '@/store/uiStore'
 import { useUIStore } from '@/store/uiStore'
 import { useGameStore } from '@/store/gameStore'
 import type { GameEvent } from '@/mock/types'
+import { getPhaseLabel, getPhaseUIConfig } from '@/features/phaseSystem/PhaseStateMachine'
 import { EventFilters } from './EventFilters'
 import { EventGroup } from './EventGroup'
 import { useEventFocus } from './useEventFocus'
@@ -106,6 +107,7 @@ export function EventStream({
   const selectedFactionId = useGameStore((state) => state.selectedFactionId)
   const eventFilter = useUIStore((state) => state.eventFilter)
   const eventStreamScrollMode = useUIStore((state) => state.eventStreamScrollMode)
+  const hudMode = useUIStore((state) => state.hudMode)
   const setEventStreamScrollMode = useUIStore((state) => state.setEventStreamScrollMode)
   const setMapFocus = useUIStore((state) => state.setMapFocus)
   const focusEvent = useEventFocus()
@@ -117,6 +119,7 @@ export function EventStream({
   const latestEventId = events[0]?.id ?? null
   const latestEventIsP0 = events[0]?.priority === 'P0'
   const currentGroupKey = `${epoch.id}:${epoch.turn}`
+  const phaseConfig = getPhaseUIConfig(hudMode)
 
   const filteredEvents = useMemo(
     () => filterEvents(events, eventFilter, selectedFactionId),
@@ -235,6 +238,38 @@ export function EventStream({
 
     setEventStreamScrollMode(node.scrollTop <= 12 ? 'auto' : 'manual')
   }, [setEventStreamScrollMode])
+
+  if (!phaseConfig.eventStreamVisible || phaseConfig.eventStreamMode === 'hidden') {
+    return null
+  }
+
+  if (phaseConfig.eventStreamMode === 'compact') {
+    return (
+      <aside className="flex h-full min-h-0 flex-col overflow-hidden border border-[color:rgba(51,170,255,0.22)] bg-[color:rgba(0,0,0,0.68)] text-[color:var(--text-primary)] shadow-[0_0_18px_rgba(51,170,255,0.12)]">
+        <div className="px-3 py-3 font-hud">
+          <div className="text-[0.62rem] uppercase tracking-[0.2em]">事件流</div>
+          <div className="mt-1 text-[0.5rem] tracking-[0.14em] text-[color:rgba(196,228,255,0.42)]">
+            {getPhaseLabel(hudMode)} / {filteredEvents.length}
+          </div>
+        </div>
+        <HoloDivider />
+        <div className="event-stream-scroll min-h-0 flex-1 overflow-y-auto px-2 py-2">
+          <div className="grid gap-2">
+            {filteredEvents.slice(0, 5).map((event) => (
+              <button
+                key={event.id}
+                type="button"
+                className="border border-[color:rgba(255,255,255,0.08)] bg-[color:rgba(255,255,255,0.03)] px-2 py-2 text-left font-hud text-[0.54rem] tracking-[0.08em] text-[color:rgba(196,228,255,0.66)]"
+                onClick={() => handleFocusEvent(event)}
+              >
+                <span className="text-[color:var(--text-warn)]">{event.priority}</span> {event.narration}
+              </button>
+            ))}
+          </div>
+        </div>
+      </aside>
+    )
+  }
 
   return (
     <aside
