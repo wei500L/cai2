@@ -1,11 +1,20 @@
 import { create } from 'zustand'
 import type { FactionId } from '@/mock/factions'
+import type { TreatyKind } from '@/mock/types'
+import type { CommandMode } from '@/features/commandTerminal/types'
 
 export type HudMode = 'observe' | 'action' | 'resolve' | 'arbitrate'
 export type HudFocusTarget = 'left' | 'center' | 'right' | 'bottom'
 export type EventFilter = 'all' | 'P0' | 'P1' | 'mine'
 export type EventStreamScrollMode = 'auto' | 'manual'
 export type MapFocus = { regionId?: string; factionId?: FactionId } | null
+export type CommandTerminalDraft = {
+  id: number
+  mode: CommandMode
+  targets: FactionId[]
+  content: string
+  treatyKind?: TreatyKind
+}
 
 type UIStoreState = {
   leftPanelOpen: boolean
@@ -16,6 +25,8 @@ type UIStoreState = {
   focusedPanel: HudFocusTarget
   eventFilter: EventFilter
   mapFocus: MapFocus
+  focusToast: string | null
+  commandTerminalDraft: CommandTerminalDraft | null
   eventStreamScrollMode: EventStreamScrollMode
   setLeftPanelOpen: (open: boolean) => void
   toggleLeftPanel: () => void
@@ -30,6 +41,8 @@ type UIStoreState = {
   cycleFocusedPanel: () => void
   setEventFilter: (filter: EventFilter) => void
   setMapFocus: (focus: MapFocus) => void
+  setFocusToast: (message: string | null) => void
+  setCommandTerminalDraft: (draft: CommandTerminalDraft) => void
   setEventStreamScrollMode: (mode: EventStreamScrollMode) => void
 }
 
@@ -46,6 +59,8 @@ export const useUIStore = create<UIStoreState>((set) => ({
   focusedPanel: 'center',
   eventFilter: 'all',
   mapFocus: null,
+  focusToast: null,
+  commandTerminalDraft: null,
   eventStreamScrollMode: 'auto',
   setLeftPanelOpen: (leftPanelOpen) => {
     set({ leftPanelOpen })
@@ -98,6 +113,12 @@ export const useUIStore = create<UIStoreState>((set) => ({
   },
   setMapFocus: (mapFocus) => {
     set({ mapFocus })
+  },
+  setFocusToast: (focusToast) => {
+    set({ focusToast })
+  },
+  setCommandTerminalDraft: (commandTerminalDraft) => {
+    set({ commandTerminalDraft })
   },
   setEventStreamScrollMode: (eventStreamScrollMode) => {
     set({ eventStreamScrollMode })

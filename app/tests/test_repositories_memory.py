@@ -232,7 +232,10 @@ async def test_message_append_and_list_private_between() -> None:
     assert [message.id for message in public_messages] == ["public"]
 
     private_messages[0].content = "mutated"
-    refetched = await repo.list_private_between("room-1", [FactionId.ironCrown, FactionId.starlight])
+    refetched = await repo.list_private_between(
+        "room-1",
+        [FactionId.ironCrown, FactionId.starlight],
+    )
     assert refetched[0].content == "message-private-1"
 
 

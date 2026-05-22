@@ -1,9 +1,10 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { GlowPanel } from '@/components/GlowPanel'
 import { HoloDivider } from '@/components/HoloDivider'
 import { factionById, type FactionId } from '@/mock/factions'
 import type { TreatyKind } from '@/mock/types'
 import { useGameStore } from '@/store/gameStore'
+import { useUIStore } from '@/store/uiStore'
 import { ContextHint } from './ContextHint'
 import { getRateSnapshot } from './RateLimiter'
 import { MessageInput } from './MessageInput'
@@ -150,6 +151,8 @@ export function CommandTerminal() {
   const [fxPayload, setFxPayload] = useState<SendFxPayload | null>(null)
   const [reboundKey, setReboundKey] = useState(0)
   const pendingSubmission = useRef<CommandSubmission | null>(null)
+  const appliedDraftId = useRef<number | null>(null)
+  const commandTerminalDraft = useUIStore((state) => state.commandTerminalDraft)
   const tone = useToneAnalyzer(content, mode)
   const isActionPhase = epoch.phase === 'action'
   const actorCanDirectIntel = directIntelFactions.has(actorId)
@@ -196,6 +199,28 @@ export function CommandTerminal() {
     },
     [content, targets, treatyKind],
   )
+
+  useEffect(() => {
+    if (!commandTerminalDraft || appliedDraftId.current === commandTerminalDraft.id) {
+      return
+    }
+
+    appliedDraftId.current = commandTerminalDraft.id
+    setMode(commandTerminalDraft.mode)
+    setError('')
+
+    if (commandTerminalDraft.mode === 'speech' || commandTerminalDraft.mode === 'military') {
+      setTargets([])
+    } else {
+      setTargets(commandTerminalDraft.targets.slice(0, commandTerminalDraft.mode === 'treaty' ? 3 : 1))
+    }
+
+    if (commandTerminalDraft.treatyKind) {
+      setTreatyKind(commandTerminalDraft.treatyKind)
+    }
+
+    setContent(commandTerminalDraft.content)
+  }, [commandTerminalDraft])
 
   const handleContentChange = useCallback(
     (value: string) => {

@@ -4,7 +4,7 @@ import pytest
 from pydantic import BaseModel, ValidationError
 
 from app.core.clock import FrozenClock
-from app.domain.enums import ArbitratePhase, FactionId, GamePhase, TreatyKind
+from app.domain.enums import ArbitratePhase, FactionId, GamePhase
 from app.protocol import (
     INCOMING_PAYLOAD_TYPES,
     OUTGOING_PAYLOAD_TYPES,
@@ -213,7 +213,9 @@ def test_outgoing_payload_route_table_covers_expected_types() -> None:
         "reconnect.snapshot",
         "error.message",
     }
-    assert all(issubclass(payload_type, BaseModel) for payload_type in OUTGOING_PAYLOAD_TYPES.values())
+    assert all(
+        issubclass(payload_type, BaseModel) for payload_type in OUTGOING_PAYLOAD_TYPES.values()
+    )
 
 
 def test_protocol_payloads_use_strict_validation() -> None:

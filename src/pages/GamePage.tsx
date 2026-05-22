@@ -62,6 +62,8 @@ export default function GamePage() {
   const toggleRightPanel = useUIStore((state) => state.toggleRightPanel)
   const cycleFocusedPanel = useUIStore((state) => state.cycleFocusedPanel)
   const setFocusedPanel = useUIStore((state) => state.setFocusedPanel)
+  const focusToast = useUIStore((state) => state.focusToast)
+  const setFocusToast = useUIStore((state) => state.setFocusToast)
 
   useAIResponseScheduler()
 
@@ -113,6 +115,15 @@ export default function GamePage() {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [cycleFocusedPanel, setFocusedPanel, toggleLeftPanel, toggleRightPanel])
 
+  useEffect(() => {
+    if (!focusToast) {
+      return
+    }
+
+    const timer = window.setTimeout(() => setFocusToast(null), 1400)
+    return () => window.clearTimeout(timer)
+  }, [focusToast, setFocusToast])
+
   const rootStyle = useMemo(
     () =>
       ({
@@ -153,6 +164,11 @@ export default function GamePage() {
       <Scanlines className="z-20 opacity-35" />
       <NarrationBanner />
       <PrivateMessageDrawer />
+      {focusToast ? (
+        <div className="pointer-events-none absolute left-4 top-[4.25rem] z-[70] border border-[color:rgba(51,170,255,0.34)] bg-[color:rgba(5,9,18,0.92)] px-3 py-2 font-hud text-[0.62rem] tracking-[0.16em] text-[color:var(--text-primary)] shadow-[0_0_18px_rgba(51,170,255,0.2)]">
+          {focusToast}
+        </div>
+      ) : null}
 
       <div className="relative z-30 grid h-full grid-rows-[56px_minmax(0,1fr)_180px]">
         <TopBar />

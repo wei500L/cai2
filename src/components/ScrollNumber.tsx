@@ -7,6 +7,7 @@ type ScrollNumberProps = {
   className?: string
   prefix?: string
   suffix?: string
+  duration?: number
   format?: (value: number) => string
 }
 
@@ -15,6 +16,7 @@ export function ScrollNumber({
   className,
   prefix,
   suffix,
+  duration = 0.18,
   format,
 }: ScrollNumberProps) {
   const previous = useRef<string | null>(null)
@@ -59,7 +61,7 @@ export function ScrollNumber({
             initial={{ y: direction > 0 ? 14 : -14, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: direction > 0 ? -14 : 14, opacity: 0 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
+            transition={{ duration, ease: [0.22, 1, 0.36, 1] }}
           >
             {current}
           </motion.span>
@@ -69,4 +71,3 @@ export function ScrollNumber({
     </span>
   )
 }
-
