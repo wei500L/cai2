@@ -575,9 +575,10 @@ function drawFrame(
   palette: Palette,
   time: number,
   ownershipFlows: Map<string, OwnershipFlow>,
+  qualityOverride?: MapQuality,
 ) {
   const state = gameStoreApi.getState()
-  const quality = useUIStore.getState().mapQuality
+  const quality = qualityOverride ?? useUIStore.getState().mapQuality
   const radius = Math.min(width, height) * 0.42
 
   ctx.clearRect(0, 0, width, height)
@@ -641,7 +642,12 @@ function applyFocusTarget(view: ViewState, layout: MapLayout, radius: number) {
   view.panY = lerp(view.panY, targetPanY, 0.07)
 }
 
-export function MapStage2D() {
+type MapStage2DProps = {
+  qualityOverride?: MapQuality
+  interactive?: boolean
+}
+
+export function MapStage2D({ qualityOverride, interactive = true }: MapStage2DProps = {}) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const tooltipRef = useRef<HTMLDivElement | null>(null)
   const paletteRef = useRef<Palette | null>(null)
@@ -831,14 +837,16 @@ export function MapStage2D() {
     observer.observe(canvas)
     resize()
 
-    canvas.addEventListener('pointermove', onPointerMove)
-    canvas.addEventListener('pointerdown', onPointerDown)
-    canvas.addEventListener('pointerup', onPointerUp)
-    canvas.addEventListener('pointerleave', onPointerUp)
-    canvas.addEventListener('click', onClick)
-    canvas.addEventListener('wheel', onWheel, { passive: false })
-    canvas.addEventListener('contextmenu', onContextMenu)
-    window.addEventListener('keydown', onKeyDown)
+    if (interactive) {
+      canvas.addEventListener('pointermove', onPointerMove)
+      canvas.addEventListener('pointerdown', onPointerDown)
+      canvas.addEventListener('pointerup', onPointerUp)
+      canvas.addEventListener('pointerleave', onPointerUp)
+      canvas.addEventListener('click', onClick)
+      canvas.addEventListener('wheel', onWheel, { passive: false })
+      canvas.addEventListener('contextmenu', onContextMenu)
+      window.addEventListener('keydown', onKeyDown)
+    }
 
     const tick = (now: number) => {
       if (!mounted) {
@@ -859,6 +867,7 @@ export function MapStage2D() {
         paletteRef.current ?? buildPalette(),
         time,
         ownershipFlowsRef.current,
+        qualityOverride,
       )
       frame = requestAnimationFrame(tick)
     }
@@ -869,20 +878,25 @@ export function MapStage2D() {
       mounted = false
       cancelAnimationFrame(frame)
       observer.disconnect()
-      canvas.removeEventListener('pointermove', onPointerMove)
-      canvas.removeEventListener('pointerdown', onPointerDown)
-      canvas.removeEventListener('pointerup', onPointerUp)
-      canvas.removeEventListener('pointerleave', onPointerUp)
-      canvas.removeEventListener('click', onClick)
-      canvas.removeEventListener('wheel', onWheel)
-      canvas.removeEventListener('contextmenu', onContextMenu)
-      window.removeEventListener('keydown', onKeyDown)
+      if (interactive) {
+        canvas.removeEventListener('pointermove', onPointerMove)
+        canvas.removeEventListener('pointerdown', onPointerDown)
+        canvas.removeEventListener('pointerup', onPointerUp)
+        canvas.removeEventListener('pointerleave', onPointerUp)
+        canvas.removeEventListener('click', onClick)
+        canvas.removeEventListener('wheel', onWheel)
+        canvas.removeEventListener('contextmenu', onContextMenu)
+        window.removeEventListener('keydown', onKeyDown)
+      }
     }
-  }, [])
+  }, [interactive, qualityOverride])
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-black">
-      <canvas ref={canvasRef} className="block h-full w-full cursor-crosshair touch-none" />
+      <canvas
+        ref={canvasRef}
+        className={interactive ? 'block h-full w-full cursor-crosshair touch-none' : 'block h-full w-full'}
+      />
       <div
         ref={tooltipRef}
         className="pointer-events-none absolute left-0 top-0 z-20 min-w-40 border border-[color:rgba(196,228,255,0.28)] bg-[color:rgba(2,4,10,0.92)] px-3 py-2 font-hud text-[0.58rem] uppercase tracking-[0.14em] text-[color:var(--text-primary)] shadow-[0_0_22px_rgba(51,170,255,0.24)]"

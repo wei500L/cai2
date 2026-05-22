@@ -180,6 +180,11 @@ export const SYSTEM_NARRATION_TEMPLATES: Record<string, AITemplate[]> = {
     '系统旁白：炮火越过边界，裁决系统正在记录损耗、士气与领土变更。',
     '系统旁白：战斗事件升级为关键节点，所有承诺都将接受战场检验。',
   ],
+  epoch_summary: [
+    '纪元 {epochRoman} 终结。{fallenName}的旗帜黯淡，{topFactionName}把新的边界刻进史册；{warCount} 场战争与 {betrayalCount} 次背叛，正在重塑下一纪元。',
+    '史官 AI 归档纪元 {epochRoman}：{majorEvent}。当尘埃落下，{topFactionName}站上权力高处，{fallenName}成为各方重新估价的阴影。',
+    '纪元 {epochRoman} 的终章已经写定。{warCount} 处战火尚未冷却，{betrayalCount} 道裂痕仍在扩散，新的格局开始围绕{topFactionName}形成。',
+  ],
   elimination: [
     '系统旁白：{targetName}旗帜熄灭，势力灭亡记录已进入纪元档案。',
     '系统旁白：一个席位从外交桌上消失，剩余势力立即重算均势。',

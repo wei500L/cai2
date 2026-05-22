@@ -31,7 +31,7 @@ export const phaseLabels: Record<HudMode, string> = {
   observe: '态势感知',
   action: '行动',
   resolve: '博弈',
-  'arbitrate-battle': '裁决·战争',
+  'arbitrate-battle': '结算 / 裁决·战争',
   'arbitrate-epic': '裁决·史诗',
   'arbitrate-summary': '裁决·总结',
 }

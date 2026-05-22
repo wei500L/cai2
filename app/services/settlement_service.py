@@ -26,6 +26,7 @@ from app.llm.output_parser import ModelOutputParser
 from app.llm.prompt_builder import PromptBuilder
 from app.llm.retry import call_with_retry
 from app.repositories.factory import Repositories
+from app.services.ai_output_service import AIOutputBundle, AIOutputService
 
 logger = get_logger(__name__)
 
@@ -62,6 +63,7 @@ class SettlementService:
         llm_client: LLMClient,
         parser: ModelOutputParser,
         rule_resolver: RuleResolver,
+        ai_output_service: AIOutputService | None = None,
     ) -> None:
         self._repos = repos
         self._clock = clock
@@ -70,6 +72,11 @@ class SettlementService:
         self._llm_client = llm_client
         self._parser = parser
         self._rule_resolver = rule_resolver
+        self._ai_output_service = ai_output_service or AIOutputService(
+            repos=repos,
+            clock=clock,
+            rng_seed=0,
+        )
 
     async def run_turn_settlement(
         self,
@@ -117,6 +124,20 @@ class SettlementService:
             self._log_repo_error(room_id, epoch, turn, "apply_state", error)
             raise DiplomacyError("failed to apply settlement result to game state") from error
 
+        self._log_step(room_id, epoch, turn, "generate_ai_output")
+        try:
+            ai_output = await self._ai_output_service.generate_ai_reactions_from_settlement(
+                room_id,
+                epoch,
+                turn,
+                model_output,
+                factions_snapshot=settlement_input.factions_snapshot,
+                recent_events=settlement_input.recent_events,
+            )
+        except Exception as error:
+            self._log_repo_error(room_id, epoch, turn, "generate_ai_output", error)
+            raise DiplomacyError("failed to generate AI output") from error
+
         self._log_step(room_id, epoch, turn, "build_outbound")
         seq_base = self._repos.events.next_seq(room_id)
         bundle = SettlementOutboundBundle(
@@ -125,10 +146,13 @@ class SettlementService:
             turn=turn,
             generated_at_ms=self._clock.now_ms(),
             seq_base=seq_base,
-            resolve_events=_build_resolve_events(settlement_result, settlement_input),
+            resolve_events=[
+                *_build_resolve_events(settlement_result, settlement_input),
+                *ai_output.narration_events,
+            ],
             resolve_map_diff=_build_map_diff(settlement_result, settlement_input),
             resolve_stats_diff=_build_stats_diff(settlement_result, settlement_input),
-            ai_speech_events=_build_ai_speech_events(settlement_result, settlement_input),
+            ai_speech_events=_build_ai_output_events(ai_output),
         )
 
         self._log_step(room_id, epoch, turn, "append_events")
@@ -281,13 +305,17 @@ def _build_ai_speech_events(
     ]
 
 
+def _build_ai_output_events(ai_output: AIOutputBundle) -> list[dict[str, Any]]:
+    return [
+        *ai_output.ai_speak_events,
+        *ai_output.private_message_events,
+        *ai_output.ai_reaction_events,
+    ]
+
+
 def _events_for_log(result: SettlementResult, input: SettlementInput) -> list[GameEvent]:
-    events: list[GameEvent] = [*result.narration_events, *result.battle_results]
-    events.extend(
-        _ai_speech_to_event(item, input, index)
-        for index, item in enumerate(result.ai_speeches)
-    )
-    return events
+    del input
+    return [*result.narration_events, *result.battle_results]
 
 
 def _ai_speech_to_event(item: AISpeechItem, input: SettlementInput, index: int) -> GameEvent:

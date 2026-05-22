@@ -17,6 +17,7 @@ import { ResolveEventPlayer } from '@/features/phaseSystem/ResolveEventPlayer'
 import { getHudModeFromPhase, getPhaseUIConfig } from '@/features/phaseSystem/PhaseStateMachine'
 import { factionTokens, resolveFactionId } from '@/components/hudTheme'
 import { startMockGameLoop } from '@/mock/gameLoop'
+import EpochSummaryPage from '@/pages/EpochSummaryPage'
 import { useGameStore } from '@/store/gameStore'
 import { useUIStore } from '@/store/uiStore'
 
@@ -386,6 +387,7 @@ export default function GamePage() {
           </div>
         </motion.div>
       </motion.div>
+      <EpochSummaryPage />
     </main>
   )
 }
