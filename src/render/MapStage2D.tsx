@@ -4,6 +4,7 @@ import { factionById, type FactionId } from '@/mock/factions'
 import type { MapRegion, Relationship } from '@/mock/types'
 import { gameStoreApi } from '@/store/gameStore'
 import { useUIStore, type MapQuality } from '@/store/uiStore'
+import { getParticleDensityMultiplier } from '@/utils/particleDensity'
 
 type Rgb = { r: number; g: number; b: number }
 type PaletteEntry = {
@@ -56,6 +57,7 @@ const FULL_ARC = Math.PI * 2
 const START_ANGLE = -Math.PI / 2
 const MAX_PARTICLES = 8_000
 const OWNERSHIP_FLOW_DURATION = 1.2
+let lastParticleStatAt = 0
 const PARTICLE_POOL: ParticleSeed[] = Array.from({ length: MAX_PARTICLES }, (_, index) => ({
   a: hash01(`pool:${index}:a`),
   b: hash01(`pool:${index}:b`),
@@ -264,7 +266,8 @@ function drawBackgroundParticles(
   quality: MapQuality,
 ) {
   const config = qualityConfig[quality]
-  const count = Math.min(config.particleLimit, Math.floor(config.particleLimit * 0.22))
+  const density = getParticleDensityMultiplier(useUIStore.getState().globalParticleDensity)
+  const count = Math.min(MAX_PARTICLES, Math.floor(config.particleLimit * 0.22 * density))
   ctx.fillStyle = `rgba(100, 198, 255, ${0.13 * config.energy})`
 
   for (let index = 0; index < count; index += 1) {
@@ -314,6 +317,7 @@ function drawRegions(
   ownershipFlows: Map<string, OwnershipFlow>,
 ) {
   const config = qualityConfig[quality]
+  const density = getParticleDensityMultiplier(useUIStore.getState().globalParticleDensity)
 
   for (const cell of layout.cells) {
     const owner = cell.region.owner
@@ -367,7 +371,8 @@ function drawRegions(
     ctx.fill()
 
     ctx.fillStyle = toRgba(mixRgb(base, glow, 0.55), 0.16 * config.energy)
-    for (let index = 0; index < config.noisePerRegion; index += 1) {
+    const noiseCount = Math.max(1, Math.floor(config.noisePerRegion * density))
+    for (let index = 0; index < noiseCount; index += 1) {
       const seed = `${cell.region.id}:noise:${index}`
       const angle = START_ANGLE + (cell.col + hash01(`${seed}:a`)) * (FULL_ARC / GRID_SIZE)
       const inner = cell.row / GRID_SIZE
@@ -579,7 +584,18 @@ function drawFrame(
 ) {
   const state = gameStoreApi.getState()
   const quality = qualityOverride ?? useUIStore.getState().mapQuality
+  const density = getParticleDensityMultiplier(useUIStore.getState().globalParticleDensity)
+  const particleCount = Math.min(
+    MAX_PARTICLES,
+    Math.floor(qualityConfig[quality].particleLimit * 0.22 * density) +
+      layout.cells.length * Math.max(1, Math.floor(qualityConfig[quality].noisePerRegion * density)),
+  )
   const radius = Math.min(width, height) * 0.42
+
+  if (time - lastParticleStatAt > 0.5) {
+    lastParticleStatAt = time
+    useUIStore.getState().setPerfStats({ particleCount })
+  }
 
   ctx.clearRect(0, 0, width, height)
   ctx.fillStyle = 'rgba(1, 3, 8, 1)'
@@ -613,7 +629,7 @@ function drawFrame(
   ctx.save()
   ctx.fillStyle = 'rgba(196, 228, 255, 0.18)'
   ctx.font = '10px "Share Tech Mono", monospace'
-  ctx.fillText(`QUALITY:${quality.toUpperCase()} PARTICLES<=${qualityConfig[quality].particleLimit}`, 14, height - 16)
+  ctx.fillText(`QUALITY:${quality.toUpperCase()} PARTICLES~${particleCount}`, 14, height - 16)
   ctx.restore()
 }
 
@@ -833,6 +849,13 @@ export function MapStage2D({ qualityOverride, interactive = true }: MapStage2DPr
       useUIStore.getState().setMapFocus(null)
     }
 
+    const onMapReset = () => {
+      viewRef.current.userScale = 1
+      viewRef.current.userPanX = 0
+      viewRef.current.userPanY = 0
+      useUIStore.getState().setMapFocus(null)
+    }
+
     const observer = new ResizeObserver(resize)
     observer.observe(canvas)
     resize()
@@ -846,6 +869,7 @@ export function MapStage2D({ qualityOverride, interactive = true }: MapStage2DPr
       canvas.addEventListener('wheel', onWheel, { passive: false })
       canvas.addEventListener('contextmenu', onContextMenu)
       window.addEventListener('keydown', onKeyDown)
+      window.addEventListener('diplomacy:map-reset', onMapReset)
     }
 
     const tick = (now: number) => {
@@ -887,6 +911,7 @@ export function MapStage2D({ qualityOverride, interactive = true }: MapStage2DPr
         canvas.removeEventListener('wheel', onWheel)
         canvas.removeEventListener('contextmenu', onContextMenu)
         window.removeEventListener('keydown', onKeyDown)
+        window.removeEventListener('diplomacy:map-reset', onMapReset)
       }
     }
   }, [interactive, qualityOverride])

@@ -3,6 +3,10 @@ import type { CSSProperties } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { PixelButton } from '@/components/PixelButton'
 import { Scanlines } from '@/components/Scanlines'
+import { DevPerfOverlay } from '@/components/DevPerfOverlay'
+import { ErrorPanel } from '@/components/ErrorPanel'
+import { HotkeysHelp } from '@/components/HotkeysHelp'
+import { SettingsPanel } from '@/components/SettingsPanel'
 import { NarrationBanner } from '@/features/aiSpeech/NarrationBanner'
 import { PrivateMessageDrawer } from '@/features/aiSpeech/PrivateMessageDrawer'
 import { MapStage } from '@/features/hud/MapStage'
@@ -22,6 +26,8 @@ import { ActionDispatcher } from '@/protocol/dispatcher'
 import { MockTransport } from '@/protocol/transport'
 import { gameStoreApi, useGameStore } from '@/store/gameStore'
 import { useUIStore } from '@/store/uiStore'
+import { useGlobalHotkeys } from '@/hooks/useGlobalHotkeys'
+import { startPerfMonitor } from '@/utils/perfMonitor'
 
 const COMPACT_BREAKPOINT = 960
 const DENSE_BREAKPOINT = 1280
@@ -42,15 +48,6 @@ function useViewportWidth() {
   }, [])
 
   return width
-}
-
-function isEditableTarget(target: EventTarget | null) {
-  return (
-    target instanceof HTMLInputElement ||
-    target instanceof HTMLTextAreaElement ||
-    target instanceof HTMLSelectElement ||
-    (target instanceof HTMLElement && target.isContentEditable)
-  )
 }
 
 function EpicCurtain({ visible }: { visible: boolean }) {
@@ -97,8 +94,10 @@ function EpicCurtain({ visible }: { visible: boolean }) {
 }
 
 export default function GamePage() {
+  useGlobalHotkeys()
   const viewportWidth = useViewportWidth()
   const isCompact = viewportWidth < COMPACT_BREAKPOINT
+  const isMobile = viewportWidth < 640
   const isDense = viewportWidth < DENSE_BREAKPOINT
   const initGame = useGameStore((state) => state.initGame)
   const selectedFactionId = useGameStore((state) => state.selectedFactionId)
@@ -111,10 +110,10 @@ export default function GamePage() {
   const setRightPanelOpen = useUIStore((state) => state.setRightPanelOpen)
   const toggleLeftPanel = useUIStore((state) => state.toggleLeftPanel)
   const toggleRightPanel = useUIStore((state) => state.toggleRightPanel)
-  const cycleFocusedPanel = useUIStore((state) => state.cycleFocusedPanel)
-  const setFocusedPanel = useUIStore((state) => state.setFocusedPanel)
   const focusToast = useUIStore((state) => state.focusToast)
   const setFocusToast = useUIStore((state) => state.setFocusToast)
+  const lastError = useUIStore((state) => state.lastError)
+  const setLastError = useUIStore((state) => state.setLastError)
   const gamePhase = useGameStore((state) => state.epoch.phase)
   const arbitratePhase = useGameStore((state) => state.epoch.arbitratePhase)
   const hudMode = useUIStore((state) => state.hudMode)
@@ -138,6 +137,11 @@ export default function GamePage() {
   }, [initGame])
 
   useEffect(() => {
+    const monitor = startPerfMonitor()
+    return () => monitor.stop()
+  }, [])
+
+  useEffect(() => {
     const nextHudMode = getHudModeFromPhase(gamePhase, arbitratePhase)
 
     if (nextHudMode !== hudMode) {
@@ -155,34 +159,6 @@ export default function GamePage() {
     setLeftPanelOpen(true)
     setRightPanelOpen(true)
   }, [isCompact, setLeftPanelOpen, setRightPanelOpen])
-
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey || isEditableTarget(event.target)) {
-        return
-      }
-
-      if (event.key === 'Tab') {
-        event.preventDefault()
-        cycleFocusedPanel()
-      }
-
-      if (event.key.toLowerCase() === 'e') {
-        event.preventDefault()
-        toggleLeftPanel()
-        setFocusedPanel('left')
-      }
-
-      if (event.key.toLowerCase() === 'r') {
-        event.preventDefault()
-        toggleRightPanel()
-        setFocusedPanel('right')
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [cycleFocusedPanel, setFocusedPanel, toggleLeftPanel, toggleRightPanel])
 
   useEffect(() => {
     if (!focusToast) {
@@ -209,7 +185,9 @@ export default function GamePage() {
       ? 0
       : phaseConfig.commandTerminalMode === 'collapsed'
         ? 48
-        : 180
+        : isMobile
+          ? 260
+          : 180
   const sideTransition = {
     duration: phaseConfig.transitionMs / 1000,
     ease: [0.22, 1, 0.36, 1] as const,
@@ -245,9 +223,17 @@ export default function GamePage() {
       <NarrationBanner />
       <PrivateMessageDrawer />
       <PhaseTransitionOverlay />
+      <HotkeysHelp />
+      <SettingsPanel />
+      <DevPerfOverlay />
       {focusToast ? (
         <div className="pointer-events-none absolute left-4 top-[4.25rem] z-[70] border border-[color:rgba(51,170,255,0.34)] bg-[color:rgba(5,9,18,0.92)] px-3 py-2 font-hud text-[0.62rem] tracking-[0.16em] text-[color:var(--text-primary)] shadow-[0_0_18px_rgba(51,170,255,0.2)]">
           {focusToast}
+        </div>
+      ) : null}
+      {lastError ? (
+        <div className="fixed right-4 top-20 z-[125] w-[min(24rem,calc(100vw-2rem))]">
+          <ErrorPanel message={lastError} onRetry={() => setLastError(null)} onClose={() => setLastError(null)} />
         </div>
       ) : null}
 

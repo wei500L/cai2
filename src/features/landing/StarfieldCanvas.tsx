@@ -1,4 +1,6 @@
 import { useEffect, useRef } from 'react'
+import { useUIStore, type GlobalParticleDensity } from '@/store/uiStore'
+import { getParticleDensityMultiplier } from '@/utils/particleDensity'
 
 declare global {
   interface Window {
@@ -50,18 +52,21 @@ const createParticle = (width: number, height: number): Particle => {
   }
 }
 
-const resolveDensity = (width: number, height: number) => {
+const resolveDensity = (width: number, height: number, density: GlobalParticleDensity) => {
   const mobile = width < 640
   const base = Math.round((width * height) / (mobile ? 650 : 1100))
-  const multiplier =
+  const debugMultiplier =
     import.meta.env.DEV && typeof window !== 'undefined'
       ? window.__DIPLOMACY_DEBUG__?.particleDensity ?? 1
       : 1
+  const multiplier = debugMultiplier * getParticleDensityMultiplier(density)
 
-  return clamp(Math.round(base * multiplier), mobile ? 400 : 800, mobile ? 700 : 1500)
+  return clamp(Math.round(base * multiplier), mobile ? 240 : 440, mobile ? 900 : 2400)
 }
 
 export function StarfieldCanvas({ attractor }: StarfieldCanvasProps) {
+  const globalParticleDensity = useUIStore((state) => state.globalParticleDensity)
+  const setPerfStats = useUIStore((state) => state.setPerfStats)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const particlesRef = useRef<Particle[]>([])
   const pointerRef = useRef({ x: 0, y: 0 })
@@ -96,9 +101,10 @@ export function StarfieldCanvas({ attractor }: StarfieldCanvasProps) {
       canvas.style.width = `${width}px`
       canvas.style.height = `${height}px`
       context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0)
-      particlesRef.current = Array.from({ length: resolveDensity(width, height) }, () =>
+      particlesRef.current = Array.from({ length: resolveDensity(width, height, globalParticleDensity) }, () =>
         createParticle(width, height),
       )
+      setPerfStats({ particleCount: particlesRef.current.length })
     }
 
     const handlePointerMove = (event: PointerEvent) => {
@@ -141,9 +147,10 @@ export function StarfieldCanvas({ attractor }: StarfieldCanvasProps) {
 
       drawNebula(time)
 
-      const desiredCount = resolveDensity(width, height)
+      const desiredCount = resolveDensity(width, height, globalParticleDensity)
       if (particlesRef.current.length !== desiredCount) {
         particlesRef.current = Array.from({ length: desiredCount }, () => createParticle(width, height))
+        setPerfStats({ particleCount: desiredCount })
       }
 
       const particles = particlesRef.current
@@ -218,7 +225,7 @@ export function StarfieldCanvas({ attractor }: StarfieldCanvasProps) {
       window.removeEventListener('resize', resize)
       window.removeEventListener('pointermove', handlePointerMove)
     }
-  }, [])
+  }, [globalParticleDensity, setPerfStats])
 
   return <canvas ref={canvasRef} aria-hidden className="pointer-events-none fixed inset-0 h-full w-full" />
 }

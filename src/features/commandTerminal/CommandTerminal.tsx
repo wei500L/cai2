@@ -154,6 +154,8 @@ export function CommandTerminal() {
   const pendingSubmission = useRef<CommandSubmission | null>(null)
   const appliedDraftId = useRef<number | null>(null)
   const commandTerminalDraft = useUIStore((state) => state.commandTerminalDraft)
+  const commandModeHotkey = useUIStore((state) => state.commandModeHotkey)
+  const setCommandModeHotkey = useUIStore((state) => state.setCommandModeHotkey)
   const hudMode = useUIStore((state) => state.hudMode)
   const phaseConfig = getPhaseUIConfig(hudMode)
   const tone = useToneAnalyzer(content, mode)
@@ -228,6 +230,15 @@ export function CommandTerminal() {
 
     return () => window.cancelAnimationFrame(frame)
   }, [commandTerminalDraft])
+
+  useEffect(() => {
+    if (!commandModeHotkey) {
+      return
+    }
+
+    setModeSafely(commandModeHotkey)
+    setCommandModeHotkey(null)
+  }, [commandModeHotkey, setCommandModeHotkey, setModeSafely])
 
   const handleContentChange = useCallback(
     (value: string) => {
@@ -367,7 +378,7 @@ export function CommandTerminal() {
     <GlowPanel className="h-full rounded-none">
       <div className="relative flex h-full flex-col">
         <SendFx payload={fxPayload} onComplete={handleFxComplete} />
-        <div className="flex items-center gap-3 px-4 py-2">
+        <div className="flex min-w-0 items-center gap-3 px-4 py-2 max-sm:flex-wrap max-sm:px-3">
           <ModeTabs activeMode={mode} onModeChange={setModeSafely} />
           <div className="min-w-0 flex-1">
             <ContextHint mode={mode} actorCanDirectIntel={actorCanDirectIntel} disabledReason={disabledReason} />
@@ -379,7 +390,7 @@ export function CommandTerminal() {
           ) : null}
         </div>
         <HoloDivider />
-        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(21rem,30rem)] gap-3 px-4 py-3">
+        <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_minmax(21rem,30rem)] gap-3 px-4 py-3 max-sm:grid-cols-1 max-sm:overflow-y-auto max-sm:px-3 max-sm:py-2">
           <div className="grid min-h-0 grid-rows-[2rem_minmax(0,1fr)] gap-2">
             <TargetSelector
               mode={mode}
@@ -393,7 +404,7 @@ export function CommandTerminal() {
               onTreatyKindChange={handleTreatyKindChange}
               onMilitaryChange={handleMilitaryChange}
             />
-            <div className="grid grid-cols-[minmax(0,1fr)_10rem] gap-3">
+            <div className="grid grid-cols-[minmax(0,1fr)_10rem] gap-3 max-sm:grid-cols-1">
               <div className="truncate border border-[color:rgba(255,255,255,0.1)] bg-[color:rgba(255,255,255,0.025)] px-3 py-2 font-hud text-[0.58rem] uppercase tracking-[0.14em] text-[color:rgba(196,228,255,0.52)]">
                 通讯协议：{commandModeLabels[mode]}
               </div>

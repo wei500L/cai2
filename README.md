@@ -98,3 +98,7 @@ export default defineConfig([
   },
 ])
 ```
+
+## Backend persistence plan
+
+《外交风云》AI Diplomacy 后端未来 PostgreSQL + Redis 接入边界与迁移方案参见 [docs/PERSISTENCE_PLAN.md](docs/PERSISTENCE_PLAN.md)。

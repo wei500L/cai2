@@ -1,4 +1,3 @@
-import { useEffect } from 'react'
 import clsx from 'clsx'
 import { commandModeLabels, commandModes, type CommandMode } from './types'
 
@@ -7,35 +6,7 @@ type ModeTabsProps = {
   onModeChange: (mode: CommandMode) => void
 }
 
-function isEditableTarget(target: EventTarget | null) {
-  return (
-    target instanceof HTMLInputElement ||
-    target instanceof HTMLTextAreaElement ||
-    target instanceof HTMLSelectElement ||
-    (target instanceof HTMLElement && target.isContentEditable)
-  )
-}
-
 export function ModeTabs({ activeMode, onModeChange }: ModeTabsProps) {
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.metaKey || event.ctrlKey || event.altKey || isEditableTarget(event.target)) {
-        return
-      }
-
-      const index = Number(event.key) - 1
-      const mode = commandModes[index]
-
-      if (mode) {
-        event.preventDefault()
-        onModeChange(mode)
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [onModeChange])
-
   return (
     <div className="flex min-w-0 items-center gap-1 overflow-x-auto font-hud text-[0.58rem] uppercase tracking-[0.18em]">
       {commandModes.map((mode, index) => {

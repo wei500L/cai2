@@ -51,7 +51,7 @@ export default function LandingPage() {
   )
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-[color:#02040a] text-[color:var(--text-primary)]">
+    <main className="relative min-h-screen overflow-hidden bg-[color:var(--bg-space)] text-[color:var(--text-primary)]">
       <StarfieldCanvas attractor={attractor} />
 
       <div

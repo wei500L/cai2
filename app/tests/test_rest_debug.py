@@ -136,14 +136,15 @@ def test_rest_debug_end_to_end_flow(rest_client: TestClient) -> None:
     assert messages.status_code == 200
     assert messages.json()[0]["content"].startswith("Iron Crown")
 
+    _advance_until_finished(rest_client, room_id)
+
     replay = rest_client.get(f"/debug/v1/rooms/{room_id}/replay")
     assert replay.status_code == 200
     replay_body = replay.json()
     assert replay_body["room_id"] == room_id
     assert replay_body["timeline"]
-    assert replay_body["events"]
-    assert replay_body["messages"]
-    assert replay_body["actions"]
+    assert replay_body["public_events"]
+    assert replay_body["famous_quotes"]
 
 
 def test_speak_outside_action_phase_returns_400(rest_client: TestClient) -> None:
@@ -187,6 +188,19 @@ def test_duplicate_select_faction_returns_409(rest_client: TestClient) -> None:
 
     assert duplicate.status_code == 409
     assert duplicate.json()["error_code"] == "FactionAlreadyTakenError"
+
+
+def _advance_until_finished(rest_client: TestClient, room_id: str) -> None:
+    for _ in range(100):
+        state = rest_client.get(f"/debug/v1/rooms/{room_id}")
+        assert state.status_code == 200
+        if state.json()["room"]["status"] == "finished":
+            return
+
+        advanced = rest_client.post(f"/debug/v1/rooms/{room_id}/phase/advance")
+        assert advanced.status_code == 200
+
+    pytest.fail("room did not finish within debug phase advance budget")
 
 
 def test_missing_room_returns_404(rest_client: TestClient) -> None:

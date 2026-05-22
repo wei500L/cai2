@@ -40,7 +40,7 @@ export function MessageInput({
 
   return (
     <motion.div
-      className="grid min-h-0 grid-cols-[minmax(0,1fr)_12rem] gap-3"
+      className="grid min-h-0 grid-cols-[minmax(0,1fr)_12rem] gap-3 max-sm:grid-cols-1"
       animate={reboundKey ? { scale: [1, 0.985, 1.01, 1] } : { scale: 1 }}
       transition={{ duration: 0.28, ease: 'easeOut' }}
     >

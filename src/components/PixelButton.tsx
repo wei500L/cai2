@@ -35,6 +35,7 @@ export const PixelButton = forwardRef<HTMLButtonElement, PixelButtonProps>(funct
     icon,
     children,
     className,
+    disabled,
     type = 'button',
     ...props
   },
@@ -46,9 +47,10 @@ export const PixelButton = forwardRef<HTMLButtonElement, PixelButtonProps>(funct
     <motion.button
       ref={ref}
       {...(props as Record<string, unknown>)}
+      disabled={disabled}
       type={type}
       className={clsx(
-        'inline-flex items-center justify-center gap-2 border px-4 py-2 font-hud text-[0.74rem] uppercase tracking-[0.18em] text-[color:var(--text-primary)] transition-[background-color,border-color,box-shadow,transform] duration-200 ease-holo focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--border-glow)] disabled:cursor-not-allowed disabled:opacity-50',
+        'inline-flex items-center justify-center gap-2 border px-4 py-2 font-hud text-[0.74rem] uppercase tracking-[0.18em] text-[color:var(--text-primary)] transition-[background-color,border-color,box-shadow,transform,opacity] duration-200 ease-holo focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[color:var(--border-glow)] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:transform-none',
         className,
       )}
       style={{
@@ -57,16 +59,24 @@ export const PixelButton = forwardRef<HTMLButtonElement, PixelButtonProps>(funct
         boxShadow: `0 0 0 1px ${style.border}, 0 0 14px ${style.glow}`,
         '--border-glow': style.border,
       } as CSSProperties}
-      whileHover={{
-        y: -1,
-        boxShadow: `0 0 0 1px ${style.border}, 0 0 20px ${style.glow}`,
-      }}
-      whileTap={{
-        x: [0, -1, 1, -1, 0],
-        y: [0, 1, -1, 1, 0],
-        scale: 0.985,
-      }}
-      transition={{ duration: 0.16, ease: 'easeInOut' }}
+      whileHover={
+        disabled
+          ? undefined
+          : {
+              y: -1,
+              boxShadow: `0 0 0 1px ${style.border}, 0 0 20px ${style.glow}`,
+            }
+      }
+      whileTap={
+        disabled
+          ? undefined
+          : {
+              x: [0, -1, 1, -1, 0],
+              y: [0, 1, -1, 1, 0],
+              scale: 0.985,
+            }
+      }
+      transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
       >
       {icon ? <span className="inline-flex items-center justify-center">{icon}</span> : null}
       <span className="leading-none">{children}</span>

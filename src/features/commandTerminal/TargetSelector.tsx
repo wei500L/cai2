@@ -63,7 +63,7 @@ export function TargetSelector({
 
   if (mode === 'military') {
     return (
-      <div className="grid h-full grid-cols-4 gap-2">
+      <div className="grid h-full grid-cols-4 gap-2 max-sm:min-h-20 max-sm:grid-cols-2">
         <select
           value={military.unitId}
           onChange={(event) => onMilitaryChange({ ...military, unitId: event.target.value })}

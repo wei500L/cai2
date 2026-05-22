@@ -63,21 +63,21 @@ export function PhaseTransitionOverlay() {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.12 }}
+          transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
         >
           <motion.div
             aria-hidden
             className="absolute inset-y-0 w-[34vw] skew-x-[-16deg] bg-[linear-gradient(90deg,transparent,var(--phase-glow),rgba(255,255,255,0.82),var(--phase-glow),transparent)] blur-[1px]"
             initial={{ x: '-45vw', opacity: 0 }}
             animate={{ x: '120vw', opacity: [0, 1, 0.45, 0] }}
-            transition={{ duration: 0.48, ease: [0.16, 1, 0.3, 1] }}
+            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
           />
           <motion.div
             aria-hidden
             className="absolute inset-x-0 h-24 bg-[linear-gradient(180deg,transparent,rgba(255,255,255,0.22),var(--phase-glow),transparent)]"
             initial={{ y: '-12vh', opacity: 0 }}
             animate={{ y: '110vh', opacity: [0, 0.95, 0.2, 0] }}
-            transition={{ duration: 0.52, ease: 'circOut' }}
+            transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
           />
           <div
             aria-hidden
@@ -93,7 +93,7 @@ export function PhaseTransitionOverlay() {
               initial={{ opacity: 0, scale: 0.94, y: 12 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.98, y: -8 }}
-              transition={{ duration: 0.22, delay: 0.08 }}
+              transition={{ duration: 0.3, delay: 0.08, ease: [0.22, 1, 0.36, 1] }}
             >
               <div className="font-hud text-[0.56rem] uppercase tracking-[0.28em] text-[color:rgba(196,228,255,0.56)]">
                 PHASE SHIFT

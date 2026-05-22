@@ -49,13 +49,15 @@ export function GlowPanel({
     <motion.div
       {...(props as Record<string, unknown>)}
       className={clsx(
-        'relative overflow-hidden border bg-[color:var(--bg-panel)] text-[color:var(--text-primary)] shadow-glow-sm',
+        'glow-panel relative overflow-hidden border bg-[color:var(--bg-panel)] text-[color:var(--text-primary)] shadow-glow-sm',
         className,
       )}
       style={
         {
           '--border-glow': resolved.border,
-          boxShadow: `0 0 0 1px ${resolved.border}, 0 0 24px ${resolved.shadow}`,
+          '--glow-panel-shadow': `0 0 0 1px ${resolved.border}, 0 0 24px ${resolved.shadow}`,
+          '--glow-panel-focus-shadow': `0 0 0 2px ${resolved.border}, 0 0 34px ${resolved.shadow}`,
+          boxShadow: 'var(--glow-panel-shadow)',
           borderColor: resolved.border,
           ...style,
         } as CSSProperties

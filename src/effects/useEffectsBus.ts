@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { factionIds, factionTokens } from '@/components/hudTheme'
 import { gameStoreApi, type GameStoreState } from '@/store/gameStore'
 import { useUIStore, type MapQuality } from '@/store/uiStore'
+import { getParticleDensityMultiplier } from '@/utils/particleDensity'
 import type { FactionId } from '@/mock/factions'
 import type { GameEvent, Relationship } from '@/mock/types'
 import { BattleFrontlineParticles } from './war/BattleFrontlineParticles'
@@ -79,6 +80,10 @@ function resolveCssColor(token: string, fallback: string) {
 
 function factionGlow(factionId: FactionId) {
   return resolveCssColor(factionTokens[factionId].glow, '#33AAFF')
+}
+
+function densityScale() {
+  return getParticleDensityMultiplier(useUIStore.getState().globalParticleDensity)
 }
 
 function pairKey(a: FactionId, b: FactionId) {
@@ -511,7 +516,7 @@ export function useEffectsBus({ canvasRef, mapQuality }: UseEffectsBusOptions) {
         to: getFactionPoint(state, target),
         color: '#9933FF',
         life: 5_000,
-        density: qualityRef.current === 'high' ? 34 : 24,
+        density: Math.floor((qualityRef.current === 'high' ? 34 : 24) * densityScale()),
       })
     }
 
@@ -545,7 +550,7 @@ export function useEffectsBus({ canvasRef, mapQuality }: UseEffectsBusOptions) {
       effect.onSpawn({
         from: getFactionPoint(state, event.actor),
         to: getFactionPoint(state, target),
-        density: qualityRef.current === 'high' ? 24 : 16,
+        density: Math.floor((qualityRef.current === 'high' ? 24 : 16) * densityScale()),
         persist,
         life: TEMP_TRADE_LIFE,
       })
@@ -563,7 +568,7 @@ export function useEffectsBus({ canvasRef, mapQuality }: UseEffectsBusOptions) {
           effect.onSpawn({
             from: getFactionPoint(state, from),
             to: getFactionPoint(state, to),
-            density: qualityRef.current === 'high' ? 24 : 16,
+            density: Math.floor((qualityRef.current === 'high' ? 24 : 16) * densityScale()),
             persist: true,
           })
         }
@@ -597,7 +602,7 @@ export function useEffectsBus({ canvasRef, mapQuality }: UseEffectsBusOptions) {
         to,
         attackerColor: factionGlow(attacker),
         defenderColor: factionGlow(defender),
-        density: persist ? 54 : 42,
+        density: Math.floor((persist ? 54 : 42) * densityScale()),
         persist,
         life,
       })
@@ -609,7 +614,7 @@ export function useEffectsBus({ canvasRef, mapQuality }: UseEffectsBusOptions) {
           to,
           attackerColor: factionGlow(attacker),
           defenderColor: factionGlow(defender),
-          density: 34,
+          density: Math.floor(34 * densityScale()),
         })
       }
     }
@@ -763,7 +768,7 @@ export function useEffectsBus({ canvasRef, mapQuality }: UseEffectsBusOptions) {
           updateSparkBoosts(active, dt)
           updateFrontlines(active, dt)
 
-          drawEffects(ctx, frame, active)
+          drawEffects(ctx, frame, active, useUIStore.getState().effectsDegraded)
         }
       }
 
@@ -842,7 +847,24 @@ function updateFrontlines(active: ActiveEffects, dt: number) {
   }
 }
 
-function drawEffects(ctx: CanvasRenderingContext2D, frame: MapRenderFrame, active: ActiveEffects) {
+function drawEffects(
+  ctx: CanvasRenderingContext2D,
+  frame: MapRenderFrame,
+  active: ActiveEffects,
+  effectsDegraded: boolean,
+) {
+  if (effectsDegraded) {
+    for (const effect of active.speech) {
+      effect.draw({ ctx, frame })
+    }
+
+    for (const effect of active.private) {
+      effect.draw({ ctx, frame })
+    }
+
+    return
+  }
+
   for (const effect of active.trade.values()) {
     effect.draw({ ctx, frame })
   }

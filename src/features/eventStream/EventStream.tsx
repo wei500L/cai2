@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import clsx from 'clsx'
+import { EmptyState } from '@/components/EmptyState'
 import { HoloDivider } from '@/components/HoloDivider'
 import { PixelButton } from '@/components/PixelButton'
 import type { EventFilter } from '@/store/uiStore'
@@ -108,12 +109,13 @@ export function EventStream({
   const eventFilter = useUIStore((state) => state.eventFilter)
   const eventStreamScrollMode = useUIStore((state) => state.eventStreamScrollMode)
   const hudMode = useUIStore((state) => state.hudMode)
+  const isFullscreen = useUIStore((state) => state.eventStreamFullscreen)
+  const setIsFullscreen = useUIStore((state) => state.setEventStreamFullscreen)
   const setEventStreamScrollMode = useUIStore((state) => state.setEventStreamScrollMode)
   const setMapFocus = useUIStore((state) => state.setMapFocus)
   const focusEvent = useEventFocus()
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set())
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null)
-  const [isFullscreen, setIsFullscreen] = useState(false)
   const [now, setNow] = useState(() => Date.now())
   const listRef = useRef<HTMLDivElement | null>(null)
   const latestEventId = events[0]?.id ?? null
@@ -193,13 +195,6 @@ export function EventStream({
         return
       }
 
-      if (event.key.toLowerCase() === 'f') {
-        event.preventDefault()
-        setIsFullscreen((current) => !current)
-        onToggleFullscreen?.()
-        return
-      }
-
       if (event.key === 'Escape') {
         event.preventDefault()
         setSelectedEventId(null)
@@ -228,7 +223,7 @@ export function EventStream({
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [activeSelectedEventId, handleFocusEvent, onToggleFullscreen, setMapFocus, visibleEvents])
+  }, [activeSelectedEventId, handleFocusEvent, setMapFocus, visibleEvents])
 
   const handleScroll = useCallback(() => {
     const node = listRef.current
@@ -276,7 +271,7 @@ export function EventStream({
       className={clsx(
         'event-stream-root flex h-full min-h-0 flex-col overflow-hidden border bg-[color:rgba(0,0,0,0.76)] text-[color:var(--text-primary)]',
         isFullscreen
-          ? 'fixed left-0 top-0 z-[70] h-screen w-[min(60vw,58rem)] max-w-[calc(100vw-1rem)]'
+          ? 'fixed left-0 top-0 z-[70] h-screen w-[min(60vw,58rem)] max-w-[calc(100vw-1rem)] max-sm:w-screen max-sm:max-w-none'
           : 'relative w-full',
       )}
       style={{
@@ -311,7 +306,7 @@ export function EventStream({
             tone={isFullscreen ? 'primary' : 'ghost'}
             className="px-2 py-1 text-[0.54rem] tracking-[0.14em]"
             onClick={() => {
-              setIsFullscreen((current) => !current)
+              setIsFullscreen(!isFullscreen)
               onToggleFullscreen?.()
             }}
           >
@@ -349,9 +344,7 @@ export function EventStream({
               ))}
             </div>
           ) : (
-            <div className="grid h-full place-items-center border border-[color:rgba(255,255,255,0.08)] bg-[color:rgba(0,0,0,0.32)] px-4 text-center font-hud text-[0.62rem] uppercase tracking-[0.16em] text-[color:rgba(196,228,255,0.46)]">
-              无匹配事件
-            </div>
+            <EmptyState title={events.length === 0 ? '暂无事件信号' : '无匹配事件'} detail="调整过滤器或等待下一阶段广播" className="h-full" />
           )}
         </div>
 

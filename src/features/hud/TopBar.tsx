@@ -5,6 +5,7 @@ import { GlowPanel } from '@/components/GlowPanel'
 import { factionTokens, resolveFactionId } from '@/components/hudTheme'
 import type { ArbitratePhase, GamePhase } from '@/mock/types'
 import { useGameStore } from '@/store/gameStore'
+import { useUIStore } from '@/store/uiStore'
 
 const phaseLabels: Record<GamePhase, string> = {
   observe: '态势感知期',
@@ -32,6 +33,7 @@ export function TopBar() {
   const epoch = useGameStore((state) => state.epoch)
   const isPaused = useGameStore((state) => state.isPaused)
   const togglePause = useGameStore((state) => state.togglePause)
+  const toggleSettings = useUIStore((state) => state.toggleSettings)
   const factionId = resolveFactionId(selectedFactionId) ?? 'starlight'
   const faction = factionTokens[factionId]
   const phaseLabel =
@@ -71,6 +73,14 @@ export function TopBar() {
             onClick={togglePause}
           >
             {isPaused ? '继续' : '暂停'}
+          </PixelButton>
+          <PixelButton
+            tone="ghost"
+            className="px-2 py-1 text-[0.72rem] tracking-0"
+            onClick={toggleSettings}
+            aria-label="打开设置"
+          >
+            ⚙
           </PixelButton>
         </div>
       </div>

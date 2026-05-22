@@ -1,9 +1,11 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import clsx from 'clsx'
 import { GlowPanel } from '@/components/GlowPanel'
+import { EmptyState } from '@/components/EmptyState'
 import { HoloDivider } from '@/components/HoloDivider'
+import { LoadingHologram } from '@/components/LoadingHologram'
 import { PixelButton } from '@/components/PixelButton'
 import { FactionDetailPanel } from '@/features/factionSelect/FactionDetailPanel'
 import { factionById, type FactionId } from '@/mock/factions'
@@ -156,6 +158,18 @@ export function RelationsPanel({
 
   const modalFaction = modalFactionId ? factionById[modalFactionId] : null
 
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setModalFactionId(null)
+        setMenu(null)
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
   if (!phaseConfig.relationsVisible || phaseConfig.relationsMode === 'hidden') {
     return null
   }
@@ -174,8 +188,11 @@ export function RelationsPanel({
           </div>
           <HoloDivider />
           <div className="event-stream-scroll min-h-0 flex-1 overflow-y-auto px-2 py-2">
-            <div className="grid gap-2">
-              {rows.slice(0, 6).map((row) => (
+            {factions.length === 0 ? (
+              <LoadingHologram label="载入势力关系" />
+            ) : (
+              <div className="grid gap-2">
+                {rows.slice(0, 6).map((row) => (
                 <button
                   key={row.factionId}
                   type="button"
@@ -192,8 +209,9 @@ export function RelationsPanel({
                     />
                   </div>
                 </button>
-              ))}
-            </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </GlowPanel>
@@ -261,8 +279,11 @@ export function RelationsPanel({
         ) : null}
 
         <div className="event-stream-scroll min-h-0 flex-1 overflow-y-auto px-3 pb-3 xl:px-4">
-          <AnimatePresence mode="wait" initial={false}>
-            {activeTab === 'factions' ? (
+          {factions.length === 0 ? (
+            <LoadingHologram label="载入势力关系" className="h-full" />
+          ) : (
+            <AnimatePresence mode="wait" initial={false}>
+              {activeTab === 'factions' ? (
               <motion.div
                 key="factions"
                 className="grid gap-2"
@@ -271,17 +292,21 @@ export function RelationsPanel({
                 exit={{ opacity: 0, y: -8 }}
                 transition={{ duration: 0.18 }}
               >
-                {rows.map((row) => (
-                  <FactionRow
-                    key={row.factionId}
-                    actorId={actorId}
-                    factionId={row.factionId}
-                    delta={deltas[row.factionId]}
-                    onFocusFaction={focusFaction}
-                    onOpenModal={setModalFactionId}
-                    onOpenMenu={setMenu}
-                  />
-                ))}
+                {rows.length > 0 ? (
+                  rows.map((row) => (
+                    <FactionRow
+                      key={row.factionId}
+                      actorId={actorId}
+                      factionId={row.factionId}
+                      delta={deltas[row.factionId]}
+                      onFocusFaction={focusFaction}
+                      onOpenModal={setModalFactionId}
+                      onOpenMenu={setMenu}
+                    />
+                  ))
+                ) : (
+                  <EmptyState title="无匹配势力" detail="调整过滤条件查看关系网" />
+                )}
               </motion.div>
             ) : activeTab === 'treaties' ? (
               <motion.div
@@ -304,7 +329,8 @@ export function RelationsPanel({
                 <IntelHints />
               </motion.div>
             )}
-          </AnimatePresence>
+            </AnimatePresence>
+          )}
         </div>
       </div>
 
@@ -340,14 +366,14 @@ export function RelationsPanel({
       <AnimatePresence>
         {modalFaction ? (
           <motion.div
-            className="fixed inset-0 z-[90] grid place-items-center bg-black/62 p-4"
+            className="fixed inset-0 z-[90] grid place-items-center bg-black/62 p-4 max-sm:p-0"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={() => setModalFactionId(null)}
           >
             <motion.div
-              className="w-[min(92vw,32rem)]"
+              className="w-[min(92vw,32rem)] max-sm:h-screen max-sm:w-screen"
               initial={{ opacity: 0, y: 16, scale: 0.98 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 12, scale: 0.98 }}

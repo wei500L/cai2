@@ -52,4 +52,4 @@ def make_repositories(env: Literal["memory", "postgres"]) -> Repositories:
             replays=MemoryReplayRepository(),
         )
 
-    raise NotImplementedError("postgres adapter 待接入")
+    raise NotImplementedError("postgres backend not wired yet; use 'memory' in MVP")

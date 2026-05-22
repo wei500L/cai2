@@ -19,6 +19,7 @@ export function PhaseIndicator() {
   const isPaused = useGameStore((state) => state.isPaused)
   const togglePause = useGameStore((state) => state.togglePause)
   const hudMode = useUIStore((state) => state.hudMode)
+  const toggleSettings = useUIStore((state) => state.toggleSettings)
   const factionId = resolveFactionId(selectedFactionId) ?? 'starlight'
   const faction = factionTokens[factionId]
   const label = getPhaseLabel(hudMode)
@@ -79,6 +80,14 @@ export function PhaseIndicator() {
             onClick={togglePause}
           >
             {isPaused ? '继续' : '暂停'}
+          </PixelButton>
+          <PixelButton
+            tone="ghost"
+            className="px-2 py-1 text-[0.72rem] tracking-0"
+            onClick={toggleSettings}
+            aria-label="打开设置"
+          >
+            ⚙
           </PixelButton>
         </div>
       </div>

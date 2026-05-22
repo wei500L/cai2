@@ -323,5 +323,5 @@ def test_make_repositories_memory_and_postgres_branch() -> None:
     assert isinstance(repos.rooms, MemoryRoomRepository)
     assert isinstance(repos.players, MemoryPlayerRepository)
 
-    with pytest.raises(NotImplementedError, match="待接入"):
+    with pytest.raises(NotImplementedError, match="postgres backend not wired yet"):
         make_repositories("postgres")
