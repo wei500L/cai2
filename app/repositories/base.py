@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Protocol, TypeVar
 
-
 T = TypeVar("T")
 
 
@@ -18,4 +17,3 @@ class AsyncRepository(Protocol[T]):
 
     async def list_all(self) -> list[T]:
         ...
-

@@ -6,7 +6,6 @@ from typing import Generic, TypeVar
 
 from app.repositories.base import AsyncRepository
 
-
 T = TypeVar("T")
 
 
@@ -30,4 +29,3 @@ class MemoryRepository(Generic[T], AsyncRepository[T]):
     async def list_all(self) -> list[T]:
         async with self._lock:
             return list(self._items.values())
-
