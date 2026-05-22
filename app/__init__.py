@@ -1,0 +1,2 @@
+"""Diplomacy backend package."""
+

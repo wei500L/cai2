@@ -1,4 +1,29 @@
-前端先用 mock 数据完成完整体验，后端以后通过 `protocol` / `adapter` 层替换接入；当前阶段只保留前端骨架、空状态和占位页面，不直接耦合真实传输或业务实现。
+# Diplomacy Backend
+
+《外交风云》AI Diplomacy 后端 MVP 骨架，基于 Python 3.11+、FastAPI、Pydantic v2、asyncio 和 pytest。
+
+本后端 MVP 不启动开发服务器；通过 `pytest` 运行测试验证。
+前端独立开发，通过 WebSocket 协议接入。
+当前只提供后端工程骨架、分层目录和健康检查接口，不连接真实数据库、不调用真实 LLM。
+
+## 目录结构
+
+```text
+app/
+  api/
+  core/
+  domain/
+  game/
+  llm/
+  protocol/
+  repositories/
+  services/
+  tests/
+```
+
+## 说明
+
+后端与前端保持隔离，通过 `protocol` 层定义消息与序列化边界，后续再接入 WebSocket 传输实现。
 
 # React + TypeScript + Vite
 

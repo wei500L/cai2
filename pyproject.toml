@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "diplomacy-backend"
+version = "0.1.0"
+description = "Diplomacy backend skeleton for the AI Diplomacy project."
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi",
+  "pydantic>=2",
+  "uvicorn[standard]",
+  "python-multipart",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "pytest-asyncio",
+  "ruff",
+  "httpx",
+]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "RUF"]
+
+[tool.pytest.ini_options]
+testpaths = ["app/tests"]
+
