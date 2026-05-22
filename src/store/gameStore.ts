@@ -123,6 +123,10 @@ function estimateCultureGain(content: string, toneHeat: number) {
   return Math.max(1, 1 + wordGain + toneGain)
 }
 
+function canDirectIntel(actor: FactionId) {
+  return actor === 'darkTide' || actor === 'starlight' || actor === 'voidChurch'
+}
+
 function validateSubmission(submission: CommandSubmission) {
   const content = submission.content.trim()
 
@@ -495,7 +499,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
         military: submission.military,
         tone: submission.tone,
         culture_gain: submission.mode === 'speech' ? estimateCultureGain(content, toneHeat) : undefined,
-        viaCourier: submission.mode === 'intel' && actor !== 'darkTide',
+        viaCourier: submission.mode === 'intel' && !canDirectIntel(actor),
       },
       narration: narrationByMode[submission.mode],
     }

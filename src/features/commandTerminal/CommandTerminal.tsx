@@ -135,9 +135,10 @@ function formatRateText(used: number, limit: number, label: string) {
 export function CommandTerminal() {
   const epoch = useGameStore((state) => state.epoch)
   const selectedFactionId = useGameStore((state) => state.selectedFactionId)
-  const factions = useGameStore((state) => state.factions.map((faction) => faction.id))
+  const factionStates = useGameStore((state) => state.factions)
   const regions = useGameStore((state) => state.regions)
   const submitSpeech = useGameStore((state) => state.submitSpeech)
+  const factions = useMemo(() => factionStates.map((faction) => faction.id), [factionStates])
   const actorId = selectedFactionId ?? 'starlight'
   const [mode, setMode] = useState<CommandMode>('speech')
   const [targets, setTargets] = useState<FactionId[]>([])
@@ -152,6 +153,17 @@ export function CommandTerminal() {
   const tone = useToneAnalyzer(content, mode)
   const isActionPhase = epoch.phase === 'action'
   const actorCanDirectIntel = directIntelFactions.has(actorId)
+  const resolvedMilitary = useMemo(() => {
+    const ownedRegion = regions.find((region) => region.owner === actorId)
+    const fallbackSource = ownedRegion?.id ?? regions[0]?.id ?? ''
+    const fallbackTarget = regions.find((region) => region.id !== fallbackSource)?.id ?? fallbackSource
+
+    return {
+      ...military,
+      sourceRegionId: military.sourceRegionId || fallbackSource,
+      targetRegionId: military.targetRegionId || fallbackTarget,
+    }
+  }, [actorId, military, regions])
   const rateSnapshot = getRateSnapshot({
     phaseKey: phaseKey(epoch),
     playerId: actorId,
@@ -235,7 +247,13 @@ export function CommandTerminal() {
     mode === 'speech' ||
     (mode === 'private' && targets.length === 1) ||
     (mode === 'treaty' && targets.length >= 1 && targets.length <= 3) ||
-    mode === 'military' ||
+    (mode === 'military' &&
+      Boolean(
+        resolvedMilitary.unitId &&
+          resolvedMilitary.sourceRegionId &&
+          resolvedMilitary.targetRegionId &&
+          resolvedMilitary.action,
+      )) ||
     (mode === 'intel' && targets.length === 1)
   const sendDisabled =
     !isActionPhase || isAnimating || rateSnapshot.blocked || !content.trim() || !canSubmitContext
@@ -253,7 +271,7 @@ export function CommandTerminal() {
       content,
       targets: mode === 'speech' || mode === 'military' ? [] : targets,
       treatyKind: mode === 'treaty' ? treatyKind : undefined,
-      military: mode === 'military' ? military : undefined,
+      military: mode === 'military' ? resolvedMilitary : undefined,
       tone: {
         heat: tone.heat,
         label: tone.label,
@@ -265,7 +283,7 @@ export function CommandTerminal() {
     pendingSubmission.current = submission
     setIsAnimating(true)
     setFxPayload({ id: Date.now(), mode: fxMode, text: content })
-  }, [content, isActionPhase, military, mode, rateSnapshot.blocked, sendDisabled, targets, tone, treatyKind])
+  }, [content, isActionPhase, mode, rateSnapshot.blocked, resolvedMilitary, sendDisabled, targets, tone, treatyKind])
 
   const handleFxComplete = useCallback(() => {
     const submission = pendingSubmission.current
@@ -314,7 +332,7 @@ export function CommandTerminal() {
               regions={regions}
               targets={targets}
               treatyKind={treatyKind}
-              military={military}
+              military={resolvedMilitary}
               onTargetsChange={setTargets}
               onTreatyKindChange={handleTreatyKindChange}
               onMilitaryChange={handleMilitaryChange}

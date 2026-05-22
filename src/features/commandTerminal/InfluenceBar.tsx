@@ -20,7 +20,7 @@ const modeBoost: Record<CommandMode, number> = {
   intel: 9,
 }
 
-export function estimateInfluence(content: string, mode: CommandMode, tone: ToneAnalysis) {
+function estimateInfluence(content: string, mode: CommandMode, tone: ToneAnalysis) {
   const lengthScore = Math.min(45, Math.floor(content.trim().length / 5))
   const keywordScore = tone.matched.length * 5 + Math.floor(tone.cooperation / 8) + Math.floor(tone.hostility / 12)
   const score = Math.min(100, modeBoost[mode] + lengthScore + keywordScore)

@@ -2653,3 +2653,473 @@ Python 3.11+ + asyncio + Pydantic v2。本任务可 import app.game.*、app.llm.
 
 ---
 
+## 任务 16：实现 AI 势力行动生成占位
+
+### 使用场景
+
+结算输出的 ai_speeches 是 AI 势力公开发言 / 密谈 / 反应 / 旁白。本任务在结算阶段或博弈期生成 AI 势力的行动与发言，写入 message log 与 event log，生成 ai.speak / ai.reaction outbound 事件。AI 不在行动期实时调用模型，全部基于结算 output 或本地模板。
+
+### 可直接复制给 AI 编程工具的完整提示词
+
+```
+你是一名资深 AI 行为输出工程师。请为《外交风云》—— 人机混战 AI Diplomacy 后端实现 AI 势力行动与发言生成服务（AIOutputService），把 SettlementModelOutput 中的 ai_speeches 转化为正式 GameEvent 与 MessageRecord，并提供基于本地模板的 fallback 生成器。
+
+【项目背景】
+游戏过程中 AI 不实时调用 LLM。AI 的行为有两个来源：
+1. SettlementModelOutput.ai_speeches（结算阶段一次性产出）。
+2. 本地模板（fallback：模型输出缺失或字段不完整时）。
+
+【共用规则（强制遵守）】
+1. 这是《外交风云》AI Diplomacy 后端。
+2. 前端会并行开发，最终通过协议接入。
+3. 当前任务只做后端，不写前端。
+4. 不启动开发服务器。
+5. 不调用真实 LLM。
+6. 不连接真实数据库。
+7. 不启动 Docker。
+8. 游戏过程中只记录玩家消息和行动。
+9. 只有结算阶段才允许通过抽象 LLM client 调用模型。
+10. MVP 阶段不要重点实现 prompt injection 防护。
+11. 所有模块要可测试。
+12. 业务逻辑不要写在 API 路由或 WebSocket handler 里。
+13. mock / in-memory 实现必须可以未来替换。
+14. 代码结构必须清晰，避免单文件巨石。
+15. 输出时先说明计划，再列出修改文件，最后说明验证方式。
+
+【技术栈】
+Python 3.11+ + asyncio + Pydantic v2 + random.Random（deterministic）。
+
+【八势力本地发言模板（强制每势力 ≥ 6 条，必须体现性格）】
+- 铁冠帝国 commanding_imperial：例如"这片大陆只需要一个主人。"、"铁冠的意志不容质疑。"
+- 星辉联邦 analytical_diplomatic：例如"根据数据，合作收益高出 47%。"
+- 翡翠王庭 charming_mercantile：例如"朋友，何必刀兵相见？"、"在翡翠王庭，没有敌人，只有还没成交的客户。"
+- 灰烬部族 passionate_warrior：例如"用战斗来证明！"
+- 虚空教廷 mystical_prophetic：例如"虚空已经预见了你的命运。"
+- 极光共和 academic_neutral：例如"我们的研究表明，和平环境下技术进步 3.7 倍。"
+- 熔岩议会 gruff_pragmatic：例如"少废话。"
+- 暗潮商会 smooth_conspiratorial：例如"我听说了一些...有趣的事情。"
+
+【本任务允许做以下事情】
+
+1. 在 app/services/ai_output_service.py 实现 AIOutputService：
+   - 构造 __init__(self, *, repos, clock, rng_seed: int | None = None)。
+   - 方法（全部 async）：
+
+   - async def generate_ai_reactions_from_settlement(room_id, epoch, turn, model_output: SettlementModelOutput) -> AIOutputBundle：
+     - 遍历 model_output.ai_speeches，按 kind 分类：
+       - public → 生成 GameEvent kind=speech，actor=faction_id，visibility=public。
+       - private → 生成 GameEvent kind=private + MessageRecord，visibility=faction_pair。
+       - reaction → 生成 GameEvent kind=ai_reaction，visibility=public（reaction 是轻量）。
+       - narration → 生成 GameEvent kind=narration，visibility=public，actor=None。
+     - 若 model_output.ai_speeches 为空，调用 fallback_generate(input.factions_snapshot, recent_events) 产出 1~3 条模板化发言。
+     - 写入 EventLogRepository / MessageLogRepository。
+     - 返回 AIOutputBundle 含 ai_speak_events / ai_reaction_events 两类 dict 列表（待 gateway 包装）。
+
+   - async def generate_ai_public_speech(room_id, faction_id, *, context_hint: str = "") -> dict
+   - async def generate_ai_private_messages(room_id, faction_id, target_factions, *, context_hint: str = "") -> list[dict]
+     - 仅基于本地模板 + 随机变体；不调 LLM。
+     - 写入 message log（private）。
+
+2. 在 app/services/ai_templates.py 提供 AI_SPEECH_TEMPLATES / AI_REACTION_TEMPLATES / AI_PRIVATE_TEMPLATES / SYSTEM_NARRATION_TEMPLATES（按八势力 + 通用旁白）：
+   - 数据结构：dict[FactionId, list[str]] for speech / reaction / private。
+   - SYSTEM_NARRATION_TEMPLATES: list[str]，含"纪元 III 终结。XX 帝国陨落，新的格局开始形成。" 等格式化模板（带 {epoch} / {faction} 占位符）。
+
+3. 在 app/services/ai_output_service.py 提供 fallback_generate(factions_snapshot, recent_events, *, rng) -> list[dict]：
+   - 按 recent_events 中冲突 / 合作占比，随机挑选模板 + 替换占位符。
+   - 不调 LLM；deterministic with rng。
+
+4. AIOutputBundle(BaseModel)：
+   - ai_speak_events: list[dict]
+   - ai_reaction_events: list[dict]
+   - private_message_events: list[dict]
+   - narration_events: list[dict]
+   - room_id / epoch / turn / generated_at_ms。
+
+5. 在 app/services/settlement_service.py 内部调用 AIOutputService：在步骤 9（生成 outbound bundle）之前 / 之中调用 generate_ai_reactions_from_settlement，把结果合并到 SettlementOutboundBundle.ai_speech_events / resolve_events。
+
+6. 在 app/tests/test_ai_output_service.py 编写测试：
+   - 给 model_output.ai_speeches 提供 3 条 public/private/reaction → 写入 EventLog 与 MessageLog 数量正确。
+   - 空 ai_speeches → fallback_generate 产出 ≥ 1 条 模板化发言。
+   - private 同时写入 MessageLog（list_private_between 可以检索）。
+   - generate_ai_public_speech 不调 LLM（mock patch app.llm 不被触发）。
+   - 同 rng_seed 同输入两次结果一致。
+   - 模板覆盖八势力 ≥ 6 条。
+
+【禁止做的事】
+- 不要为每个 AI 单独实时调用 LLM。
+- 不要做复杂 Agent 记忆系统（MVP 用模板）。
+- 不要启动服务。
+- 不要接真实 LLM。
+- 不要在行动期触发本服务（仅在结算阶段触发）。
+- 不要让 AI 发言绕过 EventLog / MessageLog（必须经仓储）。
+- 不要硬编码势力色到模板（颜色由前端处理）。
+- 不要省略 SYSTEM_NARRATION_TEMPLATES。
+
+【验收标准】
+1. AIOutputService 三个生成方法实现。
+2. 八势力模板 ≥ 6 条。
+3. ai_speeches 写入 EventLog + MessageLog 正确数量。
+4. fallback 在空输入时产出 ≥ 1 条。
+5. private 写入 MessageLog 可被检索。
+6. AIOutputBundle 字段齐全。
+7. SettlementService 集成 AIOutputService。
+8. pytest -q app/tests/test_ai_output_service.py 全部通过。
+9. 不调用 LLM。
+10. deterministic with rng。
+
+请按以上规范完成本任务。完成后输出：
+（1）实施计划；
+（2）创建/修改文件清单；
+（3）pytest 验证；
+（4）不要启动 uvicorn / docker；
+（5）确认 AI 发言不实时调 LLM。
+```
+
+### 预期产物
+
+- `app/services/ai_output_service.py`（AIOutputService + fallback_generate + AIOutputBundle）。
+- `app/services/ai_templates.py`（八势力模板）。
+- `app/services/settlement_service.py` 集成调用。
+- `app/tests/test_ai_output_service.py`。
+
+### 验收标准
+
+1. 三方法实现。
+2. 八势力模板 ≥ 6。
+3. 写入 EventLog / MessageLog 正确。
+4. fallback ≥ 1。
+5. private 可检索。
+6. Bundle 完整。
+7. 集成 SettlementService。
+8. 测试通过。
+9. 不调 LLM。
+10. deterministic。
+
+### 禁止事项
+
+- 禁止每 AI 实时调 LLM。
+- 禁止复杂 Agent 记忆。
+- 禁止启动服务。
+- 禁止接真实 LLM。
+- 禁止行动期触发。
+- 禁止绕过 EventLog / MessageLog。
+- 禁止硬编码势力色。
+- 禁止省略旁白模板。
+
+---
+
+## 任务 17：实现 WebSocket gateway 协议层占位
+
+### 使用场景
+
+ActionService / PhaseService / SettlementService 已就绪，需要一个 WebSocket Gateway 把入站消息路由到 service、把出站事件推送给玩家。本任务实现 gateway 代码结构 + connection manager + room subscription + inbound router + outbound dispatcher + ack/error + reconnect snapshot 占位，**不启动 uvicorn**。
+
+### 可直接复制给 AI 编程工具的完整提示词
+
+```
+你是一名资深实时通信工程师。请为《外交风云》—— 人机混战 AI Diplomacy 后端实现 WebSocket Gateway 的代码结构（不启动服务），包括 connection manager、room subscription、inbound router、outbound dispatcher、ack/error 处理、reconnect snapshot 占位。
+
+【项目背景】
+Gateway 是协议层的执行者：接收 Envelope，校验，路由到对应 Service；接收 outbound 事件，根据 visibility 推送给可见玩家。本任务不真实启动 WebSocket，但所有路由器与 dispatcher 必须可以通过单元测试直接调用。
+
+【共用规则（强制遵守）】
+1. 这是《外交风云》AI Diplomacy 后端。
+2. 前端会并行开发，最终通过协议接入。
+3. 当前任务只做后端，不写前端。
+4. 不启动开发服务器。
+5. 不调用真实 LLM。
+6. 不连接真实数据库。
+7. 不启动 Docker。
+8. 游戏过程中只记录玩家消息和行动。
+9. 只有结算阶段才允许通过抽象 LLM client 调用模型。
+10. MVP 阶段不要重点实现 prompt injection 防护。
+11. 所有模块要可测试。
+12. 业务逻辑不要写在 API 路由或 WebSocket handler 里。
+13. mock / in-memory 实现必须可以未来替换。
+14. 代码结构必须清晰，避免单文件巨石。
+15. 输出时先说明计划，再列出修改文件，最后说明验证方式。
+
+【技术栈】
+Python 3.11+ + FastAPI（仅装配 router，不启动）+ asyncio + Pydantic v2。
+
+【本任务允许做以下事情】
+
+1. 在 app/api/websocket/connection.py 实现：
+   - PlayerSession(BaseModel)：player_id / room_id | None / last_seq: int / connected_at_ms / connected: bool / websocket: Any（运行期为 WebSocket 实例，测试中可为 FakeSocket）。
+   - ConnectionManager：
+     - __init__(self)：内部维护 dict[str, PlayerSession] 与 dict[str (room_id), set[str (player_id)]]。
+     - async def register(player_id, websocket) -> PlayerSession
+     - async def unregister(player_id)
+     - async def attach_to_room(player_id, room_id)
+     - async def detach_from_room(player_id)
+     - async def get_room_subscribers(room_id) -> list[PlayerSession]
+     - async def get_session(player_id) -> PlayerSession | None
+     - 不真实操作 WebSocket（可在测试中提供 FakeSocket：async def send_text(self, text) → 记录消息）。
+
+2. 在 app/api/websocket/router.py 实现 InboundRouter：
+   - 构造 __init__(self, *, room_service, action_service, phase_service, settlement_service, repos, clock)。
+   - async def handle_raw(self, player_id, raw: dict) -> dict | None：
+     - parse_incoming(raw) → Envelope。
+     - 按 envelope.t 路由：
+       - "conn.auth" → 返回 conn.auth.ok（MVP 不做真实鉴权，仅记录 token）。
+       - "conn.ping" → 返回 conn.pong。
+       - "room.create" → room_service.create_room。
+       - "room.join" → room_service.join_room。
+       - "room.leave" → room_service.leave_room。
+       - "room.select_faction" → room_service.select_faction。
+       - "room.ready" → room_service.set_ready。
+       - "action.speak" → action_service.record_speech。
+       - "action.private" → action_service.record_private_message。
+       - "action.treaty" → action_service.record_treaty_request。
+       - "action.military" → action_service.record_military_order。
+       - "action.intel" → action_service.record_intel_action。
+       - "action.lock" → action_service.record_lock_action + phase_service.maybe_advance_by_lock。
+       - "reconnect.request" → 调用 _build_reconnect_payload。
+     - 异常处理：捕获 DiplomacyError，返回 action.rejected envelope 含 error_code 与 reason。
+     - 返回单条 outbound envelope dict（供 dispatcher 推送）。
+
+3. 在 app/api/websocket/dispatcher.py 实现 OutboundDispatcher：
+   - 构造 __init__(self, connection_manager, repos)。
+   - async def dispatch_to_player(player_id, envelope_dict)：通过 ConnectionManager 找 session → session.websocket.send_text(json.dumps(envelope_dict))。
+   - async def dispatch_to_room(room_id, envelope_dict, *, visibility_filter: Callable | None)：遍历 room subscribers，按 visibility_filter 过滤后逐一发送。
+   - async def dispatch_phase_change(room_id, phase_change_payload)：广播给房间所有人。
+   - async def dispatch_resolve_bundle(room_id, bundle: SettlementOutboundBundle)：
+     - 把 bundle.resolve_events / map_diff / stats_diff / ai_speech_events 包装为对应 envelope 后按可见性推送。
+
+4. 在 app/api/websocket/gateway.py 实现 GameWebSocketGateway：
+   - 注册 FastAPI router：@router.websocket("/ws"), async def endpoint(websocket: WebSocket)。
+   - endpoint 内仅做：accept / register / loop receive_text → router.handle_raw → dispatcher / on disconnect → unregister。
+   - 业务逻辑不在 endpoint 内。
+
+5. 在 app/api/websocket/__init__.py re-export。
+6. 在 app/main.py include websocket router。
+
+7. 在 app/api/websocket/router.py 内 def _build_reconnect_payload(player_id, last_seq) -> dict（占位实现：
+   - 通过 EventLogRepository.list_visible_to_faction(...) 拉取自 last_seq 起的事件。
+   - 数量 ≤ 50：返回 reconnect.catchup envelope 含 messages 列表。
+   - 数量 > 50：返回 reconnect.snapshot envelope 含 full_state（factions / regions / relationships / current_turn 快照）。
+
+8. 在 app/tests/test_gateway_router.py 编写测试：
+   - FakeSocket 类记录 send_text 调用。
+   - ConnectionManager register / unregister / attach_to_room / get_room_subscribers 工作。
+   - InboundRouter.handle_raw 对 conn.ping 返回 conn.pong。
+   - room.create → room.created envelope。
+   - action.speak（在 phase=action 的房间）→ action.broadcast envelope。
+   - action.speak（在 phase=observe）→ action.rejected envelope。
+   - action.lock 全员后触发 phase 推进至 resolve。
+   - reconnect.request last_seq=0 且 events ≤ 50 → reconnect.catchup。
+   - 整个测试不启动 uvicorn，所有路由通过直接调用 router.handle_raw。
+
+【禁止做的事】
+- 不要启动 uvicorn / fastapi dev。
+- 不要写复杂鉴权（仅记录 token，不验证签名）。
+- 不要真实部署。
+- 不要把业务逻辑写在 gateway endpoint 内（必须经 router → service）。
+- 不要让 dispatcher 调用 service（只负责推送）。
+- 不要在 router 内修改仓储（必须经 service）。
+- 不要省略 action.rejected 反馈。
+- 不要省略 reconnect.snapshot 占位。
+- 不要让 ConnectionManager 直接调用 service。
+
+【验收标准】
+1. ConnectionManager / InboundRouter / OutboundDispatcher / Gateway 全部存在。
+2. router.handle_raw 路由 14 种入站消息正确。
+3. 异常被捕获为 action.rejected envelope。
+4. dispatcher 按 visibility 推送给可见玩家。
+5. reconnect.catchup / snapshot 阈值生效。
+6. WebSocket endpoint 仅负责 accept / receive / dispatch / unregister。
+7. pytest -q app/tests/test_gateway_router.py 全部通过。
+8. 整个测试不启动 uvicorn。
+9. 业务逻辑 0 行写在 endpoint。
+10. ruff check app/api/websocket 通过。
+
+请按以上规范完成本任务。完成后输出：
+（1）实施计划；
+（2）创建/修改文件清单；
+（3）pytest 验证；
+（4）不要启动 uvicorn / docker；
+（5）确认 endpoint 内不含业务逻辑。
+```
+
+### 预期产物
+
+- `app/api/websocket/{connection.py, router.py, dispatcher.py, gateway.py, __init__.py}`。
+- `app/main.py` include websocket router。
+- `app/tests/test_gateway_router.py`（FakeSocket + 路由测试）。
+
+### 验收标准
+
+1. Gateway 四组件齐全。
+2. 14 入站消息路由正确。
+3. action.rejected 异常处理。
+4. dispatcher 可见性过滤。
+5. reconnect catchup / snapshot 阈值。
+6. endpoint 仅 accept / loop / unregister。
+7. 测试通过。
+8. 不启动 uvicorn。
+9. endpoint 内无业务。
+10. ruff 通过。
+
+### 禁止事项
+
+- 禁止启动 uvicorn / fastapi dev。
+- 禁止复杂鉴权。
+- 禁止真实部署。
+- 禁止业务逻辑写 endpoint。
+- 禁止 dispatcher 调 service。
+- 禁止 router 内改仓储。
+- 禁止省略 action.rejected。
+- 禁止省略 reconnect.snapshot。
+- 禁止 ConnectionManager 调 service。
+
+---
+
+## 任务 18：实现 REST 调试接口占位
+
+### 使用场景
+
+后端独立开发时需要 REST 接口便于 Postman / curl 调试，不依赖前端 / WebSocket。本任务实现一组调试 API，所有接口都调用对应 service，绝不绕过。**不启动服务器**，仅注册 router。
+
+### 可直接复制给 AI 编程工具的完整提示词
+
+```
+你是一名资深后端 API 工程师。请为《外交风云》—— 人机混战 AI Diplomacy 后端实现 REST 调试接口，方便后端独立开发与单元测试，覆盖创建房间、加入房间、查询房间状态、提交行动、推进阶段、运行结算、查询事件、查询回放。
+
+【项目背景】
+WebSocket Gateway 是生产路径，但开发期需要 REST 调试接口。所有 REST 接口都必须调用对应 Service（不写业务逻辑），便于在 pytest 中通过 TestClient 验证完整流程。
+
+【共用规则（强制遵守）】
+1. 这是《外交风云》AI Diplomacy 后端。
+2. 前端会并行开发，最终通过协议接入。
+3. 当前任务只做后端，不写前端。
+4. 不启动开发服务器。
+5. 不调用真实 LLM。
+6. 不连接真实数据库。
+7. 不启动 Docker。
+8. 游戏过程中只记录玩家消息和行动。
+9. 只有结算阶段才允许通过抽象 LLM client 调用模型。
+10. MVP 阶段不要重点实现 prompt injection 防护。
+11. 所有模块要可测试。
+12. 业务逻辑不要写在 API 路由或 WebSocket handler 里。
+13. mock / in-memory 实现必须可以未来替换。
+14. 代码结构必须清晰，避免单文件巨石。
+15. 输出时先说明计划，再列出修改文件，最后说明验证方式。
+
+【技术栈】
+Python 3.11+ + FastAPI + Pydantic v2（请求 / 响应 DTO）+ httpx.TestClient（测试）。
+
+【本任务允许做以下事情】
+
+1. 在 app/api/rest/debug.py 注册 router，前缀 `/debug/v1`，所有路由必须：
+   - 解析 request DTO（Pydantic BaseModel）。
+   - 调用对应 service。
+   - 包装 service 返回值为 response DTO。
+
+   路由列表：
+
+   - POST `/debug/v1/rooms`（CreateRoomRequest{mode, host_display_name, seed?}）→ room_service.create_room → CreateRoomResponse{room: dict, host: dict}。
+   - POST `/debug/v1/rooms/{room_id}/join`（JoinRoomRequest{display_name}）→ room_service.join_room → JoinRoomResponse{room, player}。
+   - POST `/debug/v1/rooms/{room_id}/leave`（LeaveRoomRequest{player_id}）→ room_service.leave_room。
+   - POST `/debug/v1/rooms/{room_id}/select-faction`（SelectFactionRequest{player_id, faction_id}）→ room_service.select_faction。
+   - POST `/debug/v1/rooms/{room_id}/ready`（ReadyRequest{player_id, ready}）→ room_service.set_ready。
+   - POST `/debug/v1/rooms/{room_id}/start`（StartRequest{player_id}）→ room_service.start_game。
+   - GET `/debug/v1/rooms/{room_id}` → RoomStateResponse{room, factions, regions, relationships, current_turn}。
+   - POST `/debug/v1/rooms/{room_id}/actions/speak`（SpeakRequest{player_id, content, targets, request_id?}）→ action_service.record_speech。
+   - POST `/debug/v1/rooms/{room_id}/actions/private` → action_service.record_private_message。
+   - POST `/debug/v1/rooms/{room_id}/actions/treaty` → action_service.record_treaty_request。
+   - POST `/debug/v1/rooms/{room_id}/actions/military` → action_service.record_military_order。
+   - POST `/debug/v1/rooms/{room_id}/actions/intel` → action_service.record_intel_action。
+   - POST `/debug/v1/rooms/{room_id}/actions/lock`（LockRequest{player_id}）→ action_service.record_lock_action。
+   - POST `/debug/v1/rooms/{room_id}/phase/advance` → phase_service.advance_phase。
+   - POST `/debug/v1/rooms/{room_id}/phase/force`（ForcePhaseRequest{phase, arbitrate_phase?}）→ phase_service.force_phase（仅 debug）。
+   - POST `/debug/v1/rooms/{room_id}/settlement/run`（RunSettlementRequest{epoch, turn}）→ settlement_service.run_turn_settlement → SettlementOutboundBundle dict。
+   - GET `/debug/v1/rooms/{room_id}/events?since_ms=0&faction_id=...` → list[GameEvent dict]。
+   - GET `/debug/v1/rooms/{room_id}/messages?epoch=&turn=` → list[MessageRecord dict]。
+   - GET `/debug/v1/rooms/{room_id}/replay` → replay_service.build_replay（任务 19 实现）→ ReplayResponse。
+
+2. 在 app/api/rest/dto.py 定义所有 Request / Response BaseModel。
+
+3. 在 app/api/rest/deps.py 实现 FastAPI 依赖工厂：
+   - get_repositories()
+   - get_clock()
+   - get_room_service() / get_action_service() / get_phase_service() / get_settlement_service() / get_replay_service()
+   - 这些依赖在测试中可被覆盖。
+
+4. 在 app/main.py include `/debug/v1` router。
+
+5. 异常处理：
+   - 注册 FastAPI exception handler 把 DiplomacyError 转为 400 / 404 / 409 JSON 响应（含 error_code）。
+   - RoomNotFoundError → 404。
+   - FactionAlreadyTakenError → 409。
+   - InvalidPhaseError / InvalidActionError / RateLimitedError → 400。
+   - 未知异常 → 500 含 error_code "internal"。
+
+6. 在 app/tests/test_rest_debug.py 用 httpx.TestClient 编写测试：
+   - 端到端流程：create room → join → select faction → ready → start → record speech → lock → advance phase → run settlement → list events → get replay。
+   - 校验各路由响应状态码与字段。
+   - phase != action 时 speak → 400 含 InvalidPhase。
+   - 重复 select faction → 409。
+   - 房间不存在 → 404。
+   - 整个测试不真实启动 uvicorn，仅用 TestClient。
+
+【禁止做的事】
+- 不要在路由内写业务逻辑（必须经 service）。
+- 不要启动服务。
+- 不要写真实登录 / OAuth / JWT 验证（MVP 仅占位）。
+- 不要接数据库。
+- 不要把路由 DTO 直接用 domain models（须 DTO，但内部字段可来源于 domain enums）。
+- 不要把响应直接返回 domain 对象（用 model_dump 或专门 DTO）。
+- 不要省略 exception handler。
+
+【验收标准】
+1. 18+ 调试路由全部注册。
+2. 路由全部调用 service，无业务逻辑写在 endpoint。
+3. DTO 完整。
+4. 依赖注入工厂可被测试覆盖。
+5. exception handler 映射正确 HTTP 状态码。
+6. 端到端测试在 TestClient 下通过。
+7. 重复势力 / phase 错误 / 房间不存在分别 409/400/404。
+8. pytest -q app/tests/test_rest_debug.py 全部通过。
+9. ruff check app/api/rest 通过。
+10. 不启动 uvicorn。
+
+请按以上规范完成本任务。完成后输出：
+（1）实施计划；
+（2）创建/修改文件清单；
+（3）pytest 验证；
+（4）不要启动 uvicorn / docker。
+```
+
+### 预期产物
+
+- `app/api/rest/debug.py`（18+ 路由）。
+- `app/api/rest/dto.py`（请求 / 响应 DTO）。
+- `app/api/rest/deps.py`（依赖工厂）。
+- `app/main.py` exception handlers + include router。
+- `app/tests/test_rest_debug.py`（TestClient 端到端）。
+
+### 验收标准
+
+1. 18+ 路由注册。
+2. 全部走 service。
+3. DTO 完整。
+4. 依赖工厂可覆盖。
+5. 异常映射正确。
+6. 端到端通过。
+7. 状态码正确（409/400/404）。
+8. 测试通过。
+9. ruff 通过。
+10. 不启动 uvicorn。
+
+### 禁止事项
+
+- 禁止路由内写业务逻辑。
+- 禁止启动服务。
+- 禁止真实登录。
+- 禁止接数据库。
+- 禁止 DTO 直接复用 domain model。
+- 禁止响应返回 domain 对象。
+- 禁止省略 exception handler。
+
+---
+

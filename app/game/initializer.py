@@ -1,6 +1,11 @@
-from app.domain.models import GameState
+from __future__ import annotations
+
+from typing import TypeAlias
+
+from app.domain.models import GameRoom, GameState
+
+InitialGameState: TypeAlias = GameState
 
 
-def build_initial_game_state(*, room_id: str, created_at_ms: int) -> GameState:
-    raise NotImplementedError("Game initialization will be implemented in a later task.")
-
+def initialize_game_state(room: GameRoom) -> InitialGameState:
+    raise NotImplementedError("delivered in task 6")

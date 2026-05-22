@@ -27,11 +27,13 @@ class DomainModel(BaseModel):
 
 class Player(DomainModel):
     id: str
+    room_id: str | None = None
     display_name: str
     kind: PlayerKind
     faction_id: FactionId | None = None
     connected: bool
     joined_at_ms: int
+    ready: bool = False
 
 
 class FactionState(DomainModel):
