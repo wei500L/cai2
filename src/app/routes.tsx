@@ -12,6 +12,7 @@ export type AppRoute = {
 
 export const appRoutes: AppRoute[] = [
   { path: '/', element: LandingPage },
+  { path: '/design-system', element: LandingPage },
   { path: '/factions', element: FactionSelectPage },
   { path: '/game', element: GamePage },
   { path: '/epoch-summary', element: EpochSummaryPage },

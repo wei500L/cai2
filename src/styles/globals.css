@@ -1,17 +1,50 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700;800&family=Noto+Sans+SC:wght@400;500;700&family=Share+Tech+Mono&display=swap');
+@import './tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
+  :root {
+    color-scheme: dark;
+  }
+
   html,
   body,
   #root {
     height: 100%;
   }
 
+  html {
+    background: var(--bg-space);
+  }
+
   body {
     margin: 0;
-    background: #000;
-    color: #fff;
+    background: linear-gradient(180deg, #050912 0%, #02040a 62%, #02040a 100%);
+    color: var(--text-primary);
+    font-family: 'Share Tech Mono', 'JetBrains Mono', 'Noto Sans SC', ui-monospace, SFMono-Regular, monospace;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+    position: relative;
+    isolation: isolate;
+    overflow-x: hidden;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 9999;
+    background-image: repeating-linear-gradient(
+      to bottom,
+      rgba(255, 255, 255, var(--scanline-opacity)) 0,
+      rgba(255, 255, 255, var(--scanline-opacity)) 1px,
+      transparent 1px,
+      transparent 4px
+    );
+    opacity: 1;
   }
 }

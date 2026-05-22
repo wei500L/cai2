@@ -1,0 +1,43 @@
+:root {
+  --bg-space: #02040a;
+  --bg-panel: rgba(0, 0, 0, 0.6);
+  --bg-panel-strong: rgba(0, 0, 0, 0.82);
+  --border-glow: rgba(51, 170, 255, 0.55);
+  --text-primary: #f4fbff;
+  --text-muted: rgba(212, 227, 235, 0.68);
+  --text-warn: #ffcc66;
+  --text-hostile: #ff6666;
+  --scanline-opacity: 0.03;
+
+  --faction-ironCrown-primary: #8b1a1a;
+  --faction-ironCrown-glow: #ff3333;
+  --faction-ironCrown-shadow: #2d0a0a;
+
+  --faction-starlight-primary: #1a5f8b;
+  --faction-starlight-glow: #33aaff;
+  --faction-starlight-shadow: #0a1a2d;
+
+  --faction-emerald-primary: #1a8b3d;
+  --faction-emerald-glow: #33ff77;
+  --faction-emerald-shadow: #0a2d15;
+
+  --faction-ashen-primary: #8b5a1a;
+  --faction-ashen-glow: #ff9933;
+  --faction-ashen-shadow: #2d1e0a;
+
+  --faction-voidChurch-primary: #5a1a8b;
+  --faction-voidChurch-glow: #9933ff;
+  --faction-voidChurch-shadow: #1e0a2d;
+
+  --faction-aurora-primary: #1a8b8b;
+  --faction-aurora-glow: #33ffff;
+  --faction-aurora-shadow: #0a2d2d;
+
+  --faction-magma-primary: #8b3a1a;
+  --faction-magma-glow: #ff6633;
+  --faction-magma-shadow: #2d120a;
+
+  --faction-darkTide-primary: #6b5a1a;
+  --faction-darkTide-glow: #ccaa33;
+  --faction-darkTide-shadow: #231e0a;
+}
