@@ -8,6 +8,7 @@ import {
   type AITemplateParams,
 } from '@/mock/aiTemplates'
 import type { EventKind, EventPriority, GameEvent, GamePhase, PrivateMessage } from '@/mock/types'
+import type { MockTransport } from '@/protocol/transport'
 import { gameStoreApi } from '@/store/gameStore'
 import { pickOne, randomInt } from '@/utils/random'
 
@@ -72,7 +73,10 @@ function schedule(delayMs: number, task: () => void) {
   activeTimers.add(timer)
 }
 
+type AITransport = Pick<MockTransport, 'emitAIEvent' | 'emitAIPrivateMessage'>
+
 function pushAIEvent(
+  transport: AITransport,
   kind: EventKind,
   actor: FactionId | undefined,
   target: FactionId | undefined,
@@ -80,9 +84,9 @@ function pushAIEvent(
   text: string,
   payload: Record<string, unknown>,
 ) {
-  const { epoch, pushEvent } = gameStoreApi.getState()
+  const { epoch } = gameStoreApi.getState()
 
-  pushEvent({
+  transport.emitAIEvent({
     id: createAIEventId(kind),
     createdAt: Date.now(),
     epoch: epoch.id,
@@ -97,8 +101,14 @@ function pushAIEvent(
   })
 }
 
-function addAIPrivateMessage(from: FactionId, to: FactionId, body: string, responseMode = 'reply') {
-  const { epoch, addPrivateMessage, pushEvent } = gameStoreApi.getState()
+function addAIPrivateMessage(
+  transport: AITransport,
+  from: FactionId,
+  to: FactionId,
+  body: string,
+  responseMode = 'reply',
+) {
+  const { epoch } = gameStoreApi.getState()
   const message: PrivateMessage = {
     id: createAIEventId('private_message'),
     createdAt: Date.now(),
@@ -117,8 +127,7 @@ function addAIPrivateMessage(from: FactionId, to: FactionId, body: string, respo
     },
   }
 
-  addPrivateMessage(message)
-  pushEvent({
+  transport.emitAIPrivateMessage({
     id: createAIEventId('private'),
     createdAt: Date.now(),
     epoch: epoch.id,
@@ -134,7 +143,7 @@ function addAIPrivateMessage(from: FactionId, to: FactionId, body: string, respo
       responseMode,
     },
     narration: `${factionById[from].name}发来加密密谈回复`,
-  })
+  }, message)
 }
 
 function getPlayerFaction() {
@@ -149,26 +158,26 @@ function isResponsePhase() {
   return ALLOWED_RESPONSE_PHASES.has(gameStoreApi.getState().epoch.phase)
 }
 
-function pushReaction(actor: FactionId, target: FactionId, sourceEventId: string) {
+function pushReaction(transport: AITransport, actor: FactionId, target: FactionId, sourceEventId: string) {
   if (!isResponsePhase()) {
     return
   }
 
   const label = renderFactionTemplate(AI_REACTION_TEMPLATES, actor, target)
-  pushAIEvent('reaction', actor, target, 'P2', label, {
+  pushAIEvent(transport, 'reaction', actor, target, 'P2', label, {
     aiGenerated: true,
     sourceEventId,
     label,
   })
 }
 
-function pushPublicSpeech(actor: FactionId, target: FactionId, sourceEventId: string) {
+function pushPublicSpeech(transport: AITransport, actor: FactionId, target: FactionId, sourceEventId: string) {
   if (!isResponsePhase()) {
     return
   }
 
   const text = renderFactionTemplate(AI_SPEECH_TEMPLATES, actor, target)
-  pushAIEvent('speech', actor, target, 'P2', text, {
+  pushAIEvent(transport, 'speech', actor, target, 'P2', text, {
     aiGenerated: true,
     sourceEventId,
     channel: 'public',
@@ -177,7 +186,7 @@ function pushPublicSpeech(actor: FactionId, target: FactionId, sourceEventId: st
   })
 }
 
-function pushDeclareWarNarration(playerEvent: GameEvent) {
+function pushDeclareWarNarration(transport: AITransport, playerEvent: GameEvent) {
   const playerId = getPlayerFaction()
   const target = playerEvent.target ?? getAIFactions(playerId)[0]
   const text = renderSystemTemplate('declare_war', {
@@ -185,20 +194,20 @@ function pushDeclareWarNarration(playerEvent: GameEvent) {
     targetName: factionById[target].name,
   })
 
-  pushAIEvent('narration', undefined, target, 'P0', text, {
+  pushAIEvent(transport, 'narration', undefined, target, 'P0', text, {
     aiGenerated: true,
     sourceEventId: playerEvent.id,
     narrationKind: 'declare_war',
   })
 }
 
-function pushBetrayalEvent(actor: FactionId, target: FactionId, sourceEventId: string) {
+function pushBetrayalEvent(transport: AITransport, actor: FactionId, target: FactionId, sourceEventId: string) {
   const text = renderSystemTemplate('betrayal', {
     actorName: factionById[actor].name,
     targetName: factionById[target].name,
   })
 
-  pushAIEvent('betrayal', actor, target, 'P1', text, {
+  pushAIEvent(transport, 'betrayal', actor, target, 'P1', text, {
     aiGenerated: true,
     sourceEventId,
     provisional: true,
@@ -206,23 +215,23 @@ function pushBetrayalEvent(actor: FactionId, target: FactionId, sourceEventId: s
   })
 }
 
-function triggerSpeechResponses(playerEvent: GameEvent) {
+function triggerSpeechResponses(transport: AITransport, playerEvent: GameEvent) {
   const playerId = getPlayerFaction()
   const random = rng()
 
   for (const factionId of getAIFactions(playerId)) {
     if (random() < 0.5) {
-      pushReaction(factionId, playerId, playerEvent.id)
+      pushReaction(transport, factionId, playerId, playerEvent.id)
     }
   }
 
   const responder = pickOne(random, getAIFactions(playerId))
   schedule(randomInt(random, 1_000, 3_000), () => {
-    pushPublicSpeech(responder, playerId, playerEvent.id)
+    pushPublicSpeech(transport, responder, playerId, playerEvent.id)
   })
 }
 
-function triggerPrivateResponses(playerEvent: GameEvent) {
+function triggerPrivateResponses(transport: AITransport, playerEvent: GameEvent) {
   const playerId = getPlayerFaction()
   const target = playerEvent.target
 
@@ -236,6 +245,7 @@ function triggerPrivateResponses(playerEvent: GameEvent) {
   if (roll < 0.7) {
     schedule(randomInt(random, 1_500, 3_000), () => {
       addAIPrivateMessage(
+        transport,
         target,
         playerId,
         renderFactionTemplate(AI_PRIVATE_TEMPLATES, target, playerId),
@@ -250,6 +260,7 @@ function triggerPrivateResponses(playerEvent: GameEvent) {
 
   schedule(randomInt(random, 1_500, 3_000), () => {
     addAIPrivateMessage(
+      transport,
       target,
       playerId,
       renderFactionTemplate(AI_PRIVATE_TEMPLATES, target, playerId),
@@ -257,20 +268,20 @@ function triggerPrivateResponses(playerEvent: GameEvent) {
     )
   })
   schedule(randomInt(random, 5_000, 10_000), () => {
-    pushBetrayalEvent(target, playerId, playerEvent.id)
+    pushBetrayalEvent(transport, target, playerId, playerEvent.id)
   })
 }
 
-function triggerDeclareWarResponses(playerEvent: GameEvent) {
+function triggerDeclareWarResponses(transport: AITransport, playerEvent: GameEvent) {
   const playerId = getPlayerFaction()
   const targets = playerEvent.target ? [playerEvent.target] : getAIFactions(playerId)
 
   for (const target of targets) {
-    pushReaction(target, playerId, playerEvent.id)
+    pushReaction(transport, target, playerId, playerEvent.id)
   }
 
   schedule(2_000, () => {
-    pushDeclareWarNarration(playerEvent)
+    pushDeclareWarNarration(transport, playerEvent)
   })
 }
 
@@ -279,7 +290,7 @@ export function isPlayerCommandEvent(event: GameEvent) {
   return event.actor === playerId && event.payload.origin === 'player_command'
 }
 
-export function triggerAIResponses(playerEvent: GameEvent) {
+export function triggerAIResponses(playerEvent: GameEvent, transport: AITransport) {
   if (!isPlayerCommandEvent(playerEvent)) {
     return
   }
@@ -289,17 +300,17 @@ export function triggerAIResponses(playerEvent: GameEvent) {
   }
 
   if (playerEvent.kind === 'declare_war') {
-    triggerDeclareWarResponses(playerEvent)
+    triggerDeclareWarResponses(transport, playerEvent)
     return
   }
 
   if (playerEvent.kind === 'speech') {
-    triggerSpeechResponses(playerEvent)
+    triggerSpeechResponses(transport, playerEvent)
     return
   }
 
   if (playerEvent.kind === 'private') {
-    triggerPrivateResponses(playerEvent)
+    triggerPrivateResponses(transport, playerEvent)
   }
 }
 

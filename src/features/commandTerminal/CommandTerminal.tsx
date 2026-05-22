@@ -3,6 +3,7 @@ import { GlowPanel } from '@/components/GlowPanel'
 import { HoloDivider } from '@/components/HoloDivider'
 import { factionById, type FactionId } from '@/mock/factions'
 import type { TreatyKind } from '@/mock/types'
+import { ActionDispatcher } from '@/protocol/dispatcher'
 import { useGameStore } from '@/store/gameStore'
 import { useUIStore } from '@/store/uiStore'
 import { getPhaseLabel, getPhaseUIConfig } from '@/features/phaseSystem/PhaseStateMachine'
@@ -139,7 +140,6 @@ export function CommandTerminal() {
   const selectedFactionId = useGameStore((state) => state.selectedFactionId)
   const factionStates = useGameStore((state) => state.factions)
   const regions = useGameStore((state) => state.regions)
-  const submitSpeech = useGameStore((state) => state.submitSpeech)
   const factions = useMemo(() => factionStates.map((faction) => faction.id), [factionStates])
   const actorId = selectedFactionId ?? 'starlight'
   const [mode, setMode] = useState<CommandMode>('speech')
@@ -327,7 +327,7 @@ export function CommandTerminal() {
       return
     }
 
-    const result = submitSpeech(submission)
+    const result = ActionDispatcher.submitSpeech(submission)
 
     if (!result.ok) {
       setError(result.error ?? '发送失败')
@@ -337,7 +337,7 @@ export function CommandTerminal() {
     setContent('')
     setError('')
     setReboundKey((value) => value + 1)
-  }, [submitSpeech])
+  }, [])
 
   if (!phaseConfig.commandTerminalVisible || phaseConfig.commandTerminalMode === 'hidden') {
     return null

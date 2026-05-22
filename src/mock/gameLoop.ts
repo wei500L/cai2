@@ -3,6 +3,7 @@ import { SYSTEM_NARRATION_TEMPLATES } from '@/mock/aiTemplates'
 import { factionById, type FactionId } from '@/mock/factions'
 import { MAX_EPOCHS } from '@/mock/gameState'
 import type { EventKind, EventPriority, GameEvent, PrivateMessage, SpeechEvent } from '@/mock/types'
+import type { MockTransport } from '@/protocol/transport'
 import { gameStoreApi } from '@/store/gameStore'
 import { mulberry32, pickOne, randomInt, weightedPick } from '@/utils/random'
 
@@ -49,8 +50,7 @@ function getRandomPriority(rng: () => number): EventPriority {
   ])
 }
 
-function getPhaseChangeNarration() {
-  const { epoch } = gameStoreApi.getState()
+function getPhaseChangeNarration(epoch = gameStoreApi.getState().epoch) {
   const phaseName =
     epoch.phase === 'arbitrate' && epoch.arbitratePhase
       ? `${phaseLabels.arbitrate}/${arbitratePhaseLabels[epoch.arbitratePhase]}`
@@ -64,10 +64,10 @@ function getPhaseChangeNarration() {
     .replace('{phaseName}', phaseName)
 }
 
-function pushPhaseChangeEvent(end = false) {
-  const { epoch, pushEvent } = gameStoreApi.getState()
+function pushPhaseChangeEvent(transport: MockTransport, end = false) {
+  const { epoch } = gameStoreApi.getState()
 
-  pushEvent({
+  transport.emitEvents([{
     id: createLoopEventId(end ? 'game_end' : 'phase_change'),
     createdAt: Date.now(),
     epoch: epoch.id,
@@ -82,16 +82,17 @@ function pushPhaseChangeEvent(end = false) {
       end,
     },
     narration: end ? '第八纪元裁决完成，模拟战局进入封存状态' : getPhaseChangeNarration(),
-  })
+  }])
 }
 
 function pushSpeechEvent(
+  transport: MockTransport,
   rng: () => number,
   actor: FactionId,
   target: FactionId,
   priority: EventPriority,
 ) {
-  const { epoch, pushEvent } = gameStoreApi.getState()
+  const { epoch } = gameStoreApi.getState()
   const stance = pickOne(rng, [
     'conciliatory',
     'threatening',
@@ -117,11 +118,11 @@ function pushSpeechEvent(
     narration,
   }
 
-  pushEvent(event)
+  transport.emitActionEvent(event)
 }
 
-function pushPrivateEvent(actor: FactionId, target: FactionId, priority: EventPriority) {
-  const { epoch, addPrivateMessage, pushEvent } = gameStoreApi.getState()
+function pushPrivateEvent(transport: MockTransport, actor: FactionId, target: FactionId, priority: EventPriority) {
+  const { epoch } = gameStoreApi.getState()
   const message: PrivateMessage = {
     id: createLoopEventId('private_message'),
     createdAt: Date.now(),
@@ -137,8 +138,7 @@ function pushPrivateEvent(actor: FactionId, target: FactionId, priority: EventPr
     payload: { channel: 'mock_private' },
   }
 
-  addPrivateMessage(message)
-  pushEvent({
+  transport.emitActionEvent({
     id: createLoopEventId('private'),
     createdAt: Date.now(),
     epoch: epoch.id,
@@ -150,11 +150,17 @@ function pushPrivateEvent(actor: FactionId, target: FactionId, priority: EventPr
     target,
     payload: { messageId: message.id, encrypted: message.encrypted },
     narration: `${factionById[actor].name}与${factionById[target].name}开启密谈`,
-  })
+  }, message)
 }
 
-function pushSimpleEvent(kind: EventKind, actor: FactionId, target: FactionId, priority: EventPriority) {
-  const { epoch, pushEvent, updateRelationship } = gameStoreApi.getState()
+function pushSimpleEvent(
+  transport: MockTransport,
+  kind: EventKind,
+  actor: FactionId,
+  target: FactionId,
+  priority: EventPriority,
+) {
+  const { epoch, relationships } = gameStoreApi.getState()
   let narration: string
   let delta = 0
 
@@ -169,7 +175,18 @@ function pushSimpleEvent(kind: EventKind, actor: FactionId, target: FactionId, p
   }
 
   if (delta !== 0) {
-    updateRelationship(actor, target, delta)
+    const relationship = relationships.find((item) => item.from === actor && item.to === target)
+
+    if (relationship) {
+      transport.emitStatsDiff({
+        faction_stats: [],
+        relationship_changes: [{
+          from: actor,
+          to: target,
+          delta,
+        }],
+      })
+    }
   }
 
   const event: GameEvent = {
@@ -186,10 +203,10 @@ function pushSimpleEvent(kind: EventKind, actor: FactionId, target: FactionId, p
     narration,
   }
 
-  pushEvent(event)
+  transport.emitActionEvent(event)
 }
 
-function pushRandomMockEvent(rng: () => number) {
+function pushRandomMockEvent(transport: MockTransport, rng: () => number) {
   const [actor, target] = getRandomPair(rng)
   const priority = getRandomPriority(rng)
   const kind = weightedPick(rng, [
@@ -202,24 +219,24 @@ function pushRandomMockEvent(rng: () => number) {
   ])
 
   if (kind === 'speech') {
-    pushSpeechEvent(rng, actor, target, priority)
+    pushSpeechEvent(transport, rng, actor, target, priority)
     return
   }
 
   if (kind === 'private') {
-    pushPrivateEvent(actor, target, priority)
+    pushPrivateEvent(transport, actor, target, priority)
     return
   }
 
   if (kind === 'battle') {
-    const { regions, triggerBattle } = gameStoreApi.getState()
+    const { regions } = gameStoreApi.getState()
     const targetRegions = regions.filter((region) => region.owner === target)
     const region = targetRegions.length > 0 ? pickOne(rng, targetRegions) : pickOne(rng, regions)
-    triggerBattle(actor, target, region.id)
+    transport.resolveBattle(actor, target, region.id)
     return
   }
 
-  pushSimpleEvent(kind, actor, target, priority)
+  pushSimpleEvent(transport, kind, actor, target, priority)
 }
 
 function isTerminalEpochReady() {
@@ -237,7 +254,7 @@ function getNextRandomEventAt(rng: () => number, now: number) {
   return now + randomInt(rng, RANDOM_EVENT_MIN_INTERVAL_MS, RANDOM_EVENT_MAX_INTERVAL_MS)
 }
 
-export function startMockGameLoop(seed = DEFAULT_LOOP_SEED) {
+export function startMockGameLoop(transport: MockTransport, seed = DEFAULT_LOOP_SEED) {
   activeStop?.()
 
   if (typeof window === 'undefined') {
@@ -272,11 +289,11 @@ export function startMockGameLoop(seed = DEFAULT_LOOP_SEED) {
     lastFrameAt = now
 
     if (!state.isPaused) {
-      state.tickPhase(deltaMs)
+      transport.tickPhase(deltaMs)
 
       if (isTerminalEpochReady()) {
-        gameStoreApi.setState({ isPaused: true })
-        pushPhaseChangeEvent(true)
+        transport.emitPhase(gameStoreApi.getState().epoch, true)
+        pushPhaseChangeEvent(transport, true)
         stop()
         return
       }
@@ -284,14 +301,14 @@ export function startMockGameLoop(seed = DEFAULT_LOOP_SEED) {
       const afterTick = gameStoreApi.getState()
 
       if (afterTick.epoch.phaseDurationMs <= 0) {
-        afterTick.advancePhase()
-        pushPhaseChangeEvent()
+        transport.advancePhase()
+        pushPhaseChangeEvent(transport)
         nextRandomEventAt = getNextRandomEventAt(rng, now)
       } else if (
         (afterTick.epoch.phase === 'action' || afterTick.epoch.phase === 'resolve') &&
         now >= nextRandomEventAt
       ) {
-        pushRandomMockEvent(rng)
+        pushRandomMockEvent(transport, rng)
         nextRandomEventAt = getNextRandomEventAt(rng, now)
       }
     }

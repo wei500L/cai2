@@ -191,6 +191,10 @@ class MemoryActionLogRepository(ActionLogRepository):
         async with self._lock:
             self._actions.append(_copy(action))
 
+    async def list_by_room(self, room_id: str) -> list[GameAction]:
+        async with self._lock:
+            return _copy_list(action for action in self._actions if action.room_id == room_id)
+
     async def list_by_turn(self, room_id: str, epoch: int, turn: int) -> list[GameAction]:
         async with self._lock:
             return _copy_list(
@@ -236,6 +240,14 @@ class MemoryMessageLogRepository(MessageLogRepository):
     async def append_message(self, message: MessageRecord) -> None:
         async with self._lock:
             self._messages.append(message.model_copy(deep=True))
+
+    async def list_by_room(self, room_id: str) -> list[MessageRecord]:
+        async with self._lock:
+            return [
+                message.model_copy(deep=True)
+                for message in self._messages
+                if message.room_id == room_id
+            ]
 
     async def list_by_turn(self, room_id: str, epoch: int, turn: int) -> list[MessageRecord]:
         async with self._lock:

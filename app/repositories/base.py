@@ -118,6 +118,9 @@ class ActionLogRepository(Protocol):
     async def append(self, action: GameAction) -> None:
         ...
 
+    async def list_by_room(self, room_id: str) -> list[GameAction]:
+        ...
+
     async def list_by_turn(self, room_id: str, epoch: int, turn: int) -> list[GameAction]:
         ...
 
@@ -138,6 +141,9 @@ class ActionLogRepository(Protocol):
 @runtime_checkable
 class MessageLogRepository(Protocol):
     async def append_message(self, message: MessageRecord) -> None:
+        ...
+
+    async def list_by_room(self, room_id: str) -> list[MessageRecord]:
         ...
 
     async def list_by_turn(self, room_id: str, epoch: int, turn: int) -> list[MessageRecord]:

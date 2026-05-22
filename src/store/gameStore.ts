@@ -16,6 +16,14 @@ import type {
   Relationship,
   RelationshipStatus,
 } from '@/mock/types'
+import type {
+  EventBundlePayload,
+  FactionStatsPatch,
+  MapRegionPatch,
+  PhasePayload,
+  RelationshipPatch,
+  StatsDiffPayload,
+} from '@/protocol/types'
 
 const MAX_EVENTS = 200
 const MAX_PRIVATE_MESSAGES = 100
@@ -37,6 +45,13 @@ type GameStoreActions = {
   triggerBattle: (attackerId: FactionId, defenderId: FactionId, regionId: string) => void
   addPrivateMessage: (message: PrivateMessage) => void
   submitSpeech: (submission: CommandSubmission) => SubmitSpeechResult
+  _applyPhase: (payload: Epoch | PhasePayload) => void
+  _applyEvents: (payload: GameEvent[] | EventBundlePayload) => void
+  _applyMapDiff: (payload: MapRegionPatch[] | { changes: MapRegionPatch[] }) => void
+  _applyStatsDiff: (payload: StatsDiffPayload | {
+    faction_stats?: FactionStatsPatch[]
+    relationship_changes?: RelationshipPatch[]
+  }) => void
   togglePause: () => void
   selectFaction: (id: FactionId) => void
   clearFaction: () => void
@@ -104,7 +119,22 @@ function recalculateFaction(faction: FactionState): FactionState {
 }
 
 function pushEventToList(events: GameEvent[], event: GameEvent) {
+  if (events.some((item) => item.id === event.id)) {
+    return events
+  }
+
   return [event, ...events].slice(0, MAX_EVENTS)
+}
+
+function pushEventsToList(events: GameEvent[], incoming: GameEvent[]) {
+  return incoming.reduce((nextEvents, event) => pushEventToList(nextEvents, event), events)
+}
+
+function pushPrivateMessagesToList(messages: PrivateMessage[], incoming: PrivateMessage[]) {
+  const existingIds = new Set(messages.map((message) => message.id))
+  const freshMessages = incoming.filter((message) => !existingIds.has(message.id))
+
+  return [...freshMessages, ...messages].slice(0, MAX_PRIVATE_MESSAGES)
 }
 
 function createEventId(prefix: string) {
@@ -626,6 +656,99 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     }))
 
     return { ok: true, eventId }
+  },
+
+  _applyPhase: (payload) => {
+    const epoch: Epoch =
+      'phase_started_at_ms' in payload
+        ? {
+            id: payload.epoch,
+            turn: payload.turn,
+            phase: payload.phase,
+            arbitratePhase: payload.arbitrate_phase,
+            phaseStartedAt: payload.phase_started_at_ms,
+            phaseDurationMs: payload.phase_duration_ms,
+          }
+        : payload
+
+    set((state) => ({
+      epoch,
+      isPaused: 'is_paused' in payload && typeof payload.is_paused === 'boolean' ? payload.is_paused : state.isPaused,
+    }))
+  },
+
+  _applyEvents: (payload) => {
+    const events = Array.isArray(payload) ? payload : payload.events
+    const privateMessages = Array.isArray(payload) ? [] : (payload.private_messages ?? [])
+
+    set((state) => ({
+      events: pushEventsToList(state.events, events),
+      privateMessages:
+        privateMessages.length > 0
+          ? pushPrivateMessagesToList(state.privateMessages, privateMessages)
+          : state.privateMessages,
+    }))
+  },
+
+  _applyMapDiff: (payload) => {
+    const changes = Array.isArray(payload) ? payload : payload.changes
+
+    if (changes.length === 0) {
+      return
+    }
+
+    set((state) => ({
+      regions: state.regions.map((region) => {
+        const patch = changes.find((change) => change.id === region.id)
+        return patch ? { ...region, ...patch } : region
+      }),
+    }))
+  },
+
+  _applyStatsDiff: (payload) => {
+    const factionStats = payload.faction_stats ?? []
+    const relationshipChanges = payload.relationship_changes ?? []
+
+    if (factionStats.length === 0 && relationshipChanges.length === 0) {
+      return
+    }
+
+    set((state) => ({
+      factions:
+        factionStats.length > 0
+          ? state.factions.map((faction) => {
+              const patch = factionStats.find((item) => item.id === faction.id)
+              return patch ? recalculateFaction({ ...faction, ...patch }) : faction
+            })
+          : state.factions,
+      relationships:
+        relationshipChanges.length > 0
+          ? state.relationships.map((relationship) => {
+              const patch = relationshipChanges.find(
+                (item) => item.from === relationship.from && item.to === relationship.to,
+              )
+
+              if (!patch) {
+                return relationship
+              }
+
+              const nextValue =
+                typeof patch.value === 'number'
+                  ? clamp(patch.value, -100, 100)
+                  : typeof patch.delta === 'number'
+                    ? clamp(relationship.value + patch.delta, -100, 100)
+                    : relationship.value
+
+              return {
+                ...relationship,
+                ...patch,
+                value: nextValue,
+                status: patch.status ?? getRelationshipStatus(nextValue),
+                treaties: patch.treaties ?? relationship.treaties,
+              }
+            })
+          : state.relationships,
+    }))
   },
 
   togglePause: () => {

@@ -28,6 +28,7 @@ type UIStoreState = {
   mapQuality: MapQuality
   mapFocus: MapFocus
   focusToast: string | null
+  lastError: string | null
   commandTerminalDraft: CommandTerminalDraft | null
   eventStreamScrollMode: EventStreamScrollMode
   setLeftPanelOpen: (open: boolean) => void
@@ -45,6 +46,7 @@ type UIStoreState = {
   setMapQuality: (quality: MapQuality) => void
   setMapFocus: (focus: MapFocus) => void
   setFocusToast: (message: string | null) => void
+  setLastError: (message: string | null) => void
   setCommandTerminalDraft: (draft: CommandTerminalDraft) => void
   setEventStreamScrollMode: (mode: EventStreamScrollMode) => void
 }
@@ -64,6 +66,7 @@ export const useUIStore = create<UIStoreState>((set) => ({
   mapQuality: 'mid',
   mapFocus: null,
   focusToast: null,
+  lastError: null,
   commandTerminalDraft: null,
   eventStreamScrollMode: 'auto',
   setLeftPanelOpen: (leftPanelOpen) => {
@@ -123,6 +126,9 @@ export const useUIStore = create<UIStoreState>((set) => ({
   },
   setFocusToast: (focusToast) => {
     set({ focusToast })
+  },
+  setLastError: (lastError) => {
+    set({ lastError, focusToast: lastError })
   },
   setCommandTerminalDraft: (commandTerminalDraft) => {
     set({ commandTerminalDraft })

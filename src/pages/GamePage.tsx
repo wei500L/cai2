@@ -5,7 +5,6 @@ import { PixelButton } from '@/components/PixelButton'
 import { Scanlines } from '@/components/Scanlines'
 import { NarrationBanner } from '@/features/aiSpeech/NarrationBanner'
 import { PrivateMessageDrawer } from '@/features/aiSpeech/PrivateMessageDrawer'
-import { useAIResponseScheduler } from '@/features/aiSpeech/useAIResponseScheduler'
 import { MapStage } from '@/features/hud/MapStage'
 import { CommandTerminal } from '@/features/hud/CommandTerminal'
 import { EventStreamPanel } from '@/features/hud/EventStreamPanel'
@@ -18,7 +17,10 @@ import { getHudModeFromPhase, getPhaseUIConfig } from '@/features/phaseSystem/Ph
 import { factionTokens, resolveFactionId } from '@/components/hudTheme'
 import { startMockGameLoop } from '@/mock/gameLoop'
 import EpochSummaryPage from '@/pages/EpochSummaryPage'
-import { useGameStore } from '@/store/gameStore'
+import { attachAdapter } from '@/protocol/adapter'
+import { ActionDispatcher } from '@/protocol/dispatcher'
+import { MockTransport } from '@/protocol/transport'
+import { gameStoreApi, useGameStore } from '@/store/gameStore'
 import { useUIStore } from '@/store/uiStore'
 
 const COMPACT_BREAKPOINT = 960
@@ -119,14 +121,19 @@ export default function GamePage() {
   const setHudMode = useUIStore((state) => state.setHudMode)
   const phaseConfig = getPhaseUIConfig(hudMode)
 
-  useAIResponseScheduler()
-
   useEffect(() => {
     initGame()
-    const stopMockGameLoop = startMockGameLoop()
+    const transport = new MockTransport()
+    transport.connect()
+    const detachAdapter = attachAdapter(transport, gameStoreApi)
+    ActionDispatcher.setTransport(transport)
+    const stopMockGameLoop = startMockGameLoop(transport)
 
     return () => {
       stopMockGameLoop()
+      ActionDispatcher.setTransport(null)
+      detachAdapter()
+      transport.disconnect()
     }
   }, [initGame])
 

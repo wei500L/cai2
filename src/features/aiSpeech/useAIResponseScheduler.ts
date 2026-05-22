@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react'
 import { clearAIResponseTimers, triggerAIResponses } from '@/mock/aiResponder'
+import type { MockTransport } from '@/protocol/transport'
 import { useGameStore } from '@/store/gameStore'
 
-export function useAIResponseScheduler() {
+export function useAIResponseScheduler(transport: Pick<MockTransport, 'emitAIEvent' | 'emitAIPrivateMessage'>) {
   const handledEventIds = useRef<Set<string>>(new Set())
 
   useEffect(() => {
@@ -20,7 +21,7 @@ export function useAIResponseScheduler() {
       }
 
       for (const event of [...freshEvents].reverse()) {
-        triggerAIResponses(event)
+        triggerAIResponses(event, transport)
       }
     })
 
@@ -28,5 +29,5 @@ export function useAIResponseScheduler() {
       unsubscribe()
       clearAIResponseTimers()
     }
-  }, [])
+  }, [transport])
 }

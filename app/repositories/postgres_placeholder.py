@@ -97,6 +97,9 @@ class PostgresActionLogRepository(ActionLogRepository):
     async def append(self, action: GameAction) -> None:
         raise NotImplementedError(_PENDING)
 
+    async def list_by_room(self, room_id: str) -> list[GameAction]:
+        raise NotImplementedError(_PENDING)
+
     async def list_by_turn(self, room_id: str, epoch: int, turn: int) -> list[GameAction]:
         raise NotImplementedError(_PENDING)
 
@@ -116,6 +119,9 @@ class PostgresActionLogRepository(ActionLogRepository):
 
 class PostgresMessageLogRepository(MessageLogRepository):
     async def append_message(self, message: MessageRecord) -> None:
+        raise NotImplementedError(_PENDING)
+
+    async def list_by_room(self, room_id: str) -> list[MessageRecord]:
         raise NotImplementedError(_PENDING)
 
     async def list_by_turn(self, room_id: str, epoch: int, turn: int) -> list[MessageRecord]:

@@ -8,6 +8,7 @@ import { MajorEvents } from '@/features/epochSummary/MajorEvents'
 import { NextEpochButton } from '@/features/epochSummary/NextEpochButton'
 import { RankingDelta } from '@/features/epochSummary/RankingDelta'
 import { MapStage2D } from '@/render/MapStage2D'
+import { ActionDispatcher } from '@/protocol/dispatcher'
 import { useGameStore } from '@/store/gameStore'
 import { useUIStore } from '@/store/uiStore'
 
@@ -23,7 +24,6 @@ export default function EpochSummaryPage() {
 }
 
 function EpochSummaryOverlay() {
-  const advancePhase = useGameStore((state) => state.advancePhase)
   const [exiting, setExiting] = useState(false)
 
   useEffect(() => {
@@ -32,11 +32,11 @@ function EpochSummaryOverlay() {
     }
 
     const timer = window.setTimeout(() => {
-      advancePhase()
+      ActionDispatcher.requestNextEpoch()
     }, 620)
 
     return () => window.clearTimeout(timer)
-  }, [advancePhase, exiting])
+  }, [exiting])
 
   const handleNext = useCallback(() => {
     setExiting(true)
