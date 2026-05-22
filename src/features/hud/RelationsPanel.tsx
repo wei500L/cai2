@@ -1,9 +1,11 @@
 import { GlowPanel } from '@/components/GlowPanel'
 import { HoloDivider } from '@/components/HoloDivider'
 import { StatusBadge } from '@/components/StatusBadge'
-import { FACTIONS } from '@/mock/factions'
+import { factionById } from '@/mock/factions'
 import type { RelationState } from '@/components/hudTheme'
 import { PixelButton } from '@/components/PixelButton'
+import type { RelationshipStatus, TreatyKind } from '@/mock/types'
+import { useGameStore } from '@/store/gameStore'
 
 type RelationsPanelProps = {
   collapsed?: boolean
@@ -11,22 +13,49 @@ type RelationsPanelProps = {
   onToggleFullscreen?: () => void
 }
 
-const relationStates: RelationState[] = [
-  'hostile',
-  'neutral',
-  'friendly',
-  'ally',
-  'neutral',
-  'hostile',
-  'friendly',
-  'ally',
-]
+const statusLabels: Record<RelationshipStatus, string> = {
+  hostile: '敌对',
+  wary: '警惕',
+  neutral: '中立',
+  friendly: '友好',
+  allied: '同盟',
+}
+
+const treatyLabels: Record<TreatyKind, string> = {
+  non_aggression: '互不侵犯',
+  trade: '贸易',
+  alliance: '同盟',
+  ceasefire: '停火',
+}
+
+function getBadgeState(status: RelationshipStatus): RelationState {
+  if (status === 'allied') {
+    return 'ally'
+  }
+
+  if (status === 'friendly') {
+    return 'friendly'
+  }
+
+  if (status === 'hostile') {
+    return 'hostile'
+  }
+
+  return 'neutral'
+}
 
 export function RelationsPanel({
   collapsed = false,
   onToggleCollapsed,
   onToggleFullscreen,
 }: RelationsPanelProps) {
+  const selectedFactionId = useGameStore((state) => state.selectedFactionId)
+  const relationships = useGameStore((state) => state.relationships)
+  const activeFactionId = selectedFactionId ?? 'starlight'
+  const visibleRelationships = relationships.filter(
+    (relationship) => relationship.from === activeFactionId,
+  )
+
   return (
     <GlowPanel className="h-full rounded-none">
       <div className="flex h-full flex-col">
@@ -52,22 +81,32 @@ export function RelationsPanel({
         <HoloDivider />
         <div className="min-h-0 flex-1 overflow-hidden px-4 py-3">
           <div className="grid gap-2">
-            {FACTIONS.map((faction, index) => (
-              <div
-                key={faction.id}
-                className="flex items-center justify-between gap-3 border border-[color:rgba(255,255,255,0.08)] bg-[color:rgba(255,255,255,0.02)] px-3 py-2"
-              >
-                <div className="min-w-0">
-                  <div className="truncate text-[0.72rem] text-[color:var(--text-primary)]">
-                    {faction.name}
+            {visibleRelationships.map((relationship) => {
+              const faction = factionById[relationship.to]
+              const treatyText =
+                relationship.treaties.length > 0
+                  ? relationship.treaties.map((treaty) => treatyLabels[treaty]).join(' / ')
+                  : '无条约'
+
+              return (
+                <div
+                  key={`${relationship.from}_${relationship.to}`}
+                  className="flex items-center justify-between gap-3 border border-[color:rgba(255,255,255,0.08)] bg-[color:rgba(255,255,255,0.02)] px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-[0.72rem] text-[color:var(--text-primary)]">
+                      {faction.name}
+                    </div>
+                    <div className="mt-1 text-[0.54rem] uppercase tracking-[0.2em] text-[color:rgba(196,228,255,0.44)]">
+                      {relationship.value} · {treatyText}
+                    </div>
                   </div>
-                  <div className="mt-1 text-[0.54rem] uppercase tracking-[0.2em] text-[color:rgba(196,228,255,0.44)]">
-                    占位关系
-                  </div>
+                  <StatusBadge state={getBadgeState(relationship.status)}>
+                    {statusLabels[relationship.status]}
+                  </StatusBadge>
                 </div>
-                <StatusBadge state={relationStates[index % relationStates.length]} />
-              </div>
-            ))}
+              )
+            })}
           </div>
         </div>
       </div>

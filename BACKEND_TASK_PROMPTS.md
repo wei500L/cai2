@@ -1739,3 +1739,917 @@ observe 15000ms / action 90000ms / resolve 30000ms / arbitrate.battle 20000ms / 
 
 ---
 
+## 任务 10：实现结算输入聚合 settlement aggregator
+
+### 使用场景
+
+进入 resolve 阶段后，结算需要一个完整的输入快照：本回合所有玩家行动、消息、密谈、条约请求、军令、当前游戏状态、关系矩阵、势力指标。这是 LLM 调用和规则裁决前的唯一数据来源。本任务实现 SettlementAggregator，仅汇总数据，不调用 LLM，不做规则结算。
+
+### 可直接复制给 AI 编程工具的完整提示词
+
+```
+你是一名资深结算输入工程师。请为《外交风云》—— 人机混战 AI Diplomacy 后端实现结算输入聚合器（SettlementAggregator），汇总本回合所有玩家行动、消息、当前游戏状态，为模型裁决与规则结算准备 SettlementInput。
+
+【项目背景】
+这是本项目后端核心任务之一。架构决策：游戏过程中先记录行动与消息，到结算阶段再统一读取。Aggregator 是结算流水线的第一步：从仓储读取数据 → 构造 SettlementInput → 后续由 PromptBuilder + LLMClient + RuleResolver 处理。
+
+【共用规则（强制遵守）】
+1. 这是《外交风云》AI Diplomacy 后端。
+2. 前端会并行开发，最终通过协议接入。
+3. 当前任务只做后端，不写前端。
+4. 不启动开发服务器。
+5. 不调用真实 LLM。
+6. 不连接真实数据库。
+7. 不启动 Docker。
+8. 游戏过程中只记录玩家消息和行动。
+9. 只有结算阶段才允许通过抽象 LLM client 调用模型。
+10. MVP 阶段不要重点实现 prompt injection 防护。
+11. 所有模块要可测试。
+12. 业务逻辑不要写在 API 路由或 WebSocket handler 里。
+13. mock / in-memory 实现必须可以未来替换。
+14. 代码结构必须清晰，避免单文件巨石。
+15. 输出时先说明计划，再列出修改文件，最后说明验证方式。
+
+【技术栈】
+Python 3.11+ + asyncio + Pydantic v2。本任务允许 import app.domain.*、app.repositories.*，禁止 import app.llm.* / app.api.* / app.protocol.*。
+
+【本任务允许做以下事情】
+
+1. 在 app/game/settlement_aggregator.py 定义 SettlementInput(BaseModel)：
+   - room_id: str
+   - epoch: int
+   - turn: int
+   - generated_at_ms: int
+   - factions_snapshot: list[FactionState]
+   - relationships_snapshot: list[Relationship]
+   - regions_snapshot: list[MapRegion]
+   - treaties_snapshot: list[Treaty]
+   - turn_actions: list[GameAction]
+   - public_speeches: list[SpeechAction]
+   - private_messages: list[PrivateMessageAction]
+   - treaty_requests: list[TreatyAction]
+   - military_orders: list[MilitaryAction]
+   - intel_actions: list[IntelAction]
+   - recent_events: list[GameEvent]    # 最近 N=20 条事件，按时间倒序
+   - faction_personality_summary: dict[FactionId, dict[str, Any]]   # 来自 FACTION_META
+   - relationship_summary_text: str    # 人类可读摘要
+   - faction_stats_summary_text: str
+
+2. 在同文件实现 SettlementAggregator：
+   - 构造 __init__(self, repos: Repositories, clock: Clock, *, recent_event_window: int = 20)。
+   - 方法（全部 async）：
+
+   - async def aggregate(room_id: str, epoch: int, turn: int) -> SettlementInput：
+     - 通过 ActionLogRepository.list_by_turn 拿取所有 GameAction。
+     - 按 mode 分桶：public_speeches / private_messages / treaty_requests / military_orders / intel_actions。
+     - 通过 GameStateRepository 拿取 factions / relationships / regions / treaties / current_turn。
+     - 通过 EventLogRepository.list_by_turn(epoch, turn) + 上一回合事件，截取 recent_event_window 条。
+     - 调用 app.domain.factions.FACTION_META 构造 faction_personality_summary（只取 archetype / speech_style / aggression / trust_base / honor_code / trigger_words）。
+     - 调用内部 _build_relationship_summary_text(relationships) 产出人类可读文本。
+     - 调用内部 _build_faction_stats_summary_text(factions) 产出表格化文本。
+     - 返回 SettlementInput。
+
+   - async def aggregate_epoch_summary(room_id: str, epoch: int) -> SettlementInput（占位）：
+     - 与 aggregate 类似但 turn 设为该 epoch 最后回合，扩大 recent_event_window=80。
+     - 用于 arbitrate.summary 阶段。
+
+3. 在同模块下提供工具函数：
+   - def split_actions_by_mode(actions: list[GameAction]) -> dict[str, list[GameAction]]。
+   - def format_faction_stats_line(state: FactionState) -> str。
+   - def format_relationship_line(rel: Relationship) -> str。
+
+4. 在 app/tests/test_settlement_aggregator.py 编写测试：
+   - 给定房间已 record 5 个 speech / 2 个 private / 1 个 treaty / 3 个 military / 1 个 intel 后，aggregate 返回的 SettlementInput 各桶数量正确。
+   - factions_snapshot / relationships_snapshot / regions_snapshot 完整。
+   - recent_events 数量 ≤ window。
+   - faction_personality_summary 含 archetype 与 trigger_words。
+   - relationship_summary_text / faction_stats_summary_text 非空且可读。
+   - SettlementInput Pydantic 校验通过。
+   - 同一回合多次调用 aggregate 结果一致（除时间戳）。
+   - aggregator 不调用 LLM；测试中 patch app.llm 不会被触发。
+
+【禁止做的事】
+- 不要实时调用模型（这是 Aggregator，仅汇总数据）。
+- 不要在 Aggregator 中写规则结算（仅读，不改 game state）。
+- 不要在 Aggregator 中直接修改仓储数据。
+- 不要让 Aggregator 依赖 protocol 层。
+- 不要把 Aggregator 设计成同步 IO（必须 async）。
+- 不要把 personality_summary 字段裁剪过度。
+- 不要在 summary 文本中泄漏所有 Level 3 绝密信息；MVP 不做严格隔离，但应注释"可在未来按 viewer perspective 过滤"。
+
+【验收标准】
+1. SettlementInput 字段齐全。
+2. aggregate(room_id, epoch, turn) 按 mode 分桶正确。
+3. 完整 snapshot 与 recent_events。
+4. 人类可读 summary 文本生成。
+5. 同 turn 多次调用一致。
+6. aggregate_epoch_summary 占位实现完成。
+7. pytest -q app/tests/test_settlement_aggregator.py 全部通过。
+8. Aggregator 不修改任何仓储数据。
+9. Aggregator 不 import app.llm。
+10. Aggregator 不 import app.api / app.protocol。
+
+请按以上规范完成本任务。完成后输出：
+（1）实施计划；
+（2）创建/修改文件清单；
+（3）pytest 验证；
+（4）不要启动 uvicorn / docker；
+（5）确认本任务不调用 LLM。
+```
+
+### 预期产物
+
+- `app/game/settlement_aggregator.py`（SettlementInput + SettlementAggregator + 工具函数）。
+- `app/tests/test_settlement_aggregator.py`。
+
+### 验收标准
+
+1. SettlementInput 字段齐全。
+2. mode 分桶正确。
+3. 完整 snapshot + recent_events。
+4. summary 文本可读。
+5. 同 turn 一致。
+6. epoch summary 占位完成。
+7. 测试通过。
+8. 不修改仓储数据。
+9. 不 import llm。
+10. 不 import api / protocol。
+
+### 禁止事项
+
+- 禁止调用 LLM。
+- 禁止在 Aggregator 写规则结算。
+- 禁止修改仓储数据。
+- 禁止依赖 protocol。
+- 禁止同步 IO。
+- 禁止裁剪 personality_summary 过度。
+- 禁止 MVP 阶段做严格 viewer 视角过滤（仅注释占位）。
+
+---
+
+## 任务 11：设计结算阶段 LLM prompt builder
+
+### 使用场景
+
+聚合器产出 SettlementInput 后，需要构造结算 prompt 让模型给出结构化 JSON 输出。本任务实现 PromptBuilder：按设计文档"AI 性格系统"+"LLM 评估框架"组装 system prompt + user prompt + expected JSON schema 说明。本任务不调用模型，只产出 prompt 字符串。
+
+### 可直接复制给 AI 编程工具的完整提示词
+
+```
+你是一名资深 LLM Prompt 工程师。请为《外交风云》—— 人机混战 AI Diplomacy 后端实现结算阶段 LLM PromptBuilder，构造完整的 system / user / JSON schema 说明 prompt。
+
+【项目背景】
+游戏过程中不调用模型；只有结算阶段统一构造 prompt 调用模型一次（每回合每房间一次）。模型输出结构化 JSON，包含关系变化、AI 发言、条约结果、战争建议、文化影响、士气影响、事件叙事。本任务只构造 prompt，不调用任何模型。
+
+【共用规则（强制遵守）】
+1. 这是《外交风云》AI Diplomacy 后端。
+2. 前端会并行开发，最终通过协议接入。
+3. 当前任务只做后端，不写前端。
+4. 不启动开发服务器。
+5. 不调用真实 LLM。
+6. 不连接真实数据库。
+7. 不启动 Docker。
+8. 游戏过程中只记录玩家消息和行动。
+9. 只有结算阶段才允许通过抽象 LLM client 调用模型。
+10. MVP 阶段不要重点实现 prompt injection 防护。
+11. 所有模块要可测试。
+12. 业务逻辑不要写在 API 路由或 WebSocket handler 里。
+13. mock / in-memory 实现必须可以未来替换。
+14. 代码结构必须清晰，避免单文件巨石。
+15. 输出时先说明计划，再列出修改文件，最后说明验证方式。
+
+【技术栈】
+Python 3.11+ + Pydantic v2 + 标准库 string / f-string。本任务只 import app.domain.* 与 app.game.settlement_aggregator 的 SettlementInput 类型。
+
+【本任务允许做以下事情】
+
+1. 在 app/llm/prompt_builder.py 实现：
+
+   - 常量 SYSTEM_PROMPT_TEMPLATE：固定文本（约 30~50 行），说明：
+     - 你是《外交风云》的裁决与叙事 AI。
+     - 你需要根据本回合所有玩家行动和当前游戏状态，给出八大势力的反应、关系变化、条约结果、战争建议、文化影响、士气影响、事件叙事。
+     - 输出必须是严格 JSON，符合 schema。
+     - 输出的关系变化、士气变化必须有限度，单次变化绝对值不超过 30（关系）/ 0.2（士气）。
+     - 输出的战争建议仅作为后端规则引擎参考，最终结算由后端 RuleResolver 处理。
+     - 你只是建议方，后端规则会最终裁决。
+     - 不要输出 markdown 围栏。
+
+   - 常量 OUTPUT_JSON_SCHEMA_HINT：JSON 形态描述文本，包含字段：
+     - relationship_deltas: list of {from, to, delta, reason}
+     - ai_speeches: list of {faction_id, kind, content, target_faction}
+     - treaty_decisions: list of {treaty_id, accepted, reason, counter_proposal}
+     - military_judgements: list of {region_id, attacker, defender, legitimacy, narrative}
+     - culture_impacts: list of {faction_id, delta, reason}
+     - morale_impacts: list of {faction_id, delta, reason}
+     - narrative_events: list of {kind, actor, target, narration}
+     - map_change_suggestions: list of {region_id, new_owner, reason}
+     - stat_change_suggestions: list of {faction_id, military_delta, economy_delta, diplomacy_delta, culture_delta, morale_delta}
+
+   - 类 PromptBuilder：
+     - def build_settlement_prompt(self, input: SettlementInput) -> SettlementPrompt：
+       - 拼装 system + user。
+       - user 部分按以下结构（每个章节带 ## 标题）：
+         ## 当前回合（epoch / turn）
+         ## 八势力状态（faction_stats_summary_text）
+         ## 关系矩阵（relationship_summary_text）
+         ## 八势力性格简要（faction_personality_summary 序列化文本）
+         ## 本回合公开演讲（遍历 public_speeches，每条 1~3 行：actor / targets / content 节选）
+         ## 本回合密谈（遍历 private_messages：actor → target / content）
+         ## 本回合条约请求（遍历 treaty_requests：actor / kind / target_factions / proposal_text）
+         ## 本回合军令（遍历 military_orders：actor / source → target / movement / troops / orders_text）
+         ## 本回合情报（遍历 intel_actions：actor / target / kind / brief）
+         ## 最近事件（recent_events narration 列表，最多 20 条）
+         ## 输出格式（OUTPUT_JSON_SCHEMA_HINT）
+
+     - 返回 SettlementPrompt(BaseModel)：system: str / user: str / json_schema_hint: str / temperature: float = 0.6 / max_tokens: int = 4000。
+
+   - 工具函数：
+     - def truncate(text: str, *, max_chars: int) -> str：超长字符串截断。
+     - def format_action_lines(actions, prefix_label) -> list[str]。
+     - def format_personality_summary(personality_dict) -> str。
+
+   - 文件顶部 docstring："本模块仅产出 prompt 文本，不调用模型。模型调用由 app.llm.client 负责，且只在结算阶段触发。"
+
+2. 在 app/tests/test_prompt_builder.py 编写测试：
+   - 构造一个 SettlementInput fixture（含 2 个 speech / 1 个 private / 1 个 treaty / 1 个 military / 1 个 intel）。
+   - 调用 build_settlement_prompt 返回 SettlementPrompt。
+   - system 包含"《外交风云》"标识。
+   - user 包含 8 势力状态文本。
+   - user 包含密谈内容。
+   - user 包含 OUTPUT_JSON_SCHEMA_HINT 关键字段名（如 relationship_deltas、ai_speeches、treaty_decisions 等）。
+   - truncate(超长字符串) 长度受限。
+   - 同一输入两次 build 结果相同（deterministic）。
+   - PromptBuilder 不调用模型，测试不会触发任何 HTTP 请求。
+
+【禁止做的事】
+- 不要在本任务中调用模型；只产 prompt 字符串。
+- 不要实现 prompt injection 防护系统（MVP 不重点；可加一行注释"未来可扩展安全过滤"）。
+- 不要做实时玩家消息解析。
+- 不要把 prompt 散落到业务代码里（必须集中在 prompt_builder.py）。
+- 不要把 prompt 字段写得未来无法被 OpenAI / Claude / 本地模型共用。
+- 不要在 prompt 中输出真实 API key 或秘密信息。
+- 不要使用 jinja2 / 复杂模板引擎（只用 f-string + truncate）。
+- 不要让 PromptBuilder 依赖 protocol / api / repositories。
+
+【验收标准】
+1. SettlementPrompt 字段齐全（system / user / json_schema_hint / temperature / max_tokens）。
+2. build_settlement_prompt 拼装完整 user 文本。
+3. system 含项目背景与"建议方"声明。
+4. user 含八势力状态 / 关系矩阵 / 五类行动 / 最近事件 / JSON schema 提示。
+5. OUTPUT_JSON_SCHEMA_HINT 含 9 类输出字段。
+6. truncate 工具按字符长度截断。
+7. 同输入两次结果相同。
+8. pytest -q app/tests/test_prompt_builder.py 全部通过。
+9. PromptBuilder 不调用模型。
+10. PromptBuilder 不 import api / protocol / repositories。
+
+请按以上规范完成本任务。完成后输出：
+（1）实施计划；
+（2）创建/修改文件清单；
+（3）pytest 验证；
+（4）不要启动 uvicorn / docker；
+（5）确认本任务只产 prompt，不调用模型。
+```
+
+### 预期产物
+
+- `app/llm/prompt_builder.py`（PromptBuilder + SYSTEM_PROMPT_TEMPLATE + OUTPUT_JSON_SCHEMA_HINT + SettlementPrompt）。
+- `app/tests/test_prompt_builder.py`。
+
+### 验收标准
+
+1. SettlementPrompt 字段齐全。
+2. user 文本完整。
+3. system 含建议方声明。
+4. 五类行动完整。
+5. JSON schema 含 9 类输出。
+6. truncate 工具。
+7. deterministic。
+8. 测试通过。
+9. 不调用模型。
+10. 不 import api / protocol / repositories。
+
+### 禁止事项
+
+- 禁止调用模型。
+- 禁止实现 prompt injection 防护系统（MVP 不重点）。
+- 禁止实时解析玩家消息。
+- 禁止把 prompt 散落业务代码。
+- 禁止绑定特定供应商字段。
+- 禁止输出 API key。
+- 禁止 jinja2 复杂模板。
+- 禁止依赖 protocol / api / repositories。
+
+---
+
+## 任务 12：实现 LLM client 抽象层
+
+### 使用场景
+
+PromptBuilder 产出 prompt 后，需要一个统一的 LLMClient 把 prompt 发给模型并返回文本。本任务实现抽象接口 + MockLLMClient（默认 / 测试用）+ OpenAICompatibleClient / ClaudeCompatibleClient 占位（不真实调用）。所有 settlement 流程默认使用 MockLLMClient。
+
+### 可直接复制给 AI 编程工具的完整提示词
+
+```
+你是一名资深 LLM 接入工程师。请为《外交风云》—— 人机混战 AI Diplomacy 后端实现 LLM 客户端抽象层，提供统一的接口、Mock 实现以及 OpenAI / Claude 兼容客户端占位。
+
+【项目背景】
+为避免绑定单一供应商，所有 LLM 调用都通过 LLMClient 接口完成。MVP 阶段默认使用 MockLLMClient 返回 deterministic JSON，便于结算流水线在不真实调用 API 的情况下运转。OpenAI / Claude 兼容实现仅保留接口签名 + raise NotImplementedError，不引入运行依赖。
+
+【共用规则（强制遵守）】
+1. 这是《外交风云》AI Diplomacy 后端。
+2. 前端会并行开发，最终通过协议接入。
+3. 当前任务只做后端，不写前端。
+4. 不启动开发服务器。
+5. 不调用真实 LLM。
+6. 不连接真实数据库。
+7. 不启动 Docker。
+8. 游戏过程中只记录玩家消息和行动。
+9. 只有结算阶段才允许通过抽象 LLM client 调用模型。
+10. MVP 阶段不要重点实现 prompt injection 防护。
+11. 所有模块要可测试。
+12. 业务逻辑不要写在 API 路由或 WebSocket handler 里。
+13. mock / in-memory 实现必须可以未来替换。
+14. 代码结构必须清晰，避免单文件巨石。
+15. 输出时先说明计划，再列出修改文件，最后说明验证方式。
+
+【技术栈】
+Python 3.11+ + asyncio + Pydantic v2。本任务不引入 openai / anthropic SDK。
+
+【本任务允许做以下事情】
+
+1. 在 app/llm/client.py 定义：
+   - LLMRequest(BaseModel)：system: str / user: str / temperature: float / max_tokens: int / metadata: dict[str, Any] = {}。
+   - LLMResponse(BaseModel)：content: str / model: str / prompt_tokens: int | None / completion_tokens: int | None / latency_ms: int / raw: dict[str, Any] | None。
+   - LLMClient(Protocol)：
+     - async def call_settlement_model(self, request: LLMRequest) -> LLMResponse
+     - def name(self) -> str
+
+2. 在 app/llm/mock_client.py 实现 MockLLMClient：
+   - 构造 __init__(self, *, deterministic_output: dict | None = None, latency_ms: int = 0)。
+   - 若传入 deterministic_output：直接序列化为 JSON 文本返回。
+   - 否则根据 user prompt 中的 keywords 生成一份合规默认 JSON（含 1~2 个 relationship_deltas / 0~1 ai_speeches / 空 treaty_decisions / 空 military_judgements / 0~1 culture_impacts / 0~1 morale_impacts / 1~2 narrative_events / 空 map_change_suggestions / 0 stat_change_suggestions）。
+   - 默认 JSON 必须能通过任务 13 的 schema 校验（提前与 13 对齐字段）。
+   - name() 返回 "mock"。
+   - 提供 set_next_output(output: dict)：测试中可注入下一次输出。
+
+3. 在 app/llm/openai_client.py 占位 OpenAICompatibleClient(LLMClient)：
+   - 构造 __init__(self, *, api_key: str, base_url: str, model: str, timeout_s: float = 30.0)。
+   - call_settlement_model 抛 NotImplementedError("openai client pending wiring; provide api adapter in production")。
+   - 类 docstring 注明"未来用 httpx + chat/completions endpoint 接入"。
+
+4. 在 app/llm/claude_client.py 占位 ClaudeCompatibleClient(LLMClient)：
+   - 同上结构，抛 NotImplementedError("claude client pending")。
+   - docstring 注明"未来用 httpx + /v1/messages 接入"。
+
+5. 在 app/llm/factory.py 实现：
+   - def make_llm_client(provider, *, settings=None) -> LLMClient。
+   - provider="mock" 返回 MockLLMClient。
+   - provider in ("openai","claude") 抛 NotImplementedError("provider not wired yet; default to mock in MVP")。
+   - 注释指出未来从 settings 读取 api_key / base_url。
+
+6. 在 app/llm/retry.py 提供简单工具：
+   - async def call_with_retry(client: LLMClient, request: LLMRequest, *, max_retries: int = 1, base_delay_ms: int = 200) -> LLMResponse。
+   - MVP 仅做 1 次重试，指数退避。
+   - 测试可注入抛错的 client，验证重试次数。
+
+7. 在 app/tests/test_llm_mock_client.py 编写测试：
+   - MockLLMClient 默认输出可被 json.loads。
+   - set_next_output 可注入。
+   - latency_ms=0 时调用立即返回。
+   - call_with_retry：第一次失败、第二次成功的 client 调用计数为 2。
+   - call_with_retry 重试到上限仍失败抛原异常。
+   - OpenAICompatibleClient / ClaudeCompatibleClient.call_settlement_model 抛 NotImplementedError。
+   - make_llm_client("mock") 返回 MockLLMClient。
+   - make_llm_client("openai") 抛 NotImplementedError。
+   - 整个测试不发出任何 HTTP 请求。
+
+【禁止做的事】
+- 不要写死 API key。
+- 不要真实调用外部 LLM API。
+- 不要启动服务。
+- 不要把 LLM SDK 调用散落在业务服务里。
+- 不要让 MockLLMClient 输出无法通过 schema 校验的 JSON。
+- 不要在本任务中实现 prompt injection 防护过滤系统。
+- 不要在本任务中实现完整熔断 / 限流。
+- 不要 import openai / anthropic / httpx 运行依赖。
+
+【验收标准】
+1. LLMClient Protocol、LLMRequest、LLMResponse 定义齐全。
+2. MockLLMClient 默认输出可通过 JSON 解析且字段对齐任务 13 schema。
+3. set_next_output 注入工作。
+4. call_with_retry 重试逻辑正确。
+5. OpenAI / Claude 占位类抛 NotImplementedError 且不 import 真实 SDK。
+6. make_llm_client 工厂工作正常。
+7. pytest -q app/tests/test_llm_mock_client.py 全部通过。
+8. 整个测试无网络依赖。
+9. ruff check app/llm 通过。
+10. 设置 LLM_PROVIDER=mock 时整个结算流水线（与任务 15 联调）可工作。
+
+请按以上规范完成本任务。完成后输出：
+（1）实施计划；
+（2）创建/修改文件清单；
+（3）pytest 验证；
+（4）不要启动 uvicorn / docker；
+（5）确认本任务不真实调用外部 API。
+```
+
+### 预期产物
+
+- `app/llm/client.py`、`mock_client.py`、`openai_client.py`、`claude_client.py`、`factory.py`、`retry.py`。
+- `app/tests/test_llm_mock_client.py`。
+
+### 验收标准
+
+1. 接口与 DTO 齐全。
+2. MockLLMClient 默认 JSON 合规。
+3. set_next_output 注入。
+4. retry 行为正确。
+5. 占位类抛 NotImplementedError。
+6. factory 工作。
+7. 测试通过。
+8. 无网络。
+9. ruff 通过。
+10. LLM_PROVIDER=mock 可走通流水线。
+
+### 禁止事项
+
+- 禁止写死 API key。
+- 禁止真实调用外部 API。
+- 禁止启动服务。
+- 禁止把 LLM SDK 散落业务。
+- 禁止 mock 输出违反 schema。
+- 禁止实现注入防护。
+- 禁止熔断限流。
+- 禁止 import openai / anthropic / httpx。
+
+---
+
+## 任务 13：实现模型裁决结果 schema 与解析器
+
+### 使用场景
+
+LLMClient 返回 JSON 字符串后，需要校验、解析、容错。本任务定义 SettlementModelOutput Pydantic schema，与 PromptBuilder 中 OUTPUT_JSON_SCHEMA_HINT 严格对应；并实现 ModelOutputParser，对非法 JSON、缺字段、类型错误做容错。
+
+### 可直接复制给 AI 编程工具的完整提示词
+
+```
+你是一名资深 LLM 输出解析工程师。请为《外交风云》—— 人机混战 AI Diplomacy 后端实现模型裁决结果 schema 与解析器，对结算阶段 LLM 输出进行严格校验和容错处理。
+
+【项目背景】
+模型输出必须严格 JSON，但实际 LLM 经常输出 markdown 围栏、缺字段、字段类型错误、字段值越界。后端必须先做校验，再交给 RuleResolver。任何字段缺失或越界要么 fallback 默认值，要么报错丢弃整次输出。
+
+【共用规则（强制遵守）】
+1. 这是《外交风云》AI Diplomacy 后端。
+2. 前端会并行开发，最终通过协议接入。
+3. 当前任务只做后端，不写前端。
+4. 不启动开发服务器。
+5. 不调用真实 LLM。
+6. 不连接真实数据库。
+7. 不启动 Docker。
+8. 游戏过程中只记录玩家消息和行动。
+9. 只有结算阶段才允许通过抽象 LLM client 调用模型。
+10. MVP 阶段不要重点实现 prompt injection 防护。
+11. 所有模块要可测试。
+12. 业务逻辑不要写在 API 路由或 WebSocket handler 里。
+13. mock / in-memory 实现必须可以未来替换。
+14. 代码结构必须清晰，避免单文件巨石。
+15. 输出时先说明计划，再列出修改文件，最后说明验证方式。
+
+【技术栈】
+Python 3.11+ + Pydantic v2 严格模式。本任务只 import app.domain.* 与标准库。
+
+【本任务允许做以下事情】
+
+1. 在 app/llm/output_schema.py 定义 Pydantic v2 models：
+
+   - AIReaction(BaseModel)：faction_id: FactionId / emotion: str / target_faction: FactionId | None。
+   - RelationshipDelta(BaseModel)：from_faction: FactionId / to_faction: FactionId / delta: float (-30~30) / reason: str。
+   - TreatyDecision(BaseModel)：treaty_id: str / accepted: bool / reason: str / counter_proposal: str | None。
+   - MilitaryJudgement(BaseModel)：region_id: str / attacker: FactionId | None / defender: FactionId | None / legitimacy: Literal["just","neutral","unjust"] / narrative: str。
+   - CultureImpact(BaseModel)：faction_id: FactionId / delta: float (-20~20) / reason: str。
+   - MoraleImpact(BaseModel)：faction_id: FactionId / delta: float (-0.2~0.2) / reason: str。
+   - NarrativeEvent(BaseModel)：kind: Literal["betrayal","alliance","declare_war","intel_leak","golden_age","civil_unrest","custom"] / actor: FactionId | None / target: FactionId | None / narration: str。
+   - MapChangeSuggestion(BaseModel)：region_id: str / new_owner: FactionId | None / reason: str。
+   - StatChangeSuggestion(BaseModel)：faction_id: FactionId / military_delta: float (-15~15) = 0 / economy_delta: float (-15~15) = 0 / diplomacy_delta: float (-15~15) = 0 / culture_delta: float (-15~15) = 0 / morale_delta: float (-0.1~0.1) = 0。
+   - AISpeechItem(BaseModel)：faction_id: FactionId / kind: Literal["public","private","reaction","narration"] / content: str (1~400) / target_faction: FactionId | None。
+
+   - SettlementModelOutput(BaseModel)：
+     - relationship_deltas: list[RelationshipDelta] = []
+     - ai_speeches: list[AISpeechItem] = []
+     - treaty_decisions: list[TreatyDecision] = []
+     - military_judgements: list[MilitaryJudgement] = []
+     - culture_impacts: list[CultureImpact] = []
+     - morale_impacts: list[MoraleImpact] = []
+     - narrative_events: list[NarrativeEvent] = []
+     - map_change_suggestions: list[MapChangeSuggestion] = []
+     - stat_change_suggestions: list[StatChangeSuggestion] = []
+     - model_config = ConfigDict(strict=False, extra="ignore")  # 忽略未知字段，避免轻微差异炸掉
+
+2. 在 app/llm/output_parser.py 实现：
+
+   - def strip_markdown_fences(text: str) -> str：去除 ```json ... ``` / ``` ... ``` 围栏。
+   - def coerce_to_dict(text: str) -> dict[str, Any]：先 strip_markdown_fences，再 json.loads；失败时尝试以 { 开始 } 结束的子串。
+   - def fallback_output() -> SettlementModelOutput：返回所有列表为空的安全默认对象，附加一条 NarrativeEvent {kind:"custom", narration:"裁决系统暂未响应，本回合按规则继续。"}。
+
+   - 类 ModelOutputParser：
+     - def parse(self, llm_text: str) -> SettlementModelOutput：
+       - 调 strip_markdown_fences → coerce_to_dict → SettlementModelOutput.model_validate(d)。
+       - 任何阶段失败：记录 warning 日志（通过 app.core.logging）+ 返回 fallback_output()。
+     - def parse_strict(self, llm_text: str) -> SettlementModelOutput：
+       - 同上但失败直接 raise ModelOutputError（在 app.core.errors 新增）。
+       - 用于测试 / 调试。
+
+3. 在 app/core/errors.py 新增 ModelOutputError。
+
+4. 在 app/tests/test_output_parser.py 编写测试覆盖以下用例：
+   - 标准合规 JSON 解析成功。
+   - 带 ```json 围栏的 JSON 解析成功。
+   - 带 ``` 围栏的 JSON 解析成功。
+   - JSON 前后含多余文本（如 "Here's the result:\n{...}\nThanks"）解析成功。
+   - 非法 JSON / 缺括号：parse 返回 fallback_output；parse_strict 抛 ModelOutputError。
+   - 缺整个字段（如缺 relationship_deltas）：Pydantic 默认空列表，解析成功。
+   - relationship_deltas 中 delta=999（越界）：单条被 ValidationError 拒绝；parse 返回 fallback；parse_strict 抛错。
+   - 含 extra 字段：被忽略，不影响解析。
+   - AISpeechItem.content > 400 字符：触发 ValidationError；parse 返回 fallback。
+   - fallback_output 的 NarrativeEvent.narration 非空。
+
+【禁止做的事】
+- 不要相信模型输出直接修改 game state（本任务只负责校验 + 解析）。
+- 不要跳过 schema 校验。
+- 不要做复杂安全审计（MVP 不重点）。
+- 不要启动服务。
+- 不要调用真实 LLM 验证。
+- 不要把 parser 与 prompt builder 耦合（仅依赖 LLMResponse.content 字符串）。
+- 不要在 fallback 中产出复杂叙事（一条 NarrativeEvent 即可）。
+- 不要省略 strict / loose 两种解析入口。
+
+【验收标准】
+1. SettlementModelOutput 与 OUTPUT_JSON_SCHEMA_HINT 字段一致。
+2. 字段约束（delta 范围 / morale delta 范围 / content 长度）有效。
+3. strip_markdown_fences 处理 ```json 与 ``` 两种围栏。
+4. coerce_to_dict 处理前后含多余文本。
+5. parse 在错误输入时 fallback；parse_strict 抛错。
+6. extra 字段被 ignore。
+7. 单条非法子项不影响整体（fallback / 拒绝整次）；测试覆盖。
+8. pytest -q app/tests/test_output_parser.py 全部通过。
+9. ruff check app/llm 通过。
+10. parser 不调用 LLM、不修改 game state、不依赖 protocol。
+
+请按以上规范完成本任务。完成后输出：
+（1）实施计划；
+（2）创建/修改文件清单；
+（3）pytest 验证；
+（4）不要启动 uvicorn / docker。
+```
+
+### 预期产物
+
+- `app/llm/output_schema.py`（9 个 BaseModel + SettlementModelOutput）。
+- `app/llm/output_parser.py`（strip_markdown_fences / coerce_to_dict / fallback_output / ModelOutputParser）。
+- `app/core/errors.py` 补 ModelOutputError。
+- `app/tests/test_output_parser.py`。
+
+### 验收标准
+
+1. SettlementModelOutput 字段一致。
+2. 字段约束生效。
+3. 围栏剥除。
+4. 多余文本处理。
+5. parse fallback / parse_strict 抛错。
+6. extra 忽略。
+7. 错误用例覆盖。
+8. 测试通过。
+9. ruff 通过。
+10. 不调 LLM / 不改 state。
+
+### 禁止事项
+
+- 禁止相信模型输出直接改 state。
+- 禁止跳过 schema 校验。
+- 禁止复杂安全审计。
+- 禁止启动服务。
+- 禁止真实调 LLM。
+- 禁止与 prompt builder 耦合。
+- 禁止 fallback 复杂叙事。
+- 禁止省略 strict 入口。
+
+---
+
+## 任务 14：实现服务端规则裁决 rule resolver
+
+### 使用场景
+
+模型输出只是建议。后端必须用规则引擎对建议进行权威裁决：约束士气范围、关系范围、占领前必须满足兵力 / 持续回合条件、贸易收益按公式计算、战损按公式计算、领土易手按守军 / min_garrison 判定。本任务实现 RuleResolver。
+
+### 可直接复制给 AI 编程工具的完整提示词
+
+```
+你是一名资深规则引擎工程师。请为《外交风云》—— 人机混战 AI Diplomacy 后端实现规则裁决器（RuleResolver），把模型建议与后端规则结合，生成最终 SettlementResult 权威结算。
+
+【项目背景】
+模型只是建议方，后端是权威方。RuleResolver 接收 SettlementInput + SettlementModelOutput，输出 SettlementResult：
+- 关系变化（约束在 [-100, 100]，单次 |delta| ≤ 30）。
+- 条约结果（创建 / 拒绝 / 反提议）。
+- 军事裁决（含简化版 battle 公式）。
+- 文化影响（约束在合理范围）。
+- 士气影响（约束 [0.3, 1.8]）。
+- 经济变化（按贸易 / 维护 / 战争 / 经济衰竭机制）。
+- 地图变化（领土易手必须满足 min_garrison）。
+- 边界约束（faction.total_power 由 4 维加权重新计算）。
+
+【共用规则（强制遵守）】
+1. 这是《外交风云》AI Diplomacy 后端。
+2. 前端会并行开发，最终通过协议接入。
+3. 当前任务只做后端，不写前端。
+4. 不启动开发服务器。
+5. 不调用真实 LLM。
+6. 不连接真实数据库。
+7. 不启动 Docker。
+8. 游戏过程中只记录玩家消息和行动。
+9. 只有结算阶段才允许通过抽象 LLM client 调用模型。
+10. MVP 阶段不要重点实现 prompt injection 防护。
+11. 所有模块要可测试。
+12. 业务逻辑不要写在 API 路由或 WebSocket handler 里。
+13. mock / in-memory 实现必须可以未来替换。
+14. 代码结构必须清晰，避免单文件巨石。
+15. 输出时先说明计划，再列出修改文件，最后说明验证方式。
+
+【技术栈】
+Python 3.11+ + Pydantic v2。本任务允许 import app.domain.*、app.llm.output_schema、app.game.settlement_aggregator.SettlementInput。
+
+【本任务允许做以下事情】
+
+1. 在 app/game/rule_resolver.py 实现：
+
+   - 类 RuleResolver：
+     - __init__(self, *, deterministic_rng_seed: int | None = None)：构造 RNG，便于战斗 ±10% 波动 deterministic。
+     - 核心方法：
+       def resolve(self, input: SettlementInput, model_output: SettlementModelOutput) -> SettlementResult。
+
+     - 内部分步骤：
+
+     1. apply_relationship_deltas(input, model_output) → list[RelationshipDelta]
+        - 接收模型建议，clamp delta 至 [-30, 30]，叠加 input.relationships_snapshot 当前值后 clamp 至 [-100, 100]。
+        - 双方向同步（A→B 与 B→A 关系值通常一致；但允许 ±5 不对称）。
+
+     2. resolve_treaties(input, model_output) → list[TreatyDecision]
+        - 对每条 treaty_requests，若 model_output.treaty_decisions 有对应项 → 使用；否则按"信任值 + interest_alignment - 利益冲突"近似决定（trust_base 等取自 FACTION_META.personality）。
+        - accepted=True 时创建 Treaty 对象写入 result.created_treaties。
+
+     3. resolve_military_orders(input, model_output) → list[BattleResultRecord]
+        - 对每条 military_order(movement=attack)：
+          - 调用 _compute_battle(attacker, defender, region, input)。
+        - movement=move/defend：仅记录调动事件，不发生战斗。
+
+     4. _compute_battle(attacker_faction, defender_faction, region, input) → BattleResultRecord
+        - 严格按设计文档简化版：
+          - atk_power = attacker.military * attacker.morale
+          - def_power = defender.military * defender.morale * 1.3（防御加成）
+          - terrain modifier（mountain 防+40 攻-20 / plains 1.0 / river 攻-20 / fortress 防+60 攻-30 / desert 双方-10）
+          - 多线作战惩罚（attacker 当前活跃战争数：1→1.0；2→0.85；3→0.65；4+→0.45）
+          - atk_ratio = atk_power / (atk_power + def_power)
+          - 随机 ±10%（用 RuleResolver.rng）
+          - clamp [0.1, 0.9]
+          - atk_loss = attacker.military * (1 - atk_ratio) * 0.3
+          - def_loss = defender.military * atk_ratio * 0.3
+          - territory_captured = def_remaining_in_region < region.min_garrison（按估算）
+          - morale_shift = (atk_ratio - 0.5) * 0.2
+
+     5. apply_culture_impact(input, model_output) → list[FactionStatChange]
+     6. apply_morale_impact(input, model_output) → list[FactionStatChange]
+        - 士气 clamp [0.3, 1.8]。
+     7. apply_economy_changes(input, model_output) → list[FactionStatChange]
+        - 应用贸易收益 / 维护成本 / 战争消耗 / 多线作战累积，按设计文档"经济衰竭机制"判断 net_income < 0 累计 3 回合 → 进入 crisis 标记。
+     8. apply_map_changes(input, model_output, battle_results) → list[RegionChange]
+        - 只接受 territory_captured=True 或模型 map_change_suggestions 且 attacker.military_in_region > defender.military_in_region * 1.2 的情形。
+     9. enforce_bounds(stats: list[FactionStatChange]) → 限制 military/economy/diplomacy/culture ≥ 0；morale ∈ [0.3, 1.8]；total_power 重新计算。
+     10. assemble_settlement_result(input, all_step_outputs) → SettlementResult。
+
+   - 工具结构：
+     - BattleResultRecord(BaseModel)：attacker / defender / region_id / atk_loss / def_loss / territory_captured / morale_shift / narrative。
+
+2. 提供常量 TERRAIN_MODIFIERS、WAR_PENALTY_TABLE 在同模块。
+
+3. 在 app/tests/test_rule_resolver.py 编写测试：
+   - relationship delta 越界被 clamp 到 ±30。
+   - 关系叠加超 100 被 clamp 至 100。
+   - 模型未给 treaty_decision 时使用 fallback 决定（不抛错）。
+   - 战斗 fortress 地形显著增加防御。
+   - 多线作战惩罚（attacker active_wars=3 → 战力 ×0.65）。
+   - territory_captured 需满足 defender_remaining < min_garrison。
+   - morale clamp [0.3, 1.8]。
+   - economy_changes 持续 3 回合 net_income<0 标记 crisis。
+   - assemble_settlement_result 返回完整 SettlementResult。
+   - deterministic_rng_seed 同 seed 两次 resolve 结果一致。
+
+【禁止做的事】
+- 不要实现过度复杂的完整平衡系统（MVP 用简化公式）。
+- 不要实时调用模型（本任务只消费 SettlementModelOutput）。
+- 不要让模型直接修改 game state；必须经 RuleResolver。
+- 不要启动服务。
+- 不要把规则常量散落到多个文件（集中在 rule_resolver.py 顶部）。
+- 不要省略 clamp / bounds 校验。
+- 不要省略多线作战惩罚。
+- 不要让 RuleResolver 写仓储（仅返回 SettlementResult，由 SettlementService 写仓储）。
+
+【验收标准】
+1. RuleResolver.resolve(input, model_output) → SettlementResult。
+2. 关系 / 士气 / 数值 clamp 正确。
+3. 战斗公式按简化设计实现。
+4. 地形 / 多线作战 / 防御加成生效。
+5. 领土易手需满足 min_garrison。
+6. 经济衰竭 3 回合标记 crisis。
+7. 同 seed 同输入两次结果一致。
+8. pytest -q app/tests/test_rule_resolver.py 全部通过。
+9. RuleResolver 不写仓储。
+10. RuleResolver 不调 LLM、不依赖 protocol / api。
+
+请按以上规范完成本任务。完成后输出：
+（1）实施计划；
+（2）创建/修改文件清单；
+（3）pytest 验证；
+（4）不要启动 uvicorn / docker。
+```
+
+### 预期产物
+
+- `app/game/rule_resolver.py`（RuleResolver + BattleResultRecord + TERRAIN_MODIFIERS + WAR_PENALTY_TABLE）。
+- `app/tests/test_rule_resolver.py`。
+
+### 验收标准
+
+1. resolve 完整。
+2. clamp 正确。
+3. 战斗公式简化版。
+4. 地形 / 多线 / 防御加成。
+5. 领土易手条件。
+6. 经济衰竭。
+7. deterministic。
+8. 测试通过。
+9. 不写仓储。
+10. 不调 LLM / 不依赖 protocol / api。
+
+### 禁止事项
+
+- 禁止过度复杂平衡。
+- 禁止实时调模型。
+- 禁止让模型直改 state。
+- 禁止启动服务。
+- 禁止规则常量散落。
+- 禁止省略 clamp。
+- 禁止省略多线惩罚。
+- 禁止在 resolver 内写仓储。
+
+---
+
+## 任务 15：实现结算服务 settlement service
+
+### 使用场景
+
+聚合器 / prompt builder / LLM client / parser / rule resolver 都就绪后，需要一个总控服务串联完整流水线。SettlementService 负责：构造输入 → 构造 prompt → 调用 mock LLM → 解析输出 → 应用规则裁决 → 持久化结算结果 → 生成 outbound resolve.events / map_diff / stats_diff。
+
+### 可直接复制给 AI 编程工具的完整提示词
+
+```
+你是一名资深结算流水线工程师。请为《外交风云》—— 人机混战 AI Diplomacy 后端实现结算服务（SettlementService），串联 SettlementAggregator → PromptBuilder → LLMClient → ModelOutputParser → RuleResolver，完成一次回合结算，并生成 outbound 协议事件。
+
+【项目背景】
+这是唯一允许调用 LLM 的主流程之一，且仅在结算阶段触发。SettlementService 由 PhaseService 在进入 resolve 阶段时通过 on_settlement_required 回调触发。
+
+【共用规则（强制遵守）】
+1. 这是《外交风云》AI Diplomacy 后端。
+2. 前端会并行开发，最终通过协议接入。
+3. 当前任务只做后端，不写前端。
+4. 不启动开发服务器。
+5. 不调用真实 LLM。
+6. 不连接真实数据库。
+7. 不启动 Docker。
+8. 游戏过程中只记录玩家消息和行动。
+9. 只有结算阶段才允许通过抽象 LLM client 调用模型。
+10. MVP 阶段不要重点实现 prompt injection 防护。
+11. 所有模块要可测试。
+12. 业务逻辑不要写在 API 路由或 WebSocket handler 里。
+13. mock / in-memory 实现必须可以未来替换。
+14. 代码结构必须清晰，避免单文件巨石。
+15. 输出时先说明计划，再列出修改文件，最后说明验证方式。
+
+【技术栈】
+Python 3.11+ + asyncio + Pydantic v2。本任务可 import app.game.*、app.llm.*、app.repositories.*、app.domain.*；禁止 import app.api.* / app.protocol.*（生成 outbound dict 即可，protocol 层在任务 17 包装成 envelope）。
+
+【本任务允许做以下事情】
+
+1. 在 app/services/settlement_service.py 实现 SettlementService：
+   - 构造 __init__(self, *, repos: Repositories, clock: Clock, aggregator: SettlementAggregator, prompt_builder: PromptBuilder, llm_client: LLMClient, parser: ModelOutputParser, rule_resolver: RuleResolver)。
+
+   - 方法（全部 async）：
+
+   - async def run_turn_settlement(self, room_id: str, epoch: int, turn: int) -> SettlementOutboundBundle：
+     1. settlement_input = await aggregator.aggregate(room_id, epoch, turn)。
+     2. prompt = prompt_builder.build_settlement_prompt(settlement_input)。
+     3. llm_request = LLMRequest(system=prompt.system, user=prompt.user, temperature=prompt.temperature, max_tokens=prompt.max_tokens, metadata={"room_id": room_id, "epoch": epoch, "turn": turn})。
+     4. llm_response = await call_with_retry(self.llm_client, llm_request, max_retries=1)。
+     5. model_output = parser.parse(llm_response.content)。
+     6. settlement_result = rule_resolver.resolve(settlement_input, model_output)。
+     7. 持久化 settlement_result（SettlementRepository.save）。
+     8. 应用 settlement_result 到 GameStateRepository（更新 factions / relationships / regions / treaties）。
+     9. 生成 outbound bundle（详见步骤 11）。
+     10. 写入 EventLogRepository（resolve 阶段产出的所有 narrative + battle + ai_speeches 都成为 GameEvent）。
+
+   - async def run_epoch_settlement(self, room_id: str, epoch: int) -> SettlementOutboundBundle（占位）：
+     - 类似 run_turn_settlement，但 input 由 aggregator.aggregate_epoch_summary 提供，写入 ReplayRepository 一些纪元摘要。
+     - 本任务可保留 raise NotImplementedError 或简化实现：仅生成 narrative events 不变更 state。
+
+2. 在同模块定义：
+   - SettlementOutboundBundle(BaseModel)：
+     - resolve_events: list[dict[str, Any]]    # 待包装为 resolve.events envelope 的 payload
+     - resolve_map_diff: dict[str, Any]        # changes + border_updates
+     - resolve_stats_diff: dict[str, Any]      # faction_stats + relationship_changes
+     - ai_speech_events: list[dict[str, Any]]  # 待包装为 ai.speak envelopes
+     - room_id / epoch / turn / generated_at_ms / seq_base: int
+
+   - 内部工具：
+     - def _build_resolve_events(result, input) -> list[dict]
+     - def _build_map_diff(result, input) -> dict
+     - def _build_stats_diff(result, input) -> dict
+     - def _build_ai_speech_events(result, input) -> list[dict]
+     - 这些函数返回纯 dict（兼容前端 mock GameEvent 结构），不依赖 protocol 类。
+
+3. 异常处理：
+   - LLM 失败 → parser.parse 已 fallback；不重抛。
+   - 仓储失败 → 抛 DiplomacyError；上层 PhaseService 决定是否回滚 phase（本任务不实现回滚，仅记录 error 日志）。
+
+4. 日志：通过 app.core.logging 在每步骤打 info（含 room_id / epoch / turn / step）。
+
+5. 在 app/tests/test_settlement_service.py 编写测试：
+   - 构造完整 fixture：room / players / actions（speech + private + treaty + military + intel）。
+   - 注入 MockLLMClient 并设置 deterministic output。
+   - 调用 run_turn_settlement 后：
+     - SettlementResult 写入 SettlementRepository。
+     - GameStateRepository.factions / relationships / regions 被更新（与 result 一致）。
+     - 返回的 SettlementOutboundBundle.resolve_events / map_diff / stats_diff 字段齐全。
+     - EventLogRepository 增加了对应 narrative / ai_speak GameEvent。
+   - 注入抛错的 LLMClient：parser 仍能 fallback；流水线不崩溃，返回带 fallback narrative 的 bundle。
+   - 同 seed 同输入同 mock 输出两次 run_turn_settlement 结果一致。
+
+【禁止做的事】
+- 不要在行动期调用本服务（仅在 resolve 阶段触发）。
+- 不要接真实 API。
+- 不要启动服务。
+- 不要把所有逻辑写在一个大函数里（必须分步函数）。
+- 不要让 SettlementService 拼装 protocol envelope（envelope 在任务 17 由 gateway 包装；本任务只返回 dict 字段）。
+- 不要省略持久化（SettlementResult 必须写入 SettlementRepository）。
+- 不要让 SettlementService 跳过 GameStateRepository 更新。
+- 不要在 SettlementService 中重新计算战斗（必须委托 RuleResolver）。
+
+【验收标准】
+1. SettlementService.run_turn_settlement 完整串联 6 步。
+2. SettlementOutboundBundle 字段齐全。
+3. GameStateRepository 在结算后被更新。
+4. SettlementRepository 写入 result。
+5. EventLogRepository 写入对应 GameEvent。
+6. LLM 失败时 fallback 仍能产出 bundle。
+7. 同 seed 同 mock 输出 deterministic。
+8. pytest -q app/tests/test_settlement_service.py 全部通过。
+9. SettlementService 不依赖 protocol / api。
+10. 仅在 resolve 阶段触发（通过 PhaseService 回调）。
+
+请按以上规范完成本任务。完成后输出：
+（1）实施计划；
+（2）创建/修改文件清单；
+（3）pytest 验证；
+（4）不要启动 uvicorn / docker；
+（5）确认行动期不触发本服务。
+```
+
+### 预期产物
+
+- `app/services/settlement_service.py`（SettlementService + SettlementOutboundBundle + _build_* 工具）。
+- `app/tests/test_settlement_service.py`。
+
+### 验收标准
+
+1. 完整 6 步串联。
+2. Bundle 字段齐全。
+3. GameStateRepository 更新。
+4. SettlementRepository 写入。
+5. EventLog 写入。
+6. LLM 失败 fallback 不崩。
+7. deterministic。
+8. 测试通过。
+9. 不依赖 protocol / api。
+10. 仅 resolve 阶段触发。
+
+### 禁止事项
+
+- 禁止行动期调用。
+- 禁止接真实 API。
+- 禁止启动服务。
+- 禁止单函数巨石。
+- 禁止拼装 protocol envelope。
+- 禁止省略持久化。
+- 禁止跳过 GameStateRepository 更新。
+- 禁止在 SettlementService 内重算战斗。
+
+---
+

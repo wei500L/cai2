@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.domain.enums import FactionId
 
@@ -30,6 +30,15 @@ class FactionMeta(BaseModel):
     trigger_words: list[str] = Field(default_factory=list)
     personality: dict[str, float]
 
+    @field_validator("personality")
+    @classmethod
+    def _validate_personality_keys(cls, value: dict[str, float]) -> dict[str, float]:
+        if set(value) != PERSONALITY_KEYS:
+            missing = sorted(PERSONALITY_KEYS - set(value))
+            extra = sorted(set(value) - PERSONALITY_KEYS)
+            raise ValueError(f"personality keys mismatch: missing={missing}, extra={extra}")
+        return value
+
 
 FACTION_META: dict[FactionId, FactionMeta] = {
     FactionId.ironCrown: FactionMeta(
@@ -38,7 +47,7 @@ FACTION_META: dict[FactionId, FactionMeta] = {
         primary_color="#8B1A1A",
         glow_color="#FF3333",
         shadow_color="#2D0A0A",
-        civilization="军事工业化，等级森严",
+        civilization="军事工业化, 等级森严",
         archetype="铁血征服者",
         advantage="军事力+20%",
         speech_style="commanding_imperial",
@@ -59,7 +68,7 @@ FACTION_META: dict[FactionId, FactionMeta] = {
         primary_color="#1A5F8B",
         glow_color="#33AAFF",
         shadow_color="#0A1A2D",
-        civilization="科技民主，重视规则",
+        civilization="科技民主, 重视规则",
         archetype="理性合作者",
         advantage="科技系数+1",
         speech_style="analytical_diplomatic",
@@ -80,7 +89,7 @@ FACTION_META: dict[FactionId, FactionMeta] = {
         primary_color="#1A8B3D",
         glow_color="#33FF77",
         shadow_color="#0A2D15",
-        civilization="商贸帝国，富可敌国",
+        civilization="商贸帝国, 富可敌国",
         archetype="狡猾商人",
         advantage="贸易收益+30%",
         speech_style="charming_mercantile",
@@ -101,7 +110,7 @@ FACTION_META: dict[FactionId, FactionMeta] = {
         primary_color="#8B5A1A",
         glow_color="#FF9933",
         shadow_color="#2D1E0A",
-        civilization="游牧战士，崇尚荣誉",
+        civilization="游牧战士, 崇尚荣誉",
         archetype="热血战士",
         advantage="士气上限+0.3",
         speech_style="passionate_warrior",
@@ -122,7 +131,7 @@ FACTION_META: dict[FactionId, FactionMeta] = {
         primary_color="#5A1A8B",
         glow_color="#9933FF",
         shadow_color="#1E0A2D",
-        civilization="宗教文明，精神控制",
+        civilization="宗教文明, 精神控制",
         archetype="神秘操控者",
         advantage="文化影响+40%",
         speech_style="mystical_prophetic",
@@ -143,7 +152,7 @@ FACTION_META: dict[FactionId, FactionMeta] = {
         primary_color="#1A8B8B",
         glow_color="#33FFFF",
         shadow_color="#0A2D2D",
-        civilization="科研至上，和平主义",
+        civilization="科研至上, 和平主义",
         archetype="技术中立者",
         advantage="防御加成+25%",
         speech_style="academic_neutral",
@@ -164,7 +173,7 @@ FACTION_META: dict[FactionId, FactionMeta] = {
         primary_color="#8B3A1A",
         glow_color="#FF6633",
         shadow_color="#2D120A",
-        civilization="地底文明，资源丰富",
+        civilization="地底文明, 资源丰富",
         archetype="防御守财奴",
         advantage="资源产出+25%",
         speech_style="gruff_pragmatic",
@@ -185,7 +194,7 @@ FACTION_META: dict[FactionId, FactionMeta] = {
         primary_color="#6B5A1A",
         glow_color="#CCAA33",
         shadow_color="#231E0A",
-        civilization="情报网络，无处不在",
+        civilization="情报网络, 无处不在",
         archetype="情报贩子",
         advantage="情报获取免费",
         speech_style="smooth_conspiratorial",

@@ -1,6 +1,1 @@
-export type EventMock = {
-  id: string
-  label: string
-}
-
-export const events: EventMock[] = []
+export type { BattleEvent, EventKind, EventPriority, GameEvent, SpeechEvent } from '@/mock/types'

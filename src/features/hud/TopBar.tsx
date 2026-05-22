@@ -3,12 +3,41 @@ import { PixelButton } from '@/components/PixelButton'
 import { ScrollNumber } from '@/components/ScrollNumber'
 import { GlowPanel } from '@/components/GlowPanel'
 import { factionTokens, resolveFactionId } from '@/components/hudTheme'
+import type { ArbitratePhase, GamePhase } from '@/mock/types'
 import { useGameStore } from '@/store/gameStore'
+
+const phaseLabels: Record<GamePhase, string> = {
+  observe: '态势感知期',
+  action: '行动期',
+  resolve: '博弈期',
+  arbitrate: '裁决阶段',
+}
+
+const arbitratePhaseLabels: Record<ArbitratePhase, string> = {
+  battle: '战争结算',
+  epic: '史诗时刻',
+  summary: '纪元总结',
+}
+
+function formatCountdown(milliseconds: number) {
+  const totalSeconds = Math.max(0, Math.ceil(milliseconds / 1_000))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+}
 
 export function TopBar() {
   const selectedFactionId = useGameStore((state) => state.selectedFactionId)
+  const epoch = useGameStore((state) => state.epoch)
+  const isPaused = useGameStore((state) => state.isPaused)
+  const togglePause = useGameStore((state) => state.togglePause)
   const factionId = resolveFactionId(selectedFactionId) ?? 'starlight'
   const faction = factionTokens[factionId]
+  const phaseLabel =
+    epoch.phase === 'arbitrate' && epoch.arbitratePhase
+      ? `${phaseLabels[epoch.phase]} · ${arbitratePhaseLabels[epoch.arbitratePhase]}`
+      : phaseLabels[epoch.phase]
 
   return (
     <GlowPanel
@@ -22,22 +51,26 @@ export function TopBar() {
       >
         <div className="flex min-w-0 items-center gap-3">
           <span className="text-[color:rgba(196,228,255,0.58)]">纪元</span>
-          <span className="font-mono text-[color:var(--hud-faction-glow)]">III</span>
+          <span className="font-mono text-[color:var(--hud-faction-glow)]">{epoch.id}</span>
           <span className="text-[color:rgba(196,228,255,0.58)]">· 回合</span>
-          <span className="font-mono text-[color:var(--hud-faction-glow)]">2</span>
+          <span className="font-mono text-[color:var(--hud-faction-glow)]">{epoch.turn}</span>
         </div>
 
         <div className="min-w-0 flex-1 text-center text-[color:var(--text-primary)]">
-          阶段：行动期
+          阶段：{phaseLabel}
         </div>
 
         <div className="flex items-center gap-3">
           <ScrollNumber
-            value="01:12"
+            value={formatCountdown(epoch.phaseDurationMs)}
             className="font-mono text-[0.86rem] text-[color:var(--hud-faction-glow)]"
           />
-          <PixelButton tone="ghost" className="px-3 py-1 text-[0.58rem] tracking-[0.22em]">
-            设置
+          <PixelButton
+            tone="ghost"
+            className="px-3 py-1 text-[0.58rem] tracking-[0.22em]"
+            onClick={togglePause}
+          >
+            {isPaused ? '继续' : '暂停'}
           </PixelButton>
         </div>
       </div>

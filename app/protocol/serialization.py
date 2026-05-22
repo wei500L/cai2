@@ -1,21 +1,22 @@
 from __future__ import annotations
 
-import json
-from typing import Any
+from pydantic import BaseModel
+
+from app.protocol.envelope import Envelope
 
 
-def to_json_bytes(payload: Any) -> bytes:
-    return json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+def serialize_json(envelope: Envelope[BaseModel]) -> bytes:
+    return envelope.model_dump_json().encode()
 
 
-def from_json_bytes(data: bytes) -> Any:
-    return json.loads(data.decode("utf-8"))
+def deserialize_json(raw: bytes, payload_model: type[BaseModel]) -> Envelope[BaseModel]:
+    envelope_type = Envelope[payload_model]  # type: ignore[valid-type]
+    return envelope_type.model_validate_json(raw)
 
 
-def to_msgpack_bytes(payload: Any) -> bytes:
-    raise NotImplementedError("msgpack support is intentionally deferred in the MVP.")
+def serialize_msgpack(envelope: Envelope[BaseModel]) -> bytes:
+    raise NotImplementedError("msgpack adapter pending")
 
 
-def from_msgpack_bytes(data: bytes) -> Any:
-    raise NotImplementedError("msgpack support is intentionally deferred in the MVP.")
-
+def deserialize_msgpack(raw: bytes, payload_model: type[BaseModel]) -> Envelope[BaseModel]:
+    raise NotImplementedError("msgpack adapter pending")

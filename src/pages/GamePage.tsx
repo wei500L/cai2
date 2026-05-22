@@ -8,6 +8,7 @@ import { EventStreamPanel } from '@/features/hud/EventStreamPanel'
 import { RelationsPanel } from '@/features/hud/RelationsPanel'
 import { TopBar } from '@/features/hud/TopBar'
 import { factionTokens, resolveFactionId } from '@/components/hudTheme'
+import { startMockGameLoop } from '@/mock/gameLoop'
 import { useGameStore } from '@/store/gameStore'
 import { useUIStore } from '@/store/uiStore'
 
@@ -45,6 +46,7 @@ export default function GamePage() {
   const viewportWidth = useViewportWidth()
   const isCompact = viewportWidth < COMPACT_BREAKPOINT
   const isDense = viewportWidth < DENSE_BREAKPOINT
+  const initGame = useGameStore((state) => state.initGame)
   const selectedFactionId = useGameStore((state) => state.selectedFactionId)
   const factionId = resolveFactionId(selectedFactionId) ?? 'starlight'
   const faction = factionTokens[factionId]
@@ -57,6 +59,15 @@ export default function GamePage() {
   const toggleRightPanel = useUIStore((state) => state.toggleRightPanel)
   const cycleFocusedPanel = useUIStore((state) => state.cycleFocusedPanel)
   const setFocusedPanel = useUIStore((state) => state.setFocusedPanel)
+
+  useEffect(() => {
+    initGame()
+    const stopMockGameLoop = startMockGameLoop()
+
+    return () => {
+      stopMockGameLoop()
+    }
+  }, [initGame])
 
   useEffect(() => {
     if (isCompact) {

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC
-from typing import Annotated, Any, Literal, TypeAlias, Union
+from typing import Annotated, Any, Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -154,14 +154,7 @@ class LockAction(GameActionBase):
 
 
 GameAction: TypeAlias = Annotated[
-    Union[
-        SpeechAction,
-        PrivateMessageAction,
-        TreatyAction,
-        MilitaryAction,
-        IntelAction,
-        LockAction,
-    ],
+    SpeechAction | PrivateMessageAction | TreatyAction | MilitaryAction | IntelAction | LockAction,
     Field(discriminator="mode"),
 ]
 
