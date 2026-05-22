@@ -3,6 +3,7 @@ from __future__ import annotations
 import random
 from typing import Literal
 
+import app.game.initializer as game_initializer
 from app.core.clock import Clock
 from app.core.errors import (
     FactionAlreadyTakenError,
@@ -18,7 +19,6 @@ from app.core.ids import new_player_id, new_room_id
 from app.domain.enums import FactionId, GamePhase, PlayerKind, RoomStatus
 from app.domain.factions import all_faction_ids
 from app.domain.models import EpochTurn, GameRoom, Player
-from app.game.initializer import initialize_game_state
 from app.repositories.factory import Repositories
 
 RoomMode = Literal["solo_1v7", "multi_4v4"]
@@ -169,15 +169,19 @@ class RoomService:
         self._assign_ai_factions(room)
         room.status = RoomStatus.starting
 
-        await self._repos.rooms.update(room)
         for player in room.players:
             await self._repos.players.upsert(player)
 
-        try:
-            initialize_game_state(room)
-        except NotImplementedError as exc:
-            if str(exc) != "delivered in task 6":
-                raise
+        initial_state = game_initializer.initialize_game_state(room, clock=self._clock)
+        await self._repos.state.save_factions(room.id, initial_state.factions)
+        await self._repos.state.save_regions(room.id, initial_state.regions)
+        await self._repos.state.save_relationships(room.id, initial_state.relationships)
+        await self._repos.state.save_treaties(room.id, initial_state.treaties)
+        await self._repos.state.save_current_turn(room.id, initial_state.current_turn)
+
+        room.current = initial_state.current_turn
+        room.status = RoomStatus.running
+        await self._repos.rooms.update(room)
 
         return room
 

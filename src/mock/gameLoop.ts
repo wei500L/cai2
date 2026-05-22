@@ -1,4 +1,5 @@
 import { factionIds } from '@/components/hudTheme'
+import { SYSTEM_NARRATION_TEMPLATES } from '@/mock/aiTemplates'
 import { factionById, type FactionId } from '@/mock/factions'
 import { MAX_EPOCHS } from '@/mock/gameState'
 import type { EventKind, EventPriority, GameEvent, PrivateMessage, SpeechEvent } from '@/mock/types'
@@ -54,8 +55,13 @@ function getPhaseChangeNarration() {
     epoch.phase === 'arbitrate' && epoch.arbitratePhase
       ? `${phaseLabels.arbitrate}/${arbitratePhaseLabels[epoch.arbitratePhase]}`
       : phaseLabels[epoch.phase]
+  const templates = SYSTEM_NARRATION_TEMPLATES.phase_change
+  const template = templates[Math.floor(Math.random() * templates.length)]
 
-  return `纪元${epoch.id}回合${epoch.turn}进入${phaseName}`
+  return template
+    .replace('{epoch}', String(epoch.id))
+    .replace('{turn}', String(epoch.turn))
+    .replace('{phaseName}', phaseName)
 }
 
 function pushPhaseChangeEvent(end = false) {

@@ -6,12 +6,18 @@ export type HudFocusTarget = 'left' | 'center' | 'right' | 'bottom'
 type UIStoreState = {
   leftPanelOpen: boolean
   rightPanelOpen: boolean
+  privateDrawerOpen: boolean
+  unreadPrivateCount: number
   hudMode: HudMode
   focusedPanel: HudFocusTarget
   setLeftPanelOpen: (open: boolean) => void
   toggleLeftPanel: () => void
   setRightPanelOpen: (open: boolean) => void
   toggleRightPanel: () => void
+  setPrivateDrawerOpen: (open: boolean) => void
+  togglePrivateDrawer: () => void
+  incrementUnreadPrivateCount: () => void
+  clearUnreadPrivateCount: () => void
   setHudMode: (mode: HudMode) => void
   setFocusedPanel: (panel: HudFocusTarget) => void
   cycleFocusedPanel: () => void
@@ -24,6 +30,8 @@ const getInitialPanelOpen = () =>
 export const useUIStore = create<UIStoreState>((set) => ({
   leftPanelOpen: getInitialPanelOpen(),
   rightPanelOpen: getInitialPanelOpen(),
+  privateDrawerOpen: false,
+  unreadPrivateCount: 0,
   hudMode: 'action',
   focusedPanel: 'center',
   setLeftPanelOpen: (leftPanelOpen) => {
@@ -37,6 +45,27 @@ export const useUIStore = create<UIStoreState>((set) => ({
   },
   toggleRightPanel: () => {
     set((state) => ({ rightPanelOpen: !state.rightPanelOpen }))
+  },
+  setPrivateDrawerOpen: (privateDrawerOpen) => {
+    set((state) => ({
+      privateDrawerOpen,
+      unreadPrivateCount: privateDrawerOpen ? 0 : state.unreadPrivateCount,
+    }))
+  },
+  togglePrivateDrawer: () => {
+    set((state) => {
+      const privateDrawerOpen = !state.privateDrawerOpen
+      return {
+        privateDrawerOpen,
+        unreadPrivateCount: privateDrawerOpen ? 0 : state.unreadPrivateCount,
+      }
+    })
+  },
+  incrementUnreadPrivateCount: () => {
+    set((state) => ({ unreadPrivateCount: state.unreadPrivateCount + 1 }))
+  },
+  clearUnreadPrivateCount: () => {
+    set({ unreadPrivateCount: 0 })
   },
   setHudMode: (hudMode) => {
     set({ hudMode })

@@ -2,6 +2,9 @@ import { useEffect, useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { PixelButton } from '@/components/PixelButton'
 import { Scanlines } from '@/components/Scanlines'
+import { NarrationBanner } from '@/features/aiSpeech/NarrationBanner'
+import { PrivateMessageDrawer } from '@/features/aiSpeech/PrivateMessageDrawer'
+import { useAIResponseScheduler } from '@/features/aiSpeech/useAIResponseScheduler'
 import { MapStage } from '@/features/hud/MapStage'
 import { CommandTerminal } from '@/features/hud/CommandTerminal'
 import { EventStreamPanel } from '@/features/hud/EventStreamPanel'
@@ -59,6 +62,8 @@ export default function GamePage() {
   const toggleRightPanel = useUIStore((state) => state.toggleRightPanel)
   const cycleFocusedPanel = useUIStore((state) => state.cycleFocusedPanel)
   const setFocusedPanel = useUIStore((state) => state.setFocusedPanel)
+
+  useAIResponseScheduler()
 
   useEffect(() => {
     initGame()
@@ -146,6 +151,8 @@ export default function GamePage() {
         className="absolute inset-x-0 bottom-0 h-px bg-[color:rgba(51,170,255,0.16)]"
       />
       <Scanlines className="z-20 opacity-35" />
+      <NarrationBanner />
+      <PrivateMessageDrawer />
 
       <div className="relative z-30 grid h-full grid-rows-[56px_minmax(0,1fr)_180px]">
         <TopBar />

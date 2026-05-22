@@ -45,6 +45,8 @@ export type EventPriority = 'P0' | 'P1' | 'P2'
 export type EventKind =
   | 'speech'
   | 'private'
+  | 'reaction'
+  | 'narration'
   | 'treaty'
   | 'military'
   | 'declare_war'

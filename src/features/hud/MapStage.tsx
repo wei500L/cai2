@@ -1,6 +1,33 @@
 import { GlowPanel } from '@/components/GlowPanel'
+import { PublicSpeechBubble } from '@/features/aiSpeech/PublicSpeechBubble'
+import { ReactionTag } from '@/features/aiSpeech/ReactionTag'
+import type { FactionId } from '@/mock/factions'
+import type { GameEvent } from '@/mock/types'
+import { useGameStore } from '@/store/gameStore'
+
+function getPublicSpeechText(event: GameEvent) {
+  if (event.kind !== 'speech' || !event.actor || event.payload.channel !== 'public') {
+    return null
+  }
+
+  return typeof event.payload.text === 'string' ? event.payload.text : event.narration
+}
+
+function getReactionLabel(event: GameEvent) {
+  if (event.kind !== 'reaction' || !event.actor) {
+    return null
+  }
+
+  return typeof event.payload.label === 'string' ? event.payload.label : event.narration
+}
 
 export function MapStage() {
+  const epoch = useGameStore((state) => state.epoch)
+  const events = useGameStore((state) => state.events)
+  const allowFloatingSpeech = epoch.phase !== 'arbitrate'
+  const latestSpeech = allowFloatingSpeech ? events.find((event) => getPublicSpeechText(event)) : null
+  const latestReaction = allowFloatingSpeech ? events.find((event) => getReactionLabel(event)) : null
+
   return (
     <GlowPanel className="h-full w-full rounded-none">
       <div className="relative flex h-full min-h-[18rem] items-center justify-center overflow-hidden">
@@ -47,6 +74,23 @@ export function MapStage() {
             </div>
           </div>
         </div>
+        {latestSpeech?.actor ? (
+          <div className="pointer-events-none absolute left-1/2 top-[18%] z-20 -translate-x-1/2">
+            <PublicSpeechBubble
+              actor={latestSpeech.actor as FactionId}
+              text={getPublicSpeechText(latestSpeech) ?? ''}
+            />
+          </div>
+        ) : null}
+        {latestReaction?.actor ? (
+          <div className="pointer-events-none absolute left-1/2 top-[31%] z-30 -translate-x-1/2">
+            <ReactionTag
+              key={latestReaction.id}
+              actor={latestReaction.actor as FactionId}
+              label={getReactionLabel(latestReaction) ?? ''}
+            />
+          </div>
+        ) : null}
       </div>
     </GlowPanel>
   )

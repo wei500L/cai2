@@ -8,6 +8,7 @@ import { MAX_EPOCHS, TURNS_PER_EPOCH, getPhaseDurationMs } from '@/mock/gameStat
 import type {
   BattleEvent,
   Epoch,
+  EventKind,
   FactionState,
   GameEvent,
   MockGameWorldState,
@@ -114,6 +115,25 @@ function isKnownFaction(value: string): value is FactionId {
 
 function getTargetNames(targets: FactionId[]) {
   return targets.map((target) => factionById[target].name).join('、')
+}
+
+function findMentionedFaction(content: string, actor: FactionId) {
+  return Object.values(factionById).find(
+    (faction) =>
+      faction.id !== actor && (content.includes(faction.name) || content.includes(faction.id)),
+  )?.id
+}
+
+function isDeclareWarSubmission(submission: CommandSubmission, content: string) {
+  if (submission.mode === 'military') {
+    return content.includes('宣战')
+  }
+
+  if (submission.mode === 'treaty') {
+    return /宣战|敌对|开战|战争状态/.test(content)
+  }
+
+  return false
 }
 
 function estimateCultureGain(content: string, toneHeat: number) {
@@ -463,10 +483,16 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     const now = Date.now()
     const eventId = createEventId(submission.mode)
     const content = submission.content.trim()
-    const targets = submission.targets.filter((target) => target !== actor)
+    let targets = submission.targets.filter((target) => target !== actor)
     const toneHeat = submission.tone?.heat ?? 0
-    const priority = submission.tone?.isAggressive ? 'P1' : 'P2'
-    const eventKind = submission.mode
+    const isDeclareWar = isDeclareWarSubmission(submission, content)
+    if (isDeclareWar && targets.length === 0) {
+      const mentionedTarget = findMentionedFaction(content, actor)
+      targets = mentionedTarget ? [mentionedTarget] : []
+    }
+
+    const priority = isDeclareWar ? 'P0' : submission.tone?.isAggressive ? 'P1' : 'P2'
+    const eventKind: EventKind = isDeclareWar ? 'declare_war' : submission.mode
     const target = targets[0]
     const targetNames = getTargetNames(targets)
     const treatyLabel = submission.treatyKind ? treatyKindLabels[submission.treatyKind] : undefined
@@ -492,6 +518,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       actor,
       target,
       payload: {
+        origin: 'player_command',
         mode: submission.mode,
         text: content,
         targets,

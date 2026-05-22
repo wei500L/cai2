@@ -1,6 +1,9 @@
 import { PixelButton } from '@/components/PixelButton'
 import { GlowPanel } from '@/components/GlowPanel'
 import { HoloDivider } from '@/components/HoloDivider'
+import { PublicSpeechBubble } from '@/features/aiSpeech/PublicSpeechBubble'
+import type { FactionId } from '@/mock/factions'
+import type { GameEvent } from '@/mock/types'
 import { useGameStore } from '@/store/gameStore'
 
 type EventStreamPanelProps = {
@@ -16,6 +19,14 @@ function formatEventTime(createdAt: number) {
     minute: '2-digit',
     second: '2-digit',
   })
+}
+
+function getPublicSpeechText(event: GameEvent) {
+  if (event.kind !== 'speech' || !event.actor || event.payload.channel !== 'public') {
+    return null
+  }
+
+  return typeof event.payload.text === 'string' ? event.payload.text : event.narration
 }
 
 export function EventStreamPanel({
@@ -59,9 +70,18 @@ export function EventStreamPanel({
                 <div className="mb-1 text-[0.54rem] uppercase tracking-[0.22em] text-[color:rgba(196,228,255,0.46)]">
                   {event.priority} · {formatEventTime(event.createdAt)} · E{event.epoch}T{event.turn}
                 </div>
-                <div className="text-[0.72rem] leading-5 text-[color:var(--text-primary)]">
-                  {event.narration}
-                </div>
+                {getPublicSpeechText(event) ? (
+                  <PublicSpeechBubble
+                    actor={event.actor as FactionId}
+                    text={getPublicSpeechText(event) ?? ''}
+                    compact
+                    showTail={false}
+                  />
+                ) : (
+                  <div className="text-[0.72rem] leading-5 text-[color:var(--text-primary)]">
+                    {event.narration}
+                  </div>
+                )}
               </div>
             ))}
           </div>

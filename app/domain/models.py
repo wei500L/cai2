@@ -270,6 +270,14 @@ class GameState(DomainModel):
     latest_action_id: str | None = None
 
 
+class InitialGameState(DomainModel):
+    factions: list[FactionState] = Field(default_factory=list)
+    regions: list[MapRegion] = Field(default_factory=list)
+    relationships: list[Relationship] = Field(default_factory=list)
+    treaties: list[Treaty] = Field(default_factory=list)
+    current_turn: EpochTurn
+
+
 class RecordedPlayerMessage(DomainModel):
     message_id: str
     room_id: str
