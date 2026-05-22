@@ -236,8 +236,12 @@ export function CommandTerminal() {
       return
     }
 
-    setModeSafely(commandModeHotkey)
-    setCommandModeHotkey(null)
+    const frame = window.requestAnimationFrame(() => {
+      setModeSafely(commandModeHotkey)
+      setCommandModeHotkey(null)
+    })
+
+    return () => window.cancelAnimationFrame(frame)
   }, [commandModeHotkey, setCommandModeHotkey, setModeSafely])
 
   const handleContentChange = useCallback(

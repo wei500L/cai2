@@ -35,9 +35,12 @@ function RollingStat({
   const [displayValue, setDisplayValue] = useState(0)
 
   useEffect(() => {
-    setDisplayValue(0)
+    const resetTimer = window.setTimeout(() => setDisplayValue(0), 0)
     const timer = window.setTimeout(() => setDisplayValue(value), 90)
-    return () => window.clearTimeout(timer)
+    return () => {
+      window.clearTimeout(resetTimer)
+      window.clearTimeout(timer)
+    }
   }, [value])
 
   return (

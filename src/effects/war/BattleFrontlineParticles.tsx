@@ -51,7 +51,8 @@ export class BattleFrontlineParticles implements DiplomacyEffect {
     }))
   }
 
-  onUpdate(_dt: number) {
+  onUpdate(dt: number) {
+    void dt
     return this.active
   }
 

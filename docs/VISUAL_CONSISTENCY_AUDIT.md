@@ -1,0 +1,23 @@
+# Visual Consistency Audit
+
+- 修复：`PixelButton` 统一 hover / active / focus / disabled 四态；disabled 固定 `opacity: 0.4`、`cursor: not-allowed`，禁用 hover/tap 动画。
+- 修复：全局 `button / role=button / input / select / textarea / a` 增加 `2px` 势力 Glow focus outline。
+- 修复：`GlowPanel` 增加 `focus-within` Glow 强化描边，焦点态阴影约 1.4x。
+- 修复：`HotkeysHelp`、`SettingsPanel`、`EmptyState` 改用 `GlowPanel`，保持 HUD 全息外观。
+- 修复：`EventStream` 空列表接入 `EmptyState`。
+- 修复：`RelationsPanel` 势力未加载接入 `LoadingHologram`，无匹配势力接入 `EmptyState`。
+- 修复：`action.rejected` 通过全局 `ErrorPanel` toast 呈现。
+- 修复：`LandingPage` 主背景从硬编码 `#02040a` 改为 `var(--bg-space)`。
+- 修复：全局动画 easing 使用 holo 曲线；阶段切换过渡统一为 `0.6s`。
+- 修复：`CommandTerminal` 小屏布局改为底部全宽抽屉，模式 tab 保持横向滚动。
+- 修复：`HotkeysHelp`、`SettingsPanel` 在 `<640` 使用全屏 modal/drawer 约束。
+- 修复：`SettingsPanel` 使用全息 HUD 风格，提供粒子密度、阶段时长 mock、FPS、重置游戏。
+- 修复：`TopBar` / `PhaseIndicator` 右侧加入设置齿轮入口。
+- 修复：地图、Landing 星空、外交效果、战争前线接入 `globalParticleDensity`。
+- 修复：FPS 低于阈值时自动降低粒子密度并降级 EffectsLayer 非必要内容。
+- 保留：战争、外交粒子 Canvas 内部高亮色为效果材质色，未强制替换为 Tailwind token。
+- 保留：Replay 圆形节点/轨迹为数据可视化语义形状，未改为直角。
+- 保留：`BattleResultCard` 战争红色硬编码为战斗告警材质色，后续可抽象为 `--battle-glow` token。
+- 保留：`PrivateMessageDrawer` 紫色私聊通道色为密谈语义色，后续可抽象为 `--private-glow` token。
+- 发现：Replay 部分按钮仍为原生 `button`，依赖全局四态兜底；后续可逐步迁移到 `PixelButton`。
+- 发现：部分非 HUD 数字仍为普通文本；关键倒计时、关系值、战斗数值已使用 `ScrollNumber`。
