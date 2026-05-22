@@ -138,6 +138,9 @@ class PostgresMessageLogRepository(MessageLogRepository):
 
 
 class PostgresEventLogRepository(EventLogRepository):
+    def next_seq(self, room_id: str) -> int:
+        raise NotImplementedError(_PENDING)
+
     async def append(self, event: GameEvent) -> None:
         raise NotImplementedError(_PENDING)
 

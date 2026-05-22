@@ -161,6 +161,9 @@ class MessageLogRepository(Protocol):
 
 @runtime_checkable
 class EventLogRepository(Protocol):
+    def next_seq(self, room_id: str) -> int:
+        ...
+
     async def append(self, event: GameEvent) -> None:
         ...
 

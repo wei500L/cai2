@@ -52,6 +52,8 @@ class EventKind(StrEnum):
     declare_war = "declare_war"
     alliance = "alliance"
     trade = "trade"
+    non_aggression = "non_aggression"
+    ceasefire = "ceasefire"
     betrayal = "betrayal"
     battle = "battle"
     economy = "economy"

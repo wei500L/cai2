@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections import defaultdict
 from collections.abc import Collection, Iterable
 from copy import deepcopy
 from typing import Any, Generic, TypeVar, cast
@@ -19,6 +20,7 @@ from app.domain.models import (
     SettlementResult,
     Treaty,
 )
+from app.game.visibility import build_outbound_events_for_player
 from app.repositories.base import (
     ActionLogRepository,
     AsyncRepository,
@@ -283,8 +285,13 @@ class MemoryMessageLogRepository(MessageLogRepository):
 class MemoryEventLogRepository(EventLogRepository):
     def __init__(self, clock: Clock | None = None) -> None:
         self._events: list[GameEvent] = []
+        self._seq_by_room: dict[str, int] = defaultdict(int)
         self._lock = asyncio.Lock()
         self._clock = clock
+
+    def next_seq(self, room_id: str) -> int:
+        self._seq_by_room[room_id] += 1
+        return self._seq_by_room[room_id]
 
     async def append(self, event: GameEvent) -> None:
         async with self._lock:
@@ -323,9 +330,7 @@ class MemoryEventLogRepository(EventLogRepository):
 
     @staticmethod
     def _is_visible_to(event: GameEvent, faction_id: FactionId) -> bool:
-        if event.visibility.scope == VisibilityScope.public:
-            return True
-        return faction_id in event.visibility.faction_ids
+        return bool(build_outbound_events_for_player([event], viewer_faction=faction_id))
 
 
 class MemorySettlementRepository(SettlementRepository):

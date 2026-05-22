@@ -18,26 +18,23 @@ function isNarrationEvent(event: GameEvent) {
 export function NarrationBanner() {
   const events = useGameStore((state) => state.events)
   const latestNarration = useMemo(() => events.find(isNarrationEvent) ?? null, [events])
-  const [visibleEventId, setVisibleEventId] = useState<string | null>(null)
+
+  return latestNarration ? <NarrationBannerItem key={latestNarration.id} event={latestNarration} /> : null
+}
+
+function NarrationBannerItem({ event }: { event: GameEvent }) {
+  const [visible, setVisible] = useState(true)
 
   useEffect(() => {
-    if (!latestNarration) {
-      return undefined
-    }
-
-    setVisibleEventId(latestNarration.id)
-    const timer = window.setTimeout(() => setVisibleEventId(null), 4_200)
-
+    const timer = window.setTimeout(() => setVisible(false), 4_200)
     return () => window.clearTimeout(timer)
-  }, [latestNarration])
-
-  const visible = latestNarration && visibleEventId === latestNarration.id
+  }, [])
 
   return (
     <AnimatePresence>
       {visible ? (
         <motion.div
-          key={latestNarration.id}
+          key={event.id}
           initial={{ opacity: 0, y: -18, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -18, scale: 0.98 }}
@@ -48,7 +45,7 @@ export function NarrationBanner() {
             系统旁白
           </div>
           <div className="font-sans text-[0.95rem] leading-7 text-[color:var(--text-primary)]">
-            {latestNarration.narration}
+            {event.narration}
           </div>
         </motion.div>
       ) : null}

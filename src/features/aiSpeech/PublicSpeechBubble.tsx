@@ -32,11 +32,9 @@ export function PublicSpeechBubble({
 
   useEffect(() => {
     if (compact) {
-      setVisibleLength(text.length)
       return undefined
     }
 
-    setVisibleLength(0)
     const interval = window.setInterval(() => {
       setVisibleLength((current) => {
         if (current >= text.length) {

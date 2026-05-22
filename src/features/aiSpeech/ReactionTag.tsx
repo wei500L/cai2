@@ -18,7 +18,6 @@ export function ReactionTag({ actor, label }: ReactionTagProps) {
   } as CSSProperties
 
   useEffect(() => {
-    setVisible(true)
     const timer = window.setTimeout(() => setVisible(false), 1_500)
 
     return () => window.clearTimeout(timer)

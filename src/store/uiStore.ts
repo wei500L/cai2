@@ -1,7 +1,11 @@
 import { create } from 'zustand'
+import type { FactionId } from '@/mock/factions'
 
 export type HudMode = 'observe' | 'action' | 'resolve' | 'arbitrate'
 export type HudFocusTarget = 'left' | 'center' | 'right' | 'bottom'
+export type EventFilter = 'all' | 'P0' | 'P1' | 'mine'
+export type EventStreamScrollMode = 'auto' | 'manual'
+export type MapFocus = { regionId?: string; factionId?: FactionId } | null
 
 type UIStoreState = {
   leftPanelOpen: boolean
@@ -10,6 +14,9 @@ type UIStoreState = {
   unreadPrivateCount: number
   hudMode: HudMode
   focusedPanel: HudFocusTarget
+  eventFilter: EventFilter
+  mapFocus: MapFocus
+  eventStreamScrollMode: EventStreamScrollMode
   setLeftPanelOpen: (open: boolean) => void
   toggleLeftPanel: () => void
   setRightPanelOpen: (open: boolean) => void
@@ -21,6 +28,9 @@ type UIStoreState = {
   setHudMode: (mode: HudMode) => void
   setFocusedPanel: (panel: HudFocusTarget) => void
   cycleFocusedPanel: () => void
+  setEventFilter: (filter: EventFilter) => void
+  setMapFocus: (focus: MapFocus) => void
+  setEventStreamScrollMode: (mode: EventStreamScrollMode) => void
 }
 
 const focusOrder: HudFocusTarget[] = ['left', 'center', 'right', 'bottom']
@@ -34,6 +44,9 @@ export const useUIStore = create<UIStoreState>((set) => ({
   unreadPrivateCount: 0,
   hudMode: 'action',
   focusedPanel: 'center',
+  eventFilter: 'all',
+  mapFocus: null,
+  eventStreamScrollMode: 'auto',
   setLeftPanelOpen: (leftPanelOpen) => {
     set({ leftPanelOpen })
   },
@@ -79,5 +92,14 @@ export const useUIStore = create<UIStoreState>((set) => ({
       const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % focusOrder.length : 0
       return { focusedPanel: focusOrder[nextIndex] }
     })
+  },
+  setEventFilter: (eventFilter) => {
+    set({ eventFilter })
+  },
+  setMapFocus: (mapFocus) => {
+    set({ mapFocus })
+  },
+  setEventStreamScrollMode: (eventStreamScrollMode) => {
+    set({ eventStreamScrollMode })
   },
 }))

@@ -77,6 +77,7 @@ export function MapStage() {
         {latestSpeech?.actor ? (
           <div className="pointer-events-none absolute left-1/2 top-[18%] z-20 -translate-x-1/2">
             <PublicSpeechBubble
+              key={latestSpeech.id}
               actor={latestSpeech.actor as FactionId}
               text={getPublicSpeechText(latestSpeech) ?? ''}
             />
