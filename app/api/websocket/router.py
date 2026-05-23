@@ -31,6 +31,7 @@ from app.protocol.outgoing import (
 from app.protocol.routing import parse_incoming
 from app.repositories.factory import Repositories
 from app.services.factions_meta_service import FactionsMetaService
+from app.services.room_service import build_snapshot as build_room_snapshot
 from app.services.settlement_service import compute_border_tension
 from app.services.takeover_service import TakeoverService
 
@@ -571,6 +572,7 @@ async def _room_full_state(
 
 def _room_state(room: Any) -> dict[str, Any]:
     if room is None:
+        room_settings = get_settings().room_settings
         return {
             "id": "",
             "status": "unknown",
@@ -578,8 +580,10 @@ def _room_state(room: Any) -> dict[str, Any]:
             "max_players": 0,
             "players": [],
             "ai_factions": [],
+            "settings": room_settings.model_dump(mode="json"),
         }
 
+    room_settings = build_room_snapshot(room).settings
     return {
         "id": room.id,
         "status": room.status.value if hasattr(room.status, "value") else str(room.status),
@@ -587,6 +591,7 @@ def _room_state(room: Any) -> dict[str, Any]:
         "max_players": room.max_players,
         "players": [player.model_dump(mode="json") for player in room.players],
         "ai_factions": list(room.ai_factions),
+        "settings": room_settings.model_dump(mode="json"),
     }
 
 

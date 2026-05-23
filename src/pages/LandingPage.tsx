@@ -45,7 +45,7 @@ export default function LandingPage() {
     () => [
       ['SIGNAL', 'NLP COMMAND CORE'],
       ['COLONY', 'EDEN-7 ORBITAL NET'],
-      ['FACTIONS', '8 CIVILIZATION LINKS'],
+      ['POWERS', '8 CIVILIZATION LINKS'],
     ],
     [],
   )

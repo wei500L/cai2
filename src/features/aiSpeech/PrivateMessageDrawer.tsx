@@ -17,7 +17,9 @@ function formatTime(createdAt: number) {
 
 export function PrivateMessageDrawer() {
   const selectedFactionId = useGameStore((state) => state.selectedFactionId)
-  const privateMessages = useGameStore((state) => state.privateMessages)
+  const privateMessages = useGameStore((state) =>
+    state.aiSpeakQueue.filter((item) => item.kind === 'private'),
+  )
   const rightPanelOpen = useUIStore((state) => state.rightPanelOpen)
   const open = useUIStore((state) => state.privateDrawerOpen)
   const unreadCount = useUIStore((state) => state.unreadPrivateCount)
@@ -31,7 +33,7 @@ export function PrivateMessageDrawer() {
   const visibleMessages = useMemo(
     () =>
       privateMessages
-        .filter((message) => message.from === playerId || message.to === playerId)
+        .filter((message) => message.factionId === playerId || message.targetFactionId === playerId)
         .slice(0, 32),
     [playerId, privateMessages],
   )
@@ -44,7 +46,10 @@ export function PrivateMessageDrawer() {
 
     const seen = seenIds.current
     const incoming = privateMessages.filter(
-      (message) => !seen.has(message.id) && message.to === playerId && message.from !== playerId,
+      (message) =>
+        !seen.has(message.id) &&
+        message.targetFactionId === playerId &&
+        message.factionId !== playerId,
     )
 
     if (incoming.length > 0 && !open) {
@@ -69,9 +74,7 @@ export function PrivateMessageDrawer() {
     <div
       className={clsx(
         'fixed bottom-[12.25rem] z-50 font-hud transition-all duration-300',
-        rightPanelOpen
-          ? 'right-[calc(min(86vw,320px)+1rem)] max-xl:right-4'
-          : 'right-4',
+        rightPanelOpen ? 'right-[calc(min(86vw,320px)+1rem)] max-xl:right-4' : 'right-4',
       )}
     >
       <button
@@ -109,20 +112,18 @@ export function PrivateMessageDrawer() {
                   </div>
                 ) : (
                   visibleMessages.map((message) => {
-                    const own = message.from === playerId
-                    const faction = factionMetaById[message.from]
-                    const token = factionTokens[message.from]
+                    const actorId = message.factionId ?? 'starlight'
+                    const own = actorId === playerId
+                    const faction = factionMetaById[actorId]
+                    const token = factionTokens[actorId]
+                    const privateMessage = message.privateMessage
+                    const text = privateMessage?.body ?? message.text
                     const style = {
                       '--private-border': token.glow,
                     } as CSSProperties
 
                     return (
-                      <motion.div
-                        key={message.id}
-                        layout
-                        className={own ? 'ml-8' : 'mr-8'}
-                        style={style}
-                      >
+                      <motion.div key={message.id} layout className={own ? 'ml-8' : 'mr-8'} style={style}>
                         <div
                           className="border bg-[color:rgba(47,12,74,0.72)] px-3 py-2 text-[color:var(--text-primary)]"
                           style={{
@@ -130,10 +131,10 @@ export function PrivateMessageDrawer() {
                           }}
                         >
                           <div className="mb-1 flex items-center justify-between gap-3 text-[0.52rem] uppercase tracking-[0.16em] text-[color:rgba(234,216,255,0.55)]">
-                            <span>{own ? '我方' : faction?.name ?? message.from}</span>
-                            <span>{formatTime(message.createdAt)}</span>
+                            <span>{own ? '我方' : faction?.name ?? actorId}</span>
+                            <span>{formatTime(privateMessage?.createdAt ?? message.createdAt)}</span>
                           </div>
-                          <p className="break-words text-[0.72rem] leading-5">{message.body}</p>
+                          <p className="break-words text-[0.72rem] leading-5">{text}</p>
                         </div>
                       </motion.div>
                     )

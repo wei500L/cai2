@@ -156,6 +156,7 @@ class AIOutputService:
             kind=EventKind.speech,
             actor_faction=faction,
             target_faction=None,
+            target_event_id=None,
             content=content,
             source="template",
             speech_kind="public",
@@ -201,6 +202,7 @@ class AIOutputService:
                 kind=EventKind.private,
                 actor_faction=faction,
                 target_faction=target,
+                target_event_id=None,
                 content=content,
                 source="template",
                 speech_kind="private",
@@ -255,6 +257,9 @@ class AIOutputService:
         id_prefix: str,
     ) -> GameEvent:
         visibility = _visibility_for_item(item)
+        target_event_id = item.target_event_id
+        if item.kind == "reaction" and target_event_id is None:
+            target_event_id = f"{id_prefix}:{room_id}:{epoch}:{turn}:ai-output:{index}"
         return self._build_event(
             id=f"{id_prefix}:{room_id}:{epoch}:{turn}:ai-output:{index}",
             room_id=room_id,
@@ -263,6 +268,7 @@ class AIOutputService:
             kind=_event_kind_for_item(item),
             actor_faction=None if item.kind == "narration" else item.faction_id,
             target_faction=item.target_faction,
+            target_event_id=target_event_id,
             content=item.content,
             source=source,
             speech_kind=item.kind,
@@ -280,6 +286,7 @@ class AIOutputService:
         kind: EventKind,
         actor_faction: FactionId | None,
         target_faction: FactionId | None,
+        target_event_id: str | None,
         content: str,
         source: str,
         speech_kind: _SpeechKind,
@@ -293,6 +300,8 @@ class AIOutputService:
         }
         if target_faction is not None:
             payload["target_faction"] = target_faction
+        if target_event_id is not None:
+            payload["target_event_id"] = target_event_id
         return GameEvent(
             id=id,
             room_id=room_id,
@@ -439,6 +448,7 @@ def _normalize_speech_item(
         kind=kind,
         content=content[:400],
         target_faction=target_faction,
+        target_event_id=str(data["target_event_id"]) if data.get("target_event_id") else None,
     )
 
 

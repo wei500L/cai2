@@ -1,5 +1,6 @@
 import { motion } from 'framer-motion'
 import { factionMetaStore } from '@/store/factionMetaStore'
+import { useEpochNarration } from '@/store/epochSummaryStore'
 import { useGameStore } from '@/store/gameStore'
 
 function factionName(id: string | undefined | null, metaById: ReturnType<typeof factionMetaStore.getState>['byId']) {
@@ -8,11 +9,9 @@ function factionName(id: string | undefined | null, metaById: ReturnType<typeof 
 
 export function KeyBetrayals() {
   const epochId = useGameStore((state) => state.epoch.id)
-  const events = useGameStore((state) => state.events)
   const factionMetaById = factionMetaStore((state) => state.byId)
-  const betrayals = events
-    .filter((event) => event.epoch === epochId && event.kind === 'betrayal')
-    .sort((a, b) => a.createdAt - b.createdAt)
+  const summary = useEpochNarration(epochId).summary
+  const betrayals = summary?.highlights.betrayals ?? []
 
   return (
     <motion.section

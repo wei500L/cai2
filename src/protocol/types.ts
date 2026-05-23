@@ -1,6 +1,7 @@
 import type { CommandMode, MilitaryAction, ToneAnalysis } from '@/features/commandTerminal/types'
 import type {
   ArbitratePhase,
+  EpicNarrationPayload,
   FactionId,
   FactionMeta,
   GameEvent,
@@ -9,6 +10,7 @@ import type {
   MockGameWorldState,
   PrivateMessage,
   RegionEntry,
+  SummaryNarrationPayload,
   Treaty,
   TreatyKind,
 } from '@/types'
@@ -293,13 +295,31 @@ export type RoomPlayerSnapshot = {
   ready: boolean
   ai_takeover: boolean
 }
-export type RoomSnapshotMessage = Envelope<'room.snapshot', {
+export type RoomSettingsPayload = {
+  phase_durations: Partial<Record<GamePhase, number>>
+  turns_per_epoch: number
+  max_epochs: number
+}
+export type RoomSnapshotPayload = {
   room_id: string
   mode: RoomMode
   status: string
   players: RoomPlayerSnapshot[]
   ai_factions: FactionId[]
-}>
+  settings: RoomSettingsPayload
+  current_turn?: ReconnectEpochTurn | null
+  factions?: MockGameWorldState['factions']
+  regions?: MockGameWorldState['regions']
+  relationships?: MockGameWorldState['relationships']
+  treaties?: MockGameWorldState['treaties']
+  recent_events?: GameEvent[]
+  recent_messages?: Array<Record<string, unknown>>
+  ai_thinking_state?: ReconnectAIThinkingState | null
+  border_tension?: BorderTensionEntry[]
+  winner?: FactionId | null
+  final_narration?: string | null
+}
+export type RoomSnapshotMessage = Envelope<'room.snapshot', RoomSnapshotPayload>
 export interface FactionMetaPayload {
   room_id?: string
   schema_version?: string
@@ -327,12 +347,28 @@ export type RoomPlayerResumeMessage = Envelope<'room.player_resume', {
   player_id: string
   faction_id: FactionId
 }>
-export type RoomStartMessage = Envelope<'room.start', {
+export type RoomStartedPayload = {
   room_id: string
-  initial_state: Partial<MockGameWorldState> & {
+  mode?: RoomMode
+  status?: string
+  players?: RoomPlayerSnapshot[]
+  ai_factions?: FactionId[]
+  settings?: RoomSettingsPayload
+  initial_state: Partial<MockGameWorldState> & Record<string, unknown> & {
     current_turn?: ReconnectEpochTurn | null
+    settings?: RoomSettingsPayload
+    room?: {
+      id?: string
+      mode?: RoomMode
+      status?: string
+      players?: RoomPlayerSnapshot[]
+      ai_factions?: FactionId[]
+      current_player_id?: string
+    }
   }
-}>
+}
+export type RoomStartMessage = Envelope<'room.start', RoomStartedPayload>
+export type RoomStartedMessage = Envelope<'room.started', RoomStartedPayload>
 export type RoomWorldGeometryMessage = Envelope<'room.world_geometry', WorldGeometryPayload>
 export type DiplomaticArc = {
   id: string
@@ -484,6 +520,8 @@ export type ResolveEventsMessage = Envelope<'resolve.events', EventBundlePayload
 }>
 export type ResolveMapDiffMessage = Envelope<'resolve.map_diff', MapDiffPayload>
 export type ResolveStatsDiffMessage = Envelope<'resolve.stats_diff', StatsDiffPayload>
+export type EpicNarrationMessage = Envelope<'arbitrate.epic_narration', EpicNarrationPayload>
+export type SummaryNarrationMessage = Envelope<'arbitrate.summary_narration', SummaryNarrationPayload>
 
 export type AIThinkingMessage = Envelope<'ai.thinking', {
   room_id: string
@@ -558,6 +596,7 @@ export type IncomingMessage =
   | RoomFactionsMetaMessage
   | RoomPlayerTakeoverMessage
   | RoomPlayerResumeMessage
+  | RoomStartedMessage
   | RoomStartMessage
   | RoomWorldGeometryMessage
   | RoomFinishedMessage
@@ -573,6 +612,8 @@ export type IncomingMessage =
   | ResolveEventsMessage
   | ResolveMapDiffMessage
   | ResolveStatsDiffMessage
+  | EpicNarrationMessage
+  | SummaryNarrationMessage
   | AIThinkingMessage
   | AISpeakMessage
   | AIReactionMessage

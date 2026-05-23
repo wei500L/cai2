@@ -74,7 +74,7 @@ function schedule(delayMs: number, task: () => void) {
   activeTimers.add(timer)
 }
 
-type AITransport = Pick<MockTransport, 'emitAIEvent' | 'emitAIPrivateMessage'>
+type AITransport = Pick<MockTransport, 'emitAIEvent' | 'emitAIPrivateMessage' | 'emitAIThinking'>
 
 function pushAIEvent(
   transport: AITransport,
@@ -99,6 +99,16 @@ function pushAIEvent(
     target,
     payload,
     narration: text,
+  })
+}
+
+function pushThinking(transport: AITransport, factionId: FactionId, progress = 0.12) {
+  transport.emitAIThinking({
+    room_id: gameStoreApi.getState().currentRoomId ?? 'mock-room',
+    faction_id: factionId,
+    progress,
+    phase: gameStoreApi.getState().epoch.phase,
+    model: 'mock-llm',
   })
 }
 
@@ -219,17 +229,24 @@ function pushBetrayalEvent(transport: AITransport, actor: FactionId, target: Fac
 function triggerSpeechResponses(transport: AITransport, playerEvent: GameEvent) {
   const playerId = getPlayerFaction()
   const random = rng()
+  const responders = getAIFactions(playerId).filter(() => random() < 0.5)
+  const speakingFaction = responders[0] ?? pickOne(random, getAIFactions(playerId))
+  const thinkingTargets = responders.length > 0 ? responders : [speakingFaction]
 
-  for (const factionId of getAIFactions(playerId)) {
-    if (random() < 0.5) {
-      pushReaction(transport, factionId, playerId, playerEvent.id)
-    }
+  for (const factionId of thinkingTargets) {
+    pushThinking(transport, factionId)
   }
 
-  const responder = pickOne(random, getAIFactions(playerId))
-  schedule(randomInt(random, 1_000, 3_000), () => {
-    pushPublicSpeech(transport, responder, playerId, playerEvent.id)
+  const speechDelay = randomInt(random, 1_000, 3_000)
+  schedule(speechDelay, () => {
+    pushPublicSpeech(transport, speakingFaction, playerId, playerEvent.id)
   })
+
+  for (const factionId of responders.filter((id) => id !== speakingFaction)) {
+    schedule(speechDelay + randomInt(random, 300, 900), () => {
+      pushReaction(transport, factionId, playerId, playerEvent.id)
+    })
+  }
 }
 
 function triggerPrivateResponses(transport: AITransport, playerEvent: GameEvent) {
@@ -242,6 +259,7 @@ function triggerPrivateResponses(transport: AITransport, playerEvent: GameEvent)
 
   const random = rng()
   const roll = random()
+  pushThinking(transport, target)
 
   if (roll < 0.7) {
     schedule(randomInt(random, 1_500, 3_000), () => {
@@ -276,9 +294,14 @@ function triggerPrivateResponses(transport: AITransport, playerEvent: GameEvent)
 function triggerDeclareWarResponses(transport: AITransport, playerEvent: GameEvent) {
   const playerId = getPlayerFaction()
   const targets = playerEvent.target ? [playerEvent.target] : getAIFactions(playerId)
+  for (const target of targets) {
+    pushThinking(transport, target, 0.18)
+  }
 
   for (const target of targets) {
-    pushReaction(transport, target, playerId, playerEvent.id)
+    schedule(randomInt(rng(), 400, 900), () => {
+      pushReaction(transport, target, playerId, playerEvent.id)
+    })
   }
 
   schedule(2_000, () => {

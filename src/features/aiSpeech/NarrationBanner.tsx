@@ -1,40 +1,28 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import type { GameEvent } from '@/types'
 import { useGameStore } from '@/store/gameStore'
 
-const narrationKinds = new Set<GameEvent['kind']>([
-  'narration',
-  'phase_change',
-  'battle',
-  'declare_war',
-  'betrayal',
-])
-
-function isNarrationEvent(event: GameEvent) {
-  return narrationKinds.has(event.kind) || event.priority === 'P0'
-}
-
 export function NarrationBanner() {
-  const events = useGameStore((state) => state.events)
-  const latestNarration = useMemo(() => events.find(isNarrationEvent) ?? null, [events])
+  const narrations = useGameStore((state) =>
+    state.aiSpeakQueue.filter((item) => item.kind === 'narration'),
+  )
+  const latestNarration = useMemo(() => narrations[0] ?? null, [narrations])
 
-  return latestNarration ? <NarrationBannerItem key={latestNarration.id} event={latestNarration} /> : null
+  return latestNarration ? <NarrationBannerItem key={latestNarration.id} text={latestNarration.text} /> : null
 }
 
-function NarrationBannerItem({ event }: { event: GameEvent }) {
+function NarrationBannerItem({ text }: { text: string }) {
   const [visible, setVisible] = useState(true)
 
   useEffect(() => {
     const timer = window.setTimeout(() => setVisible(false), 4_200)
     return () => window.clearTimeout(timer)
-  }, [])
+  }, [text])
 
   return (
     <AnimatePresence>
       {visible ? (
         <motion.div
-          key={event.id}
           initial={{ opacity: 0, y: -18, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -18, scale: 0.98 }}
@@ -51,7 +39,7 @@ function NarrationBannerItem({ event }: { event: GameEvent }) {
             系统旁白
           </div>
           <div className="font-sans text-[0.95rem] leading-7 text-[color:var(--text-primary)]">
-            {event.narration}
+            {text}
           </div>
         </motion.div>
       ) : null}

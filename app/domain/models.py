@@ -253,6 +253,7 @@ class AISpeechItem(DomainModel):
     kind: Literal["public", "private", "reaction", "narration"]
     content: str
     target_faction: FactionId | None = None
+    target_event_id: str | None = None
 
 
 class SettlementResult(DomainModel):

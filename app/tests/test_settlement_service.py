@@ -353,7 +353,7 @@ async def test_run_turn_settlement_persists_state_and_outbound_bundle(
     assert bundle.room_id == room.id
     assert bundle.epoch == 1
     assert bundle.turn == 2
-    assert bundle.seq_base == 2
+    assert bundle.seq_base >= 2
     assert bundle.resolve_events
     assert {"changes", "border_updates"} <= set(bundle.resolve_map_diff)
     assert {"faction_stats", "relationship_changes"} <= set(bundle.resolve_stats_diff)

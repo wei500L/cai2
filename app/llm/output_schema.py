@@ -82,6 +82,7 @@ class AISpeechItem(BaseModel):
     kind: Literal["public", "private", "reaction", "narration"]
     content: str = Field(min_length=1, max_length=400)
     target_faction: FactionId | None = None
+    target_event_id: str | None = None
     internal_thought: str | None = Field(default=None, max_length=600)
 
 
@@ -97,6 +98,44 @@ class SettlementModelOutput(BaseModel):
     narrative_events: list[NarrativeEvent] = Field(default_factory=list)
     map_change_suggestions: list[MapChangeSuggestion] = Field(default_factory=list)
     stat_change_suggestions: list[StatChangeSuggestion] = Field(default_factory=list)
+
+
+class EpicNarrationModelOutput(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid", validate_assignment=True)
+
+    narrative: str = Field(min_length=200, max_length=600)
+    tone: str = Field(min_length=1, max_length=32)
+    key_events: list[str] = Field(default_factory=list, min_length=1, max_length=6)
+
+
+class SummaryRankingItem(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid", validate_assignment=True)
+
+    faction_id: FactionId
+    rank: int = Field(ge=1, le=8)
+    previous_rank: int | None = Field(default=None, ge=1, le=8)
+    movement: Literal["up", "down", "flat"]
+    total_power: float
+    delta: float
+
+
+class SummaryHighlightItem(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid", validate_assignment=True)
+
+    kind: Literal["war", "speech", "betrayal", "alliance", "trade", "rank_change", "other"]
+    text: str = Field(min_length=1, max_length=120)
+
+
+class SummaryNarrationModelOutput(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid", validate_assignment=True)
+
+    headline: str = Field(min_length=4, max_length=64)
+    rankings: list[SummaryRankingItem] = Field(default_factory=list, min_length=1, max_length=8)
+    highlights: list[SummaryHighlightItem] = Field(
+        default_factory=list,
+        min_length=2,
+        max_length=6,
+    )
 
 
 class ExplosionJudgeOutput(BaseModel):

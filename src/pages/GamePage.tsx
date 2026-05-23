@@ -4,8 +4,10 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { PixelButton } from '@/components/PixelButton'
 import { Scanlines } from '@/components/Scanlines'
 import { DevPerfOverlay } from '@/components/DevPerfOverlay'
+import { ConnectionErrorPanel } from '@/components/ConnectionErrorPanel'
 import { ErrorPanel } from '@/components/ErrorPanel'
 import { HotkeysHelp } from '@/components/HotkeysHelp'
+import { LoadingHologram } from '@/components/LoadingHologram'
 import { SettingsPanel } from '@/components/SettingsPanel'
 import { NarrationBanner } from '@/features/aiSpeech/NarrationBanner'
 import { PrivateMessageDrawer } from '@/features/aiSpeech/PrivateMessageDrawer'
@@ -31,6 +33,7 @@ import type { ExplosionKind } from '@/protocol/types'
 
 const COMPACT_BREAKPOINT = 960
 const DENSE_BREAKPOINT = 1280
+const FORCE_MOCK_SESSION_KEY = 'diplomacy_force_mock_once'
 
 function useViewportWidth() {
   const [width, setWidth] = useState(() =>
@@ -300,9 +303,10 @@ export default function GamePage() {
   const isCompact = viewportWidth < COMPACT_BREAKPOINT
   const isMobile = viewportWidth < 640
   const isDense = viewportWidth < DENSE_BREAKPOINT
-  const initGame = useGameStore((state) => state.initGame)
+  const bootstrapEmpty = useGameStore((state) => state.bootstrapEmpty)
   const selectedFactionId = useGameStore((state) => state.selectedFactionId)
   const currentRoomId = useGameStore((state) => state.currentRoomId)
+  const gameStatus = useGameStore((state) => state.status)
   const factionId = resolveFactionId(selectedFactionId) ?? 'starlight'
   const faction = factionTokens[factionId]
   const leftPanelOpen = useUIStore((state) => state.leftPanelOpen)
@@ -324,10 +328,14 @@ export default function GamePage() {
   const setHudMode = useUIStore((state) => state.setHudMode)
   const phaseConfig = getPhaseUIConfig(hudMode)
   const [finishNowMs, setFinishNowMs] = useState(() => Date.now())
+  const [snapshotTimedOut, setSnapshotTimedOut] = useState(false)
+  const [snapshotWaitStartedAt] = useState(() => Date.now())
 
   useEffect(() => {
-    initGame()
-  }, [initGame])
+    if (useGameStore.getState().status === 'not_started') {
+      bootstrapEmpty()
+    }
+  }, [bootstrapEmpty])
 
   useEffect(() => {
     const monitor = startPerfMonitor()
@@ -391,6 +399,16 @@ export default function GamePage() {
     return () => window.clearTimeout(timer)
   }, [focusToast, setFocusToast])
 
+  useEffect(() => {
+    if (gameStatus === 'not_started') {
+      const timer = window.setTimeout(() => setSnapshotTimedOut(true), 10_000)
+      return () => window.clearTimeout(timer)
+    }
+
+    const timer = window.setTimeout(() => setSnapshotTimedOut(false), 0)
+    return () => window.clearTimeout(timer)
+  }, [gameStatus])
+
   const leftWidth = phaseConfig.eventStreamMode === 'compact' ? 104 : isDense ? 240 : 280
   const rightWidth = phaseConfig.relationsMode === 'compact' ? 116 : isDense ? 280 : 320
   const bottomHeight =
@@ -429,6 +447,37 @@ export default function GamePage() {
       rightWidth,
     ],
   )
+
+  if (gameStatus === 'not_started') {
+    if (snapshotTimedOut) {
+      return (
+        <ConnectionErrorPanel
+          wsUrl={window.location.origin}
+          errorCode="SNAPSHOT_TIMEOUT"
+          lastAttemptAt={snapshotWaitStartedAt}
+          onRetry={() => window.location.reload()}
+          onSwitchToMock={() => {
+            window.sessionStorage.setItem(FORCE_MOCK_SESSION_KEY, '1')
+            window.location.reload()
+          }}
+        />
+      )
+    }
+
+    return (
+      <main className="relative grid h-screen place-items-center overflow-hidden bg-[color:var(--bg-space)] pt-6 text-[color:var(--text-primary)]">
+        <div
+          aria-hidden
+          className="absolute inset-0"
+          style={{
+            backgroundImage:
+              'linear-gradient(180deg, rgba(6,10,18,0.96) 0%, rgba(2,4,10,0.98) 100%), repeating-linear-gradient(90deg, rgba(51,170,255,0.035) 0, rgba(51,170,255,0.035) 1px, transparent 1px, transparent 72px), repeating-linear-gradient(0deg, rgba(255,255,255,0.025) 0, rgba(255,255,255,0.025) 1px, transparent 1px, transparent 72px)',
+          }}
+        />
+        <LoadingHologram label="等待房间初始化..." className="relative z-10 min-h-56 w-[min(28rem,calc(100vw-2rem))]" />
+      </main>
+    )
+  }
 
   return (
     <main

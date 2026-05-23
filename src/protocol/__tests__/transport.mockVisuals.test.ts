@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { attachAdapter } from '../adapter'
 import { MockTransport } from '../transport'
 import type { OutgoingMessage } from '../types'
+import { epochSummaryStore } from '@/store/epochSummaryStore'
 import { gameStoreApi, useGameStore } from '@/store/gameStore'
 
 function makeSpeechMessage(id: string): OutgoingMessage {
@@ -63,6 +64,7 @@ describe('MockTransport diplomatic visuals', () => {
   afterEach(() => {
     transport?.disconnect()
     transport = null
+    epochSummaryStore.getState().reset()
     vi.useRealTimers()
   })
 
@@ -108,5 +110,32 @@ describe('MockTransport diplomatic visuals', () => {
 
     expect(useGameStore.getState().diplomaticArcs).toHaveLength(1)
     expect(useGameStore.getState().ripples).toHaveLength(0)
+  })
+
+  it('emits epic and summary narration payloads during arbitrate phase advances', () => {
+    transport = new MockTransport()
+    attachAdapter(transport, gameStoreApi)
+    transport.connect()
+
+    const epochId = useGameStore.getState().epoch.id
+    useGameStore.getState()._applyPhase({
+      room_id: 'mock-room',
+      epoch: epochId,
+      turn: 1,
+      phase: 'arbitrate',
+      arbitrate_phase: 'battle',
+      phase_started_at_ms: 1_000,
+      phase_duration_ms: 90_000,
+      server_time_ms: 1_000,
+    })
+
+    transport.advancePhase()
+    transport.advancePhase()
+
+    const entry = epochSummaryStore.getState().byEpoch.get(epochId)
+    expect(entry?.epic?.source).toBe('template_fallback')
+    expect(entry?.epic?.narrative).toContain('纪元')
+    expect(entry?.summary?.source).toBe('template_fallback')
+    expect(entry?.summary?.highlights.majorEvents.length).toBeGreaterThanOrEqual(0)
   })
 })

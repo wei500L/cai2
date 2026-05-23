@@ -10,17 +10,16 @@ from app.api.websocket.connection import ConnectionManager, PlayerSession
 from app.core.clock import Clock, SystemClock
 from app.domain.enums import FactionId, TerrainKind, VisibilityScope
 from app.domain.factions import all_faction_ids
-from app.domain.models import GameRoom, Player
 from app.domain.world_geometry import WorldGeometry
 from app.protocol.outgoing import (
+    AIReactionPayload,
+    AISpeakPayload,
     AIThinkingPayload,
     ReplayAIDiaryRevealPayload,
     RoomFactionsMetaPayload,
     RoomFinishedPayload,
     RoomPlayerResumePayload,
-    RoomPlayerSnapshot,
     RoomPlayerTakeoverPayload,
-    RoomSnapshotPayload,
     RoomStartPayload,
     WorldGeometryCellPayload,
     WorldGeometryFactionPayload,
@@ -28,6 +27,7 @@ from app.protocol.outgoing import (
 )
 from app.repositories.factory import Repositories
 from app.services.factions_meta_service import FactionsMetaService
+from app.services.room_service import build_snapshot
 from app.services.settlement_service import SettlementOutboundBundle
 
 VisibilityFilter = Callable[[dict[str, Any], PlayerSession], bool]
@@ -113,7 +113,7 @@ class OutboundDispatcher:
         room = await self._repos.rooms.get(room_id)
         if room is None:
             return
-        payload = _room_snapshot_payload(room)
+        payload = build_snapshot(room)
         await self.dispatch_to_room(
             room.id,
             _envelope("room.snapshot", payload.model_dump(mode="json")),
@@ -394,13 +394,10 @@ class OutboundDispatcher:
 
             for offset, event in enumerate(bundle.ai_speech_events, start=ai_start_offset):
                 if _event_visible_to_faction(event, faction_id):
+                    message_type, payload = _ai_message_for_event(room_id, event)
                     await self.dispatch_to_player(
                         session.player_id,
-                        _envelope(
-                            "ai.speak",
-                            {"room_id": room_id, "event": event},
-                            seq=bundle.seq_base + offset,
-                        ),
+                        _envelope(message_type, payload, seq=bundle.seq_base + offset),
                     )
 
     async def dispatch_factions_meta(self, room_id: str) -> None:
@@ -637,6 +634,90 @@ def _sanitize_for_delivery(envelope_dict: dict[str, Any]) -> dict[str, Any]:
     return sanitized
 
 
+def _ai_message_for_event(room_id: str, event: dict[str, Any]) -> tuple[str, dict[str, Any]]:
+    if _ai_event_kind(event) == "reaction":
+        payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+        faction_id = _faction_id_or_default(
+            event.get("actor_faction") or payload.get("faction_id"),
+        )
+        target_faction = _faction_id_or_none(
+            event.get("target_faction") or payload.get("target_faction"),
+        )
+        target_event_id = str(
+            payload.get("target_event_id")
+            or event.get("target_event_id")
+            or event.get("id")
+            or "",
+        )
+        reaction = str(
+            payload.get("reaction")
+            or payload.get("label")
+            or payload.get("content")
+            or event.get("narration")
+            or "反应",
+        )
+        private_message = payload.get("private_message")
+        payload_model = AIReactionPayload(
+            room_id=room_id,
+            event=event,
+            private_message=private_message if isinstance(private_message, dict) else None,
+            faction_id=faction_id,
+            reaction=reaction,
+            target_event_id=target_event_id,
+            target_faction=target_faction,
+        )
+        return "ai.reaction", payload_model.model_dump(mode="json")
+
+    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+    speak_kind = _ai_speak_kind(event)
+    private_message = payload.get("private_message")
+    payload_model = AISpeakPayload(
+        room_id=room_id,
+        kind=speak_kind,
+        event=event,
+        private_message=private_message if isinstance(private_message, dict) else None,
+    )
+    return "ai.speak", payload_model.model_dump(mode="json")
+
+
+def _ai_event_kind(event: dict[str, Any]) -> str:
+    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+    kind = payload.get("kind")
+    if kind in {"public", "private", "narration"}:
+        return str(kind)
+    if kind == "reaction":
+        return "reaction"
+    event_kind = event.get("kind")
+    if event_kind == "ai_reaction":
+        return "reaction"
+    if event_kind in {"private", "narration"}:
+        return str(event_kind)
+    return "public"
+
+
+def _ai_speak_kind(event: dict[str, Any]) -> str:
+    kind = _ai_event_kind(event)
+    if kind in {"public", "private", "narration"}:
+        return kind
+    return "public"
+
+
+def _faction_id_or_none(value: Any) -> FactionId | None:
+    if value is None:
+        return None
+    try:
+        return FactionId(str(value))
+    except Exception:
+        return None
+
+
+def _faction_id_or_default(value: Any) -> FactionId:
+    faction = _faction_id_or_none(value)
+    if faction is not None:
+        return faction
+    return FactionId.starlight
+
+
 def _strip_internal_for_runtime(event_payload: dict[str, Any]) -> dict[str, Any]:
     payload = event_payload.get("payload")
     if not isinstance(payload, dict) or "internal_thought" not in payload:
@@ -647,24 +728,3 @@ def _strip_internal_for_runtime(event_payload: dict[str, Any]) -> dict[str, Any]
     sanitized_payload.pop("internal_thought", None)
     sanitized["payload"] = sanitized_payload
     return sanitized
-
-
-def _room_snapshot_payload(room: GameRoom) -> RoomSnapshotPayload:
-    return RoomSnapshotPayload(
-        room_id=room.id,
-        mode=room.mode,
-        status=room.status.value,
-        players=[_player_snapshot(player) for player in room.players],
-        ai_factions=room.ai_factions,
-    )
-
-
-def _player_snapshot(player: Player) -> RoomPlayerSnapshot:
-    return RoomPlayerSnapshot(
-        player_id=player.id,
-        display_name=player.display_name,
-        faction_id=player.faction_id,
-        connected=player.connected,
-        ready=player.ready,
-        ai_takeover=player.ai_takeover,
-    )

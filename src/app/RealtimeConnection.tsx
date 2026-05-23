@@ -6,12 +6,12 @@ import { fetchFactionsMeta } from '@/api/factionsMetaApi'
 import { ConnectionErrorPanel } from '@/components/ConnectionErrorPanel'
 import { DevModeBanner } from '@/components/DevModeBanner'
 import { factionMetaFixtures } from '@/mock/factions'
-import { startMockGameLoop } from '@/mock/gameLoop'
 import { attachAdapter } from '@/protocol/adapter'
 import { ActionDispatcher } from '@/protocol/dispatcher'
 import { createTransport } from '@/protocol/transport'
-import type { MockTransport, Transport, TransportStatus } from '@/protocol/transport'
+import type { Transport, TransportStatus } from '@/protocol/transport'
 import type { IncomingMessage } from '@/protocol/types'
+import { epochSummaryStore } from '@/store/epochSummaryStore'
 import { factionMetaStore } from '@/store/factionMetaStore'
 import { gameStoreApi } from '@/store/gameStore'
 import { useUIStore } from '@/store/uiStore'
@@ -65,6 +65,10 @@ function getQueryParam(name: string) {
   return new URLSearchParams(window.location.search).get(name) ?? ''
 }
 
+function showMetaFallbackToast(setToastMessage: (message: string | null) => void) {
+  setToastMessage('WS 未下发势力元数据，正在 REST 兜底拉取...')
+}
+
 export function RealtimeConnection({
   pathname,
   children,
@@ -73,7 +77,6 @@ export function RealtimeConnection({
   children: ReactNode
 }) {
   const transportRef = useRef<Transport | null>(null)
-  const stopMockLoopRef = useRef<(() => void) | null>(null)
   const handledFailureRef = useRef(false)
   const [transportMode] = useState<TransportMode>(() =>
     ENV.useWs && consumeMockModeOverride() ? 'mock' : ENV.useWs ? 'ws' : 'mock',
@@ -82,6 +85,7 @@ export function RealtimeConnection({
   const [connectionAttemptAt, setConnectionAttemptAt] = useState(() => Date.now())
   const [connectionErrorCode, setConnectionErrorCode] = useState<string | null>(null)
   const [showConnectionErrorPanel, setShowConnectionErrorPanel] = useState(false)
+  const [toastMessage, setToastMessage] = useState<string | null>(null)
   const setConnectionStatus = useUIStore((state) => state.setConnectionStatus)
   const connectionFailureReason = useUIStore((state) => state.connectionFailureReason)
   const setConnectionFailureReason = useUIStore((state) => state.setConnectionFailureReason)
@@ -94,13 +98,27 @@ export function RealtimeConnection({
   )
 
   useEffect(() => {
+    if (!toastMessage) {
+      return undefined
+    }
+
+    const timer = window.setTimeout(() => setToastMessage(null), 2200)
+    return () => window.clearTimeout(timer)
+  }, [toastMessage])
+
+  useEffect(() => {
     let cancelled = false
     let roomId = roomIdFromQuery || 'mock-room'
     let playerId = playerIdFromQuery || ''
     let joinRequested = false
     const restFallbackAbortController = new AbortController()
 
+    if (pathname === '/game') {
+      gameStoreApi.getState().bootstrapEmpty()
+    }
+
     factionMetaStore.getState().reset()
+    epochSummaryStore.getState().reset()
     if (transportMode === 'mock') {
       factionMetaStore.getState().applyFromMock(factionMetaFixtures)
     }
@@ -163,7 +181,7 @@ export function RealtimeConnection({
               },
             },
           }
-        : { kind: 'mock' },
+        : { kind: 'mock', mock: { startGameLoop: pathname === '/game' } },
     )
 
     transportRef.current = transport
@@ -228,11 +246,24 @@ export function RealtimeConnection({
     transport.on(handleTransportMessage)
     transport.connect()
 
+    const metadataTimeoutTimer = window.setTimeout(() => {
+      if (cancelled || factionMetaStore.getState().source !== 'pending') {
+        return
+      }
+
+      restFallbackAbortController.abort()
+      setConnectionFailureReason('FACTIONS_META_TIMEOUT')
+      setConnectionErrorCode('FACTIONS_META_TIMEOUT')
+      setConnectionStatus('error')
+      setShowConnectionErrorPanel(true)
+    }, 5_000)
+
     const restFallbackTimer = window.setTimeout(() => {
       if (cancelled || transportMode !== 'ws' || factionMetaStore.getState().source !== 'pending') {
         return
       }
 
+      showMetaFallbackToast(setToastMessage)
       fetchFactionsMeta(roomId, restFallbackAbortController.signal)
         .then((meta) => {
           if (cancelled || factionMetaStore.getState().source !== 'pending') {
@@ -258,19 +289,13 @@ export function RealtimeConnection({
     if (transportMode === 'mock') {
       setConnectionStatus('open')
       setLastHeartbeatTs(0)
-      stopMockLoopRef.current?.()
-      stopMockLoopRef.current = null
-      if (pathname === '/game') {
-        stopMockLoopRef.current = startMockGameLoop(transport as MockTransport)
-      }
     }
 
     return () => {
       cancelled = true
+      window.clearTimeout(metadataTimeoutTimer)
       window.clearTimeout(restFallbackTimer)
       restFallbackAbortController.abort()
-      stopMockLoopRef.current?.()
-      stopMockLoopRef.current = null
       ActionDispatcher.setTransport(null)
       transport.off(handleTransportMessage)
       detachAdapter()
@@ -318,6 +343,11 @@ export function RealtimeConnection({
             window.location.reload()
           }}
         />
+      ) : null}
+      {toastMessage ? (
+        <div className="fixed right-4 top-8 z-[230] border border-[color:rgba(255,168,64,0.48)] bg-[color:rgba(34,18,6,0.96)] px-3 py-2 font-hud text-[0.58rem] tracking-[0.14em] text-[color:rgba(255,224,186,0.96)] shadow-[0_0_16px_rgba(255,168,64,0.18)]">
+          {toastMessage}
+        </div>
       ) : null}
       {children}
     </>

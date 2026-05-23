@@ -1,9 +1,9 @@
 import { motion } from 'framer-motion'
 import { factionMetaStore } from '@/store/factionMetaStore'
-import type { GameEvent } from '@/types'
+import { useEpochNarration } from '@/store/epochSummaryStore'
 import { useGameStore } from '@/store/gameStore'
 
-const fallbackGlyph: Record<GameEvent['kind'], string> = {
+const fallbackGlyph: Record<string, string> = {
   speech: '言',
   private: '密',
   narration: '史',
@@ -35,21 +35,11 @@ function compactNarration(text: string) {
   return text.length > 42 ? `${text.slice(0, 41)}...` : text
 }
 
-function selectMajorEvents(events: GameEvent[], epochId: number) {
-  const weight = (event: GameEvent) => (event.priority === 'P0' ? 0 : 1)
-
-  return events
-    .filter((event) => event.epoch === epochId && (event.priority === 'P0' || event.priority === 'P1'))
-    .sort((a, b) => weight(a) - weight(b) || a.createdAt - b.createdAt)
-    .slice(0, 5)
-    .sort((a, b) => a.createdAt - b.createdAt || a.turn - b.turn)
-}
-
 export function MajorEvents() {
   const epochId = useGameStore((state) => state.epoch.id)
-  const events = useGameStore((state) => state.events)
   const factionMetaById = factionMetaStore((state) => state.byId)
-  const majorEvents = selectMajorEvents(events, epochId)
+  const summary = useEpochNarration(epochId).summary
+  const majorEvents = summary?.highlights.majorEvents ?? []
 
   return (
     <motion.section
@@ -74,7 +64,7 @@ export function MajorEvents() {
               className="grid grid-cols-[2rem_minmax(0,1fr)] gap-2 border border-[color:rgba(255,231,184,0.12)] bg-[color:rgba(6,4,2,0.42)] p-2"
             >
               <div className="grid h-8 w-8 place-items-center border border-[color:rgba(255,204,102,0.28)] bg-[color:rgba(255,204,102,0.08)] font-hud text-[0.78rem] text-[color:rgba(255,222,158,0.94)]">
-                {fallbackGlyph[event.kind]}
+                {fallbackGlyph[event.kind] ?? '史'}
               </div>
               <div className="min-w-0">
                 <div className="flex min-w-0 items-center gap-2 font-hud text-[0.58rem] tracking-[0.14em] text-[color:rgba(255,231,184,0.54)]">

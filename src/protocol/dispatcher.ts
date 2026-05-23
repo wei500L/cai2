@@ -1,7 +1,15 @@
 import type { CommandSubmission, SubmitSpeechResult } from '@/features/commandTerminal/types'
+import { epochSummaryStore } from '@/store/epochSummaryStore'
 import type { FactionId } from '@/types/faction'
 import { gameStoreApi } from '@/store/gameStore'
-import type { OutgoingMessage } from './types'
+import type {
+  AIReactionMessage,
+  AIThinkingMessage,
+  AISpeakMessage,
+  EpicNarrationMessage,
+  OutgoingMessage,
+  SummaryNarrationMessage,
+} from './types'
 import type { Transport } from './transport'
 
 const DEFAULT_ROOM_ID = 'mock-room'
@@ -225,4 +233,50 @@ export class ActionDispatcher {
 
     return result ?? { ok: true }
   }
+
+  static applyAIThinking(message: AIThinkingMessage) {
+    gameStoreApi.getState()._applyAIThinking(message.p)
+  }
+
+  static applyAISpeak(message: AISpeakMessage) {
+    gameStoreApi.getState()._applyAISpeak({
+      room_id: message.p.room_id,
+      event: message.p.event,
+      private_message: message.p.private_message,
+    })
+  }
+
+  static applyAIReaction(message: AIReactionMessage) {
+    gameStoreApi.getState()._applyAIReaction({
+      room_id: message.p.room_id,
+      event: message.p.event,
+      faction_id: message.p.faction_id,
+      reaction: message.p.reaction,
+      target_faction: message.p.target_faction ?? null,
+    })
+  }
+
+  static applyEpicNarration(message: EpicNarrationMessage) {
+    epochSummaryStore.getState().applyEpic(message.p)
+  }
+
+  static applySummaryNarration(message: SummaryNarrationMessage) {
+    epochSummaryStore.getState().applySummary(message.p)
+  }
+}
+
+export function dispatchEpochNarrationMessage(
+  message: EpicNarrationMessage | SummaryNarrationMessage,
+) {
+  if (message.t === 'arbitrate.epic_narration') {
+    ActionDispatcher.applyEpicNarration(message)
+    return true
+  }
+
+  if (message.t === 'arbitrate.summary_narration') {
+    ActionDispatcher.applySummaryNarration(message)
+    return true
+  }
+
+  return false
 }

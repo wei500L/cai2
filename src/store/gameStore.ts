@@ -3,11 +3,12 @@ import { tryConsumeRate } from '@/features/commandTerminal/RateLimiter'
 import type { CommandSubmission, SubmitSpeechResult } from '@/features/commandTerminal/types'
 import { treatyKindLabels, militaryActionLabels } from '@/features/commandTerminal/types'
 import { factionMetaStore } from '@/store/factionMetaStore'
+import { epochSummaryStore } from '@/store/epochSummaryStore'
 import { FACTION_IDS, type FactionId } from '@/types/faction'
-import { createInitialState } from '@/mock/initialState'
-import { MAX_EPOCHS, TURNS_PER_EPOCH, getPhaseDurationMs } from '@/mock/gameState'
 import { useUIStore } from '@/store/uiStore'
 import { useMapStore } from '@/store/mapStore'
+import { createEmptyState } from '@/store/gameStoreEmpty'
+import { createInitialState } from '@/store/gameStoreSeed'
 import type {
   BattleEvent,
   Epoch,
@@ -15,7 +16,7 @@ import type {
   FactionState,
   GameEvent,
   MapRegion,
-  MockGameWorldState,
+  GameState,
   PrivateMessage,
   Relationship,
   RelationshipStatus,
@@ -40,6 +41,9 @@ import type {
   Ripple,
   RoomFinishedPayload,
   RoomPlayerSnapshot,
+  RoomSnapshotPayload,
+  RoomStartedPayload,
+  RoomStartMessage,
   RelationshipPatch,
   StatsDiffPayload,
   RoomMode,
@@ -59,11 +63,50 @@ type BorderTension = {
 
 type WorldGeometryCapital = WorldGeometryPayload['factions'][number]
 
+type RoomSnapshotInput = Omit<RoomSnapshotPayload, 'settings'> & {
+  settings?: RoomSnapshotPayload['settings']
+}
+
 const activeDiplomaticArcTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const activeRippleTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const MAX_AI_SPEAK_QUEUE = 50
+const MAX_AI_REACTIONS_PER_EVENT = 12
+
+type AIThinkingState = ReconnectAIThinkingState & {
+  fallback: boolean
+  factionId: FactionId
+  roomId: string
+  receivedAtMs: number
+}
+
+type AISpeakKind = 'public' | 'private' | 'narration'
+
+type AISpeakEvent = {
+  id: string
+  kind: AISpeakKind
+  factionId: FactionId | null
+  targetFactionId: FactionId | null
+  text: string
+  event: GameEvent
+  privateMessage?: PrivateMessage
+  sourceEventId: string | null
+  createdAt: number
+}
+
+type AIReaction = {
+  id: string
+  eventId: string
+  factionId: FactionId
+  targetFactionId: FactionId | null
+  reaction: string
+  event: GameEvent
+  createdAt: number
+}
 
 type GameStoreActions = {
   initGame: (seed?: number) => void
+  resetGameState: (seed?: number) => void
+  bootstrapEmpty: () => void
   pushEvent: (event: GameEvent) => void
   advancePhase: () => void
   tickPhase: (deltaMs: number) => void
@@ -100,21 +143,36 @@ type GameStoreActions = {
     faction_id: FactionId
     entries: DiaryEntry[]
   }) => void
-  _applyAIThinking: (payload: { progress: number; phase?: string; model?: string | null }) => void
-  _applySnapshot: (payload: ReconnectSnapshotMessage['p'] | ReconnectFullState) => void
+  _applyAIThinking: (payload: {
+    room_id?: string
+    faction_id: FactionId
+    progress: number
+    phase?: string
+    model?: string | null
+  }) => void
+  _applyAISpeak: (payload: {
+    room_id: string
+    event: GameEvent
+    private_message?: PrivateMessage
+  }) => void
+  _applyAIReaction: (payload: {
+    room_id: string
+    event: GameEvent
+    faction_id: FactionId
+    reaction: string
+    target_faction?: FactionId | null
+  }) => void
+  applySnapshot: (payload: RoomSnapshotPayload | ReconnectSnapshotMessage['p'] | ReconnectFullState) => void
+  applyRoomStarted: (payload: RoomStartedPayload | RoomStartMessage['p']) => void
+  _applySnapshot: (payload: RoomSnapshotPayload | ReconnectSnapshotMessage['p'] | ReconnectFullState) => void
+  _applyRoomStarted: (payload: RoomStartedPayload | RoomStartMessage['p']) => void
   _applyServerClockSample: (serverTimeMs: number, clientTimeMs?: number) => void
   togglePause: () => void
   selectFaction: (id: FactionId) => void
   clearFaction: () => void
   hasDiariesRevealed: () => boolean
   _applyRoomJoined: (payload: Record<string, unknown>) => void
-  _applyRoomSnapshot: (payload: {
-    room_id: string
-    mode: RoomMode
-    status: string
-    players: RoomPlayerSnapshot[]
-    ai_factions: FactionId[]
-  }) => void
+  _applyRoomSnapshot: (payload: RoomSnapshotInput) => void
   _applyPlayerTakeover: (payload: {
     room_id: string
     player_id: string
@@ -129,7 +187,7 @@ type GameStoreActions = {
   _applyRoomFinished: (payload: RoomFinishedPayload) => void
 }
 
-export type GameStoreState = MockGameWorldState & {
+export type GameStoreState = GameState & {
   selectedFactionId: FactionId | null
   currentRoomId: string | null
   currentPlayerId: string | null
@@ -139,6 +197,12 @@ export type GameStoreState = MockGameWorldState & {
   aiFactions: FactionId[]
   currentTurn: Epoch | null
   aiThinkingState: (ReconnectAIThinkingState & { fallback: boolean }) | null
+  aiThinkingByFaction: Map<FactionId, AIThinkingState>
+  aiSpeakQueue: AISpeakEvent[]
+  aiReactionByEvent: Map<string, AIReaction[]>
+  lastAIThinking: AIThinkingState | null
+  lastAISpeak: AISpeakEvent | null
+  lastAIReaction: AIReaction | null
   borderTensionMap: Record<string, BorderTension>
   regionTransitionLog: RegionTransitionLogEntry[]
   diplomaticArcs: DiplomaticArc[]
@@ -369,6 +433,15 @@ function compareTuple(left: readonly (string | number)[], right: readonly (strin
   }
 
   return 0
+}
+
+function syncEpochAliases(epoch: Epoch, eventsWindow: GameEvent[]) {
+  return {
+    currentEpoch: epoch.id,
+    currentPhase: epoch.phase,
+    phaseStartedAt: epoch.phaseStartedAt,
+    eventsWindow,
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -634,6 +707,25 @@ function normalizeBorderTensionMap(entries: unknown): Record<string, BorderTensi
   }, {})
 }
 
+function normalizeGameSettings(value: unknown) {
+  const raw = isRecord(value) ? value : {}
+  const phaseDurationsRaw = isRecord(raw.phase_durations) ? raw.phase_durations : {}
+  const phase_durations: NonNullable<GameState['settings']['phase_durations']> = {}
+
+  for (const phase of ['observe', 'action', 'resolve', 'arbitrate'] as const) {
+    const duration = phaseDurationsRaw[phase]
+    if (typeof duration === 'number' && Number.isFinite(duration)) {
+      phase_durations[phase] = Math.max(0, Math.round(duration))
+    }
+  }
+
+  return {
+    phase_durations,
+    turns_per_epoch: Math.max(0, Math.round(toNumberValue(raw.turns_per_epoch, 0))),
+    max_epochs: Math.max(0, Math.round(toNumberValue(raw.max_epochs, 0))),
+  }
+}
+
 function normalizeRegionPatch(patch: unknown): MapRegionPatch | null {
   const raw = isRecord(patch) ? patch : {}
   const regionId = toStringValue(raw.id ?? raw.region_id)
@@ -720,6 +812,8 @@ function normalizeEpochTurn(value: unknown): Epoch | null {
 function normalizeSnapshotPayload(payload: unknown) {
   const raw = isRecord(payload) ? payload : {}
   const currentTurn = normalizeEpochTurn(raw.current_turn ?? raw.currentTurn ?? raw.epoch)
+  const room = isRecord(raw.room) ? raw.room : {}
+  const settings = normalizeGameSettings(raw.settings ?? room.settings)
 
   return {
     currentTurn,
@@ -746,6 +840,7 @@ function normalizeSnapshotPayload(payload: unknown) {
     borderTensionMap: normalizeBorderTensionMap(raw.border_tension ?? raw.borderTension),
     winner: toFactionIdValue(raw.winner),
     finalNarration: typeof raw.final_narration === 'string' ? raw.final_narration : null,
+    settings,
   }
 }
 
@@ -759,7 +854,46 @@ function normalizeVisibleSnapshot(payload: unknown) {
     regions: Array.isArray(raw.regions) ? raw.regions.map((region) => normalizeRegion(region)) : [],
     relationships: Array.isArray(raw.relationships)
       ? raw.relationships.map((relationship) => normalizeRelationship(relationship))
+    : [],
+  }
+}
+
+function normalizeRoomSnapshot(payload: unknown) {
+  const raw = isRecord(payload) ? payload : {}
+
+  return {
+    room_id: toStringValue(raw.room_id ?? raw.roomId ?? raw.id),
+    mode: (raw.mode as RoomMode) ?? 'solo_1v7',
+    status: toStringValue(raw.status, 'unknown'),
+    players: Array.isArray(raw.players) ? raw.players.map(normalizeRoomPlayer) : [],
+    ai_factions: Array.isArray(raw.ai_factions)
+      ? raw.ai_factions.filter(
+          (faction): faction is FactionId =>
+            typeof faction === 'string' && (FACTION_IDS as readonly string[]).includes(faction),
+        )
       : [],
+    settings: normalizeGameSettings(raw.settings),
+  }
+}
+
+function normalizeRoomStartedPayload(payload: unknown) {
+  const raw = isRecord(payload) ? payload : {}
+  const initialState = isRecord(raw.initial_state) ? raw.initial_state : {}
+  const initialStateRoom = isRecord(initialState.room) ? initialState.room : {}
+  const normalizedInitialState = normalizeSnapshotPayload(initialState)
+  const room = normalizeRoomSnapshot({
+    room_id: raw.room_id,
+    mode: raw.mode ?? initialStateRoom.mode,
+    status: raw.status ?? 'running',
+    players: raw.players ?? initialStateRoom.players,
+    ai_factions: raw.ai_factions ?? initialStateRoom.ai_factions,
+    settings: raw.settings ?? initialState.settings,
+  })
+
+  return {
+    room,
+    initialState: normalizedInitialState,
+    settings: normalizeGameSettings(raw.settings ?? initialState.settings),
   }
 }
 
@@ -773,6 +907,190 @@ function normalizeActionEvents(payload: unknown) {
     : []
 
   return { events, privateMessages }
+}
+
+function isAIResponsePayload(payload: Record<string, unknown>) {
+  return payload.source === 'template' || payload.aiGenerated === true
+}
+
+function getEventSourceId(event: GameEvent) {
+  const payload = isRecord(event.payload) ? event.payload : {}
+  const rawSourceId =
+    payload.sourceEventId ??
+    payload.source_event_id ??
+    payload.eventId ??
+    payload.event_id ??
+    payload.messageId ??
+    payload.message_id
+
+  return typeof rawSourceId === 'string' ? rawSourceId : null
+}
+
+function normalizeAISpeakEntry(
+  event: GameEvent,
+  privateMessage?: PrivateMessage,
+): AISpeakEvent | null {
+  const payload = isRecord(event.payload) ? event.payload : {}
+  if ((!isAIResponsePayload(payload) && !privateMessage) || event.kind === 'ai_reaction') {
+    return null
+  }
+
+  const privatePayload = privateMessage && isRecord(privateMessage.payload) ? privateMessage.payload : {}
+  const sourceEventId =
+    getEventSourceId(event) ??
+    (typeof privatePayload.sourceEventId === 'string' ? privatePayload.sourceEventId : null) ??
+    (typeof privatePayload.source_event_id === 'string' ? privatePayload.source_event_id : null) ??
+    null
+  const createdAt = privateMessage?.createdAt ?? event.createdAt
+  const factionId = event.actor ?? privateMessage?.from ?? null
+
+  const targetFactionId = event.target ?? privateMessage?.to ?? null
+  const text =
+    (typeof payload.text === 'string' && payload.text) ||
+    event.narration ||
+    privateMessage?.body ||
+    (typeof payload.content === 'string' ? payload.content : '') ||
+    ''
+
+  const kind: AISpeakKind =
+    privateMessage || event.kind === 'private'
+      ? 'private'
+      : event.kind === 'narration' || payload.kind === 'narration'
+        ? 'narration'
+        : 'public'
+
+  return {
+    id: event.id,
+    kind,
+    factionId,
+    targetFactionId: targetFactionId ?? null,
+    text,
+    event,
+    privateMessage,
+    sourceEventId,
+    createdAt,
+  }
+}
+
+function normalizeAIReactionEntry(event: GameEvent) {
+  const payload = isRecord(event.payload) ? event.payload : {}
+  if (!isAIResponsePayload(payload) && event.kind !== 'ai_reaction') {
+    return null
+  }
+
+  const factionId = event.actor
+  if (!factionId) {
+    return null
+  }
+
+  const sourceEventId = getEventSourceId(event)
+  if (!sourceEventId) {
+    return null
+  }
+
+  const reaction =
+    (typeof payload.reaction === 'string' && payload.reaction) ||
+    (typeof payload.label === 'string' && payload.label) ||
+    event.narration ||
+    ''
+
+  return {
+    id: event.id,
+    eventId: sourceEventId,
+    factionId,
+    targetFactionId: event.target ?? null,
+    reaction,
+    event,
+    createdAt: event.createdAt,
+  } satisfies AIReaction
+}
+
+function buildAIStateFromStreams(events: GameEvent[], privateMessages: PrivateMessage[]) {
+  const privateBySourceEventId = new Map<string, PrivateMessage>()
+  for (const message of privateMessages) {
+    const payload = isRecord(message.payload) ? message.payload : {}
+    const sourceEventId =
+      typeof payload.sourceEventId === 'string'
+        ? payload.sourceEventId
+        : typeof payload.source_event_id === 'string'
+          ? payload.source_event_id
+          : null
+
+    if (sourceEventId) {
+      privateBySourceEventId.set(sourceEventId, message)
+    }
+  }
+
+  const aiSpeakQueue: AISpeakEvent[] = []
+  const aiThinkingByFaction = new Map<FactionId, AIThinkingState>()
+  const aiReactionByEvent = new Map<string, AIReaction[]>()
+  let lastAIThinking: AIThinkingState | null = null
+  let lastAISpeak: AISpeakEvent | null = null
+  let lastAIReaction: AIReaction | null = null
+
+  const orderedEvents = [...events].sort((left, right) => compareTuple(eventSortKey(left), eventSortKey(right)))
+  for (const event of orderedEvents) {
+    if (event.kind === 'ai_thinking') {
+      const payload = isRecord(event.payload) ? event.payload : {}
+      const factionId = event.actor ?? toFactionIdValue(payload.faction_id)
+      if (!factionId) {
+        continue
+      }
+
+      const thinking: AIThinkingState = {
+        progress: clamp(toNumberValue(payload.progress, 0), 0, 1),
+        phase: typeof payload.phase === 'string' ? payload.phase : event.phase,
+        model: typeof payload.model === 'string' ? payload.model : null,
+        elapsed_ms: toNumberValue(payload.elapsed_ms, 0),
+        fallback: false,
+        factionId,
+        roomId: typeof payload.room_id === 'string' ? payload.room_id : '',
+        receivedAtMs: event.createdAt,
+      }
+
+      aiThinkingByFaction.set(factionId, thinking)
+      lastAIThinking = thinking
+      continue
+    }
+
+    const privateMessage = event.kind === 'private'
+      ? privateBySourceEventId.get(getEventSourceId(event) ?? '') ?? undefined
+      : undefined
+    const speakEntry = normalizeAISpeakEntry(event, privateMessage)
+    if (speakEntry) {
+      aiSpeakQueue.unshift(speakEntry)
+      if (aiSpeakQueue.length > MAX_AI_SPEAK_QUEUE) {
+        aiSpeakQueue.length = MAX_AI_SPEAK_QUEUE
+      }
+      lastAISpeak = speakEntry
+
+      if (speakEntry.kind !== 'public') {
+        continue
+      }
+    }
+
+    const reactionEntry = normalizeAIReactionEntry(event)
+    if (!reactionEntry) {
+      continue
+    }
+
+    const nextList = aiReactionByEvent.get(reactionEntry.eventId) ?? []
+    nextList.unshift(reactionEntry)
+    if (nextList.length > MAX_AI_REACTIONS_PER_EVENT) {
+      nextList.length = MAX_AI_REACTIONS_PER_EVENT
+    }
+    aiReactionByEvent.set(reactionEntry.eventId, nextList)
+    lastAIReaction = reactionEntry
+  }
+
+  return {
+    aiThinkingByFaction,
+    aiSpeakQueue,
+    aiReactionByEvent,
+    lastAIThinking,
+    lastAISpeak,
+    lastAIReaction,
+  }
 }
 
 function normalizeExplosionEvent(payload: unknown, regions: MapRegion[]): ExplosionEvent {
@@ -831,13 +1149,14 @@ function updateRoomPlayer(
 }
 
 function normalizeRoomPlayer(player: RoomPlayerSnapshot): RoomPlayerSnapshot {
+  const raw = (isRecord(player) ? player : {}) as Partial<RoomPlayerSnapshot> & Record<string, unknown>
   return {
-    player_id: player.player_id,
-    display_name: player.display_name,
-    faction_id: player.faction_id ?? null,
-    connected: player.connected,
-    ready: player.ready,
-    ai_takeover: player.ai_takeover ?? false,
+    player_id: toStringValue(raw.player_id ?? raw.id),
+    display_name: toStringValue(raw.display_name),
+    faction_id: toFactionIdValue(raw.faction_id ?? raw.factionId),
+    connected: Boolean(raw.connected),
+    ready: Boolean(raw.ready),
+    ai_takeover: Boolean(raw.ai_takeover),
   }
 }
 
@@ -949,8 +1268,10 @@ function validateSubmission(submission: CommandSubmission) {
   return null
 }
 
-function nextEpochState(epoch: Epoch): Epoch | null {
+function nextEpochState(epoch: Epoch, settings: GameState['settings']): Epoch | null {
   const now = Date.now()
+  const phaseDurations = settings.phase_durations
+  const getPhaseDuration = (phase: Epoch['phase']) => phaseDurations[phase] ?? 0
 
   if (epoch.phase === 'observe') {
     return {
@@ -958,7 +1279,7 @@ function nextEpochState(epoch: Epoch): Epoch | null {
       phase: 'action',
       arbitratePhase: undefined,
       phaseStartedAt: now,
-      phaseDurationMs: getPhaseDurationMs('action'),
+      phaseDurationMs: getPhaseDuration('action'),
     }
   }
 
@@ -968,19 +1289,19 @@ function nextEpochState(epoch: Epoch): Epoch | null {
       phase: 'resolve',
       arbitratePhase: undefined,
       phaseStartedAt: now,
-      phaseDurationMs: getPhaseDurationMs('resolve'),
+      phaseDurationMs: getPhaseDuration('resolve'),
     }
   }
 
   if (epoch.phase === 'resolve') {
-    if (epoch.turn < TURNS_PER_EPOCH) {
+    if (epoch.turn < settings.turns_per_epoch) {
       return {
         ...epoch,
         turn: epoch.turn + 1,
         phase: 'observe',
         arbitratePhase: undefined,
         phaseStartedAt: now,
-        phaseDurationMs: getPhaseDurationMs('observe'),
+        phaseDurationMs: getPhaseDuration('observe'),
       }
     }
 
@@ -989,7 +1310,7 @@ function nextEpochState(epoch: Epoch): Epoch | null {
       phase: 'arbitrate',
       arbitratePhase: 'battle',
       phaseStartedAt: now,
-      phaseDurationMs: getPhaseDurationMs('arbitrate', 'battle'),
+      phaseDurationMs: getPhaseDuration('arbitrate'),
     }
   }
 
@@ -998,7 +1319,7 @@ function nextEpochState(epoch: Epoch): Epoch | null {
       ...epoch,
       arbitratePhase: 'epic',
       phaseStartedAt: now,
-      phaseDurationMs: getPhaseDurationMs('arbitrate', 'epic'),
+      phaseDurationMs: getPhaseDuration('arbitrate'),
     }
   }
 
@@ -1007,11 +1328,11 @@ function nextEpochState(epoch: Epoch): Epoch | null {
       ...epoch,
       arbitratePhase: 'summary',
       phaseStartedAt: now,
-      phaseDurationMs: getPhaseDurationMs('arbitrate', 'summary'),
+      phaseDurationMs: getPhaseDuration('arbitrate'),
     }
   }
 
-  if (epoch.id >= MAX_EPOCHS) {
+  if (settings.max_epochs > 0 && epoch.id >= settings.max_epochs) {
     return null
   }
 
@@ -1020,7 +1341,7 @@ function nextEpochState(epoch: Epoch): Epoch | null {
     turn: 1,
     phase: 'observe',
     phaseStartedAt: now,
-    phaseDurationMs: getPhaseDurationMs('observe'),
+    phaseDurationMs: getPhaseDuration('observe'),
   }
 }
 
@@ -1048,7 +1369,7 @@ function updateRelationshipValue(
   })
 }
 
-const initialState = createInitialState()
+const initialState = createEmptyState()
 
 export const useGameStore = create<GameStoreState>((set, get) => ({
   ...initialState,
@@ -1061,6 +1382,12 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   aiFactions: [],
   currentTurn: initialState.epoch,
   aiThinkingState: null,
+  aiThinkingByFaction: new Map(),
+  aiSpeakQueue: [],
+  aiReactionByEvent: new Map(),
+  lastAIThinking: null,
+  lastAISpeak: null,
+  lastAIReaction: null,
   borderTensionMap: {},
   regionTransitionLog: [],
   diplomaticArcs: [],
@@ -1075,6 +1402,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   initGame: (seed) => {
     const nextState = createInitialState(seed)
     resetExpiringVisuals()
+    epochSummaryStore.getState().reset()
     useMapStore.setState({
       scorchedRegions: new Map(),
       explosionQueue: [],
@@ -1088,7 +1416,54 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       roomStatus: state.roomStatus,
       roomPlayers: state.roomPlayers,
       aiFactions: state.aiFactions,
-      currentTurn: state.currentTurn,
+      currentTurn: nextState.epoch,
+      aiThinkingState: state.aiThinkingState,
+      aiThinkingByFaction: new Map(),
+      aiSpeakQueue: [],
+      aiReactionByEvent: new Map(),
+      lastAIThinking: null,
+      lastAISpeak: null,
+      lastAIReaction: null,
+      borderTensionMap: state.borderTensionMap,
+      regionTransitionLog: [],
+      diplomaticArcs: [],
+      ripples: [],
+      worldGeometry: null,
+      winner: state.winner,
+      finalNarration: state.finalNarration,
+      serverClockOffsetMs: state.serverClockOffsetMs,
+      serverClockSampleAtMs: state.serverClockSampleAtMs,
+      aiDiaries: emptyAIDiaries(),
+      status: nextState.status,
+      eventsWindow: [...nextState.events],
+      currentEpoch: nextState.epoch.id,
+      currentPhase: nextState.epoch.phase,
+      phaseStartedAt: nextState.epoch.phaseStartedAt,
+    }))
+  },
+
+  resetGameState: (seed) => {
+    if (!import.meta.env.DEV) {
+      throw new Error('resetGameState is not allowed in production')
+    }
+
+    const nextState = createInitialState(seed)
+    resetExpiringVisuals()
+    epochSummaryStore.getState().reset()
+    useMapStore.setState({
+      scorchedRegions: new Map(),
+      explosionQueue: [],
+    })
+    set((state) => ({
+      ...nextState,
+      selectedFactionId: state.selectedFactionId,
+      currentRoomId: state.currentRoomId,
+      currentPlayerId: state.currentPlayerId,
+      roomMode: state.roomMode,
+      roomStatus: state.roomStatus,
+      roomPlayers: state.roomPlayers,
+      aiFactions: state.aiFactions,
+      currentTurn: nextState.epoch,
       aiThinkingState: state.aiThinkingState,
       borderTensionMap: state.borderTensionMap,
       regionTransitionLog: [],
@@ -1100,24 +1475,69 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       serverClockOffsetMs: state.serverClockOffsetMs,
       serverClockSampleAtMs: state.serverClockSampleAtMs,
       aiDiaries: emptyAIDiaries(),
+      status: nextState.status,
+      eventsWindow: [...nextState.events],
+      currentEpoch: nextState.epoch.id,
+      currentPhase: nextState.epoch.phase,
+      phaseStartedAt: nextState.epoch.phaseStartedAt,
     }))
+  },
+
+  bootstrapEmpty: () => {
+    const nextState = createEmptyState()
+    resetExpiringVisuals()
+    epochSummaryStore.getState().reset()
+    useMapStore.setState({
+      scorchedRegions: new Map(),
+      explosionQueue: [],
+    })
+    set({
+      ...nextState,
+      selectedFactionId: get().selectedFactionId,
+      currentRoomId: null,
+      currentPlayerId: null,
+      roomMode: null,
+      roomStatus: null,
+      roomPlayers: [],
+      aiFactions: [],
+      currentTurn: nextState.epoch,
+      aiThinkingState: null,
+      borderTensionMap: {},
+      regionTransitionLog: [],
+      diplomaticArcs: [],
+      ripples: [],
+      worldGeometry: null,
+      winner: null,
+      finalNarration: null,
+      serverClockOffsetMs: 0,
+      serverClockSampleAtMs: 0,
+      aiDiaries: emptyAIDiaries(),
+      status: nextState.status,
+      ...syncEpochAliases(nextState.epoch, []),
+    })
   },
 
   pushEvent: (event) => {
     set((state) => ({
       events: pushEventToList(state.events, event),
+      eventsWindow: pushEventToList(state.eventsWindow, event),
     }))
   },
 
   advancePhase: () => {
     set((state) => {
-      const epoch = nextEpochState(state.epoch)
+      const epoch = nextEpochState(state.epoch, state.settings)
 
       if (!epoch) {
         return { isPaused: true }
       }
 
-      return { epoch }
+      return {
+        epoch,
+        currentEpoch: epoch.id,
+        currentPhase: epoch.phase,
+        phaseStartedAt: epoch.phaseStartedAt,
+      }
     })
   },
 
@@ -1400,6 +1820,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
     set((current) => ({
       events: betrayalEvent ? pushEventToList(nextEvents, betrayalEvent) : nextEvents,
+      eventsWindow: betrayalEvent ? pushEventToList(nextEvents, betrayalEvent) : nextEvents,
       privateMessages: privateMessage
         ? [privateMessage, ...current.privateMessages].slice(0, MAX_PRIVATE_MESSAGES)
         : current.privateMessages,
@@ -1425,6 +1846,9 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     set((state) => ({
       epoch,
       currentTurn: epoch,
+      currentEpoch: epoch.id,
+      currentPhase: epoch.phase,
+      phaseStartedAt: epoch.phaseStartedAt,
       isPaused: 'is_paused' in payload && typeof payload.is_paused === 'boolean' ? payload.is_paused : state.isPaused,
     }))
 
@@ -1471,6 +1895,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
     set((state) => ({
       events: pushEventsToList(state.events, normalized.events),
+      eventsWindow: pushEventsToList(state.eventsWindow, normalized.events),
       privateMessages:
         normalized.privateMessages.length > 0
           ? pushPrivateMessagesToList(state.privateMessages, normalized.privateMessages)
@@ -1514,6 +1939,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
     set((state) => ({
       events: pushEventToList(state.events, explosionNarration),
+      eventsWindow: pushEventToList(state.eventsWindow, explosionNarration),
     }))
   },
 
@@ -1745,71 +2171,140 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     }))
   },
 
-  _applySnapshot: (payload) => {
-    const serverTimeMs = 'server_time_ms' in payload ? payload.server_time_ms : Date.now()
-    const fullState = 'full_state' in payload ? payload.full_state : payload
-    const now = Date.now()
+  applySnapshot: (payload) => {
+    const receivedAtMs = Date.now()
+    const payloadRecord = isRecord(payload) ? (payload as Record<string, unknown>) : {}
+    const serverTimeMs = typeof payloadRecord.server_time_ms === 'number' ? payloadRecord.server_time_ms : receivedAtMs
+    const fullState =
+      isRecord(payloadRecord.full_state) ? payloadRecord.full_state : payloadRecord
+    const fullStateRecord = isRecord(fullState) ? (fullState as Record<string, unknown>) : {}
+    const roomRecord = isRecord(fullStateRecord.room) ? fullStateRecord.room : null
+    const room = roomRecord ? normalizeRoomSnapshot(roomRecord) : normalizeRoomSnapshot(fullStateRecord)
     const snapshot = normalizeSnapshotPayload(fullState)
-    const room = isRecord(fullState.room) ? fullState.room : null
-    const nextRoomId = room && typeof room.id === 'string' ? room.id : null
-    if (nextRoomId !== null && nextRoomId !== get().currentRoomId) {
+    const aiState = buildAIStateFromStreams(snapshot.events, snapshot.privateMessages)
+    const shouldResetVisuals = room.room_id !== '' && room.room_id !== get().currentRoomId
+
+    if (shouldResetVisuals) {
       resetExpiringVisuals()
+      epochSummaryStore.getState().reset()
       useMapStore.setState({
         scorchedRegions: new Map(),
         explosionQueue: [],
       })
     }
 
-    set((state) => {
-      const shouldResetVisuals = nextRoomId !== null && nextRoomId !== state.currentRoomId
-      return {
-        currentRoomId: nextRoomId ?? state.currentRoomId,
-        roomMode: room && typeof room.mode === 'string' ? (room.mode as RoomMode) : state.roomMode,
-        roomStatus: room && typeof room.status === 'string' ? room.status : state.roomStatus,
-        roomPlayers: room && Array.isArray(room.players)
-          ? room.players.map((value) => {
-              const player: Record<string, unknown> = isRecord(value) ? value : {}
-              return {
-                player_id: toStringValue(player['id'] ?? player['player_id']),
-                display_name: toStringValue(player['display_name']),
-                faction_id: toFactionIdValue(player['faction_id'] ?? player['factionId']),
-                connected: Boolean(player['connected']),
-                ready: Boolean(player['ready']),
-                ai_takeover: Boolean(player['ai_takeover']),
-              }
-            })
-          : state.roomPlayers,
-        aiFactions: room && Array.isArray(room.ai_factions)
-          ? room.ai_factions.filter(
-              (faction): faction is FactionId =>
-                typeof faction === 'string' && (FACTION_IDS as readonly string[]).includes(faction),
-            )
-          : state.aiFactions,
-        currentPlayerId:
-          room && typeof room.current_player_id === 'string'
-            ? room.current_player_id
-            : state.currentPlayerId,
-        currentTurn: snapshot.currentTurn ?? state.currentTurn,
-        epoch: snapshot.currentTurn ?? state.epoch,
-        factions: snapshot.factions,
-        regions: snapshot.regions,
-        relationships: snapshot.relationships,
-        treaties: snapshot.treaties,
-        events: dedupeAndSortEvents(snapshot.events),
-        privateMessages: dedupeAndSortPrivateMessages(snapshot.privateMessages),
-        aiThinkingState: snapshot.aiThinkingState,
-        borderTensionMap: snapshot.borderTensionMap,
-        regionTransitionLog: [],
-        diplomaticArcs: shouldResetVisuals ? [] : state.diplomaticArcs,
-        ripples: shouldResetVisuals ? [] : state.ripples,
-        winner: snapshot.winner,
-        finalNarration: snapshot.finalNarration,
-      }
-    })
+    set((state) => ({
+      currentRoomId: room.room_id || state.currentRoomId,
+      roomMode: room.mode,
+      roomStatus: room.status,
+      roomPlayers: room.players,
+      aiFactions: room.ai_factions,
+      currentPlayerId:
+        roomRecord && typeof roomRecord.current_player_id === 'string'
+          ? roomRecord.current_player_id
+          : state.currentPlayerId,
+      currentTurn: snapshot.currentTurn ?? state.currentTurn,
+      epoch: snapshot.currentTurn ?? state.epoch,
+      factions: snapshot.factions,
+      regions: snapshot.regions,
+      relationships: snapshot.relationships,
+      treaties: snapshot.treaties,
+      events: dedupeAndSortEvents(snapshot.events),
+      eventsWindow: dedupeAndSortEvents(snapshot.events),
+      privateMessages: dedupeAndSortPrivateMessages(snapshot.privateMessages),
+      aiThinkingState: snapshot.aiThinkingState,
+      aiThinkingByFaction: aiState.aiThinkingByFaction,
+      aiSpeakQueue: aiState.aiSpeakQueue,
+      aiReactionByEvent: aiState.aiReactionByEvent,
+      lastAIThinking: aiState.lastAIThinking,
+      lastAISpeak: aiState.lastAISpeak,
+      lastAIReaction: aiState.lastAIReaction,
+      borderTensionMap: snapshot.borderTensionMap,
+      regionTransitionLog: [],
+      aiDiaries: shouldResetVisuals ? emptyAIDiaries() : state.aiDiaries,
+      diplomaticArcs: shouldResetVisuals ? [] : state.diplomaticArcs,
+      ripples: shouldResetVisuals ? [] : state.ripples,
+      worldGeometry: shouldResetVisuals ? null : state.worldGeometry,
+      winner: snapshot.winner,
+      finalNarration: snapshot.finalNarration,
+      settings: snapshot.settings,
+      status: 'snapshot_applied',
+      currentEpoch: snapshot.currentTurn?.id ?? state.currentEpoch,
+      currentPhase: snapshot.currentTurn?.phase ?? state.currentPhase,
+      phaseStartedAt: snapshot.currentTurn?.phaseStartedAt ?? state.phaseStartedAt,
+    }))
 
-    get()._applyServerClockSample(serverTimeMs, now)
-    useUIStore.getState().setLastSyncAt(now)
+    get()._applyServerClockSample(serverTimeMs, receivedAtMs)
+    useUIStore.getState().setLastSyncAt(receivedAtMs)
     useUIStore.getState().setConnectionFailureReason(null)
+  },
+
+  applyRoomStarted: (payload) => {
+    const receivedAtMs = Date.now()
+    const normalized = normalizeRoomStartedPayload(payload)
+    const aiState = buildAIStateFromStreams(
+      normalized.initialState.events,
+      normalized.initialState.privateMessages,
+    )
+    const shouldResetVisuals = normalized.room.room_id !== '' && normalized.room.room_id !== get().currentRoomId
+
+    if (shouldResetVisuals) {
+      resetExpiringVisuals()
+      epochSummaryStore.getState().reset()
+      useMapStore.setState({
+        scorchedRegions: new Map(),
+        explosionQueue: [],
+      })
+    }
+
+    set((state) => ({
+      currentRoomId: normalized.room.room_id || state.currentRoomId,
+      roomMode: normalized.room.mode,
+      roomStatus: normalized.room.status,
+      roomPlayers: normalized.room.players,
+      aiFactions: normalized.room.ai_factions,
+      currentTurn: normalized.initialState.currentTurn ?? state.currentTurn,
+      epoch: normalized.initialState.currentTurn ?? state.epoch,
+      factions: normalized.initialState.factions,
+      regions: normalized.initialState.regions,
+      relationships: normalized.initialState.relationships,
+      treaties: normalized.initialState.treaties,
+      events: dedupeAndSortEvents(normalized.initialState.events),
+      eventsWindow: dedupeAndSortEvents(normalized.initialState.events),
+      privateMessages: dedupeAndSortPrivateMessages(normalized.initialState.privateMessages),
+      aiThinkingState: normalized.initialState.aiThinkingState,
+      aiThinkingByFaction: aiState.aiThinkingByFaction,
+      aiSpeakQueue: aiState.aiSpeakQueue,
+      aiReactionByEvent: aiState.aiReactionByEvent,
+      lastAIThinking: aiState.lastAIThinking,
+      lastAISpeak: aiState.lastAISpeak,
+      lastAIReaction: aiState.lastAIReaction,
+      borderTensionMap: normalized.initialState.borderTensionMap,
+      regionTransitionLog: [],
+      aiDiaries: shouldResetVisuals ? emptyAIDiaries() : state.aiDiaries,
+      diplomaticArcs: shouldResetVisuals ? [] : state.diplomaticArcs,
+      ripples: shouldResetVisuals ? [] : state.ripples,
+      worldGeometry: shouldResetVisuals ? null : state.worldGeometry,
+      winner: normalized.initialState.winner,
+      finalNarration: normalized.initialState.finalNarration,
+      settings: normalized.settings,
+      status: 'in_progress',
+      currentEpoch: normalized.initialState.currentTurn?.id ?? state.currentEpoch,
+      currentPhase: normalized.initialState.currentTurn?.phase ?? state.currentPhase,
+      phaseStartedAt: normalized.initialState.currentTurn?.phaseStartedAt ?? state.phaseStartedAt,
+    }))
+
+    get()._applyServerClockSample(receivedAtMs, receivedAtMs)
+    useUIStore.getState().setLastSyncAt(receivedAtMs)
+    useUIStore.getState().setConnectionFailureReason(null)
+  },
+
+  _applySnapshot: (payload) => {
+    get().applySnapshot(payload)
+  },
+
+  _applyRoomStarted: (payload) => {
+    get().applyRoomStarted(payload)
   },
 
   _applyServerClockSample: (serverTimeMs, clientTimeMs = Date.now()) => {
@@ -1840,15 +2335,83 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   },
 
   _applyAIThinking: (payload) => {
+    const roomId = payload.room_id ?? get().currentRoomId ?? ''
+    const thinking: AIThinkingState = {
+      progress: clamp(payload.progress, 0, 1),
+      phase: payload.phase ?? get().epoch.phase,
+      model: payload.model ?? null,
+      elapsed_ms: 0,
+      fallback: false,
+      factionId: payload.faction_id,
+      roomId,
+      receivedAtMs: Date.now(),
+    }
+
     set((state) => ({
       aiThinkingState: {
-        progress: payload.progress,
-        phase: payload.phase ?? state.epoch.phase,
-        model: payload.model ?? null,
-        elapsed_ms: 0,
-        fallback: false,
+        progress: thinking.progress,
+        phase: thinking.phase,
+        model: thinking.model,
+        elapsed_ms: thinking.elapsed_ms,
+        fallback: thinking.fallback,
       },
+      aiThinkingByFaction: new Map(state.aiThinkingByFaction).set(payload.faction_id, thinking),
+      lastAIThinking: thinking,
     }))
+  },
+
+  _applyAISpeak: ({ room_id, event, private_message }) => {
+    const speak = normalizeAISpeakEntry(event, private_message)
+    if (!speak) {
+      return
+    }
+
+    set((state) => {
+      const nextQueue = [speak, ...state.aiSpeakQueue].slice(0, MAX_AI_SPEAK_QUEUE)
+      return {
+        aiSpeakQueue: nextQueue,
+        lastAISpeak: speak,
+        events: event.kind === 'narration' || speak.kind === 'private' || speak.kind === 'public'
+          ? pushEventToList(state.events, event)
+          : state.events,
+        privateMessages: private_message
+          ? pushPrivateMessagesToList(state.privateMessages, [private_message])
+          : state.privateMessages,
+        currentRoomId: state.currentRoomId ?? room_id,
+      }
+    })
+  },
+
+  _applyAIReaction: ({ room_id, event, faction_id, reaction, target_faction }) => {
+    const payload = isRecord(event.payload) ? event.payload : {}
+    const sourceEventId = getEventSourceId(event)
+    if (!sourceEventId) {
+      return
+    }
+
+    const normalizedReaction: AIReaction = {
+      id: event.id,
+      eventId: sourceEventId,
+      factionId: faction_id,
+      targetFactionId: target_faction ?? (event.target ?? null),
+      reaction: reaction || event.narration || (typeof payload.label === 'string' ? payload.label : ''),
+      event,
+      createdAt: event.createdAt,
+    }
+
+    set((state) => {
+      const existing = state.aiReactionByEvent.get(sourceEventId) ?? []
+      const nextList = [normalizedReaction, ...existing].slice(0, MAX_AI_REACTIONS_PER_EVENT)
+      const nextMap = new Map(state.aiReactionByEvent)
+      nextMap.set(sourceEventId, nextList)
+
+      return {
+        aiReactionByEvent: nextMap,
+        lastAIReaction: normalizedReaction,
+        events: pushEventToList(state.events, event),
+        currentRoomId: state.currentRoomId ?? room_id,
+      }
+    })
   },
 
   togglePause: () => {
@@ -1944,8 +2507,15 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       roomStatus: payload.status,
       roomPlayers: payload.players.map(normalizeRoomPlayer),
       aiFactions: payload.ai_factions,
+      settings: payload.settings ?? state.settings,
       aiDiaries:
         shouldResetVisuals ? emptyAIDiaries() : state.aiDiaries,
+      aiThinkingByFaction: shouldResetVisuals ? new Map() : state.aiThinkingByFaction,
+      aiSpeakQueue: shouldResetVisuals ? [] : state.aiSpeakQueue,
+      aiReactionByEvent: shouldResetVisuals ? new Map() : state.aiReactionByEvent,
+      lastAIThinking: shouldResetVisuals ? null : state.lastAIThinking,
+      lastAISpeak: shouldResetVisuals ? null : state.lastAISpeak,
+      lastAIReaction: shouldResetVisuals ? null : state.lastAIReaction,
       diplomaticArcs: shouldResetVisuals ? [] : state.diplomaticArcs,
       ripples: shouldResetVisuals ? [] : state.ripples,
     }))

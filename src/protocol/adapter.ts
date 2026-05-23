@@ -1,6 +1,7 @@
 import { useUIStore } from '@/store/uiStore'
 import type { GameStoreState } from '@/store/gameStore'
 import { factionMetaStore } from '@/store/factionMetaStore'
+import { ActionDispatcher, dispatchEpochNarrationMessage } from './dispatcher'
 import type { IncomingMessage } from './types'
 import type { Transport } from './transport'
 
@@ -35,7 +36,11 @@ export function attachAdapter(transport: Transport, gameStore: GameStoreApiLike)
         store._applyRoomJoined(message.p.room_snapshot)
         break
       case 'room.snapshot':
-        store._applyRoomSnapshot(message.p)
+        store.applySnapshot(message.p)
+        break
+      case 'room.started':
+      case 'room.start':
+        store.applyRoomStarted(message.p)
         break
       case 'room.factions_meta':
         factionMetaStore.getState().applyFactionsMeta(message.p)
@@ -75,12 +80,15 @@ export function attachAdapter(transport: Transport, gameStore: GameStoreApiLike)
       case 'resolve.stats_diff':
         store._applyStatsDiff(message.p)
         break
+      case 'arbitrate.epic_narration':
+      case 'arbitrate.summary_narration':
+        dispatchEpochNarrationMessage(message)
+        break
       case 'ai.thinking':
-        store._applyAIThinking(message.p)
+        ActionDispatcher.applyAIThinking(message)
         break
       case 'action.broadcast':
-      case 'action.private':
-      case 'ai.speak': {
+      case 'action.private': {
         const privateMessage =
           'private_message' in message.p ? message.p.private_message : undefined
         const event = sanitizeRuntimeEvent(message, store.roomStatus)
@@ -91,10 +99,22 @@ export function attachAdapter(transport: Transport, gameStore: GameStoreApiLike)
         })
         break
       }
+      case 'ai.speak':
+        ActionDispatcher.applyAISpeak({
+          ...message,
+          p: {
+            ...message.p,
+            event: sanitizeRuntimeEvent(message, store.roomStatus),
+          },
+        })
+        break
       case 'ai.reaction':
-        store._applyEvents({
-          room_id: message.p.room_id,
-          events: [sanitizeRuntimeEvent(message, store.roomStatus)],
+        ActionDispatcher.applyAIReaction({
+          ...message,
+          p: {
+            ...message.p,
+            event: sanitizeRuntimeEvent(message, store.roomStatus),
+          },
         })
         break
       case 'replay.ai_diary_reveal':
@@ -130,44 +150,11 @@ export function attachAdapter(transport: Transport, gameStore: GameStoreApiLike)
           useUIStore.getState().setConnectionFailureReason(null)
         }
         break
-      case 'room.start':
-        store._applySnapshot({
-          room: {
-            id: message.p.room_id,
-            status: store.roomStatus ?? 'running',
-            mode: store.roomMode ?? 'solo_1v7',
-            max_players: store.roomPlayers.length,
-            players: store.roomPlayers.map((player) => ({
-              id: player.player_id,
-              display_name: player.display_name,
-              faction_id: player.faction_id,
-              connected: player.connected,
-              ready: player.ready,
-              ai_takeover: player.ai_takeover,
-            })),
-            ai_factions: store.aiFactions,
-            current_player_id: store.currentPlayerId ?? undefined,
-          },
-          current_turn: message.p.initial_state.current_turn ?? null,
-          factions: message.p.initial_state.factions ?? store.factions,
-          regions: message.p.initial_state.regions ?? store.regions,
-          relationships: message.p.initial_state.relationships ?? store.relationships,
-          treaties: message.p.initial_state.treaties ?? store.treaties,
-          recent_events: [],
-          recent_messages: [],
-          ai_thinking_state: null,
-          border_tension: [],
-          winner: store.winner,
-          final_narration: store.finalNarration,
-        })
-        break
       case 'room.world_geometry':
         store.applyWorldGeometry(message.p)
         break
       case 'reconnect.snapshot':
-        if (message.t === 'reconnect.snapshot') {
-          store._applySnapshot(message.p)
-        }
+        store.applySnapshot(message.p)
         break
       default:
         break

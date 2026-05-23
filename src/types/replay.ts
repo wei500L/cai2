@@ -18,6 +18,73 @@ export type AIInnerThought = {
   text: string
 }
 
+export type NarrationSource = 'llm' | 'template_fallback'
+
+export type EpicNarrationPayload = {
+  epoch: number
+  source: NarrationSource
+  narrative: string
+  model?: string | null
+  generatedAtMs?: number
+}
+
+export type SummaryHighlightBattle = {
+  id: string
+  kind: 'battle'
+  turn: number
+  priority: 'P0' | 'P1' | 'P2'
+  actor: FactionId
+  target: FactionId
+  regionId: string
+  attackerLoss: number
+  defenderLoss: number
+  attackerRemainingTroops: number
+  defenderRemainingTroops: number
+  narration: string
+}
+
+export type SummaryHighlightBetrayal = {
+  id: string
+  kind: 'betrayal'
+  turn: number
+  priority: 'P0' | 'P1' | 'P2'
+  actor: FactionId
+  target: FactionId
+  narration: string
+}
+
+export type SummaryHighlightMajorEvent = {
+  id: string
+  kind: string
+  turn: number
+  priority: 'P0' | 'P1' | 'P2'
+  actor?: FactionId | null
+  target?: FactionId | null
+  narration: string
+}
+
+export type SummaryRankingRow = {
+  id: FactionId
+  name: string
+  totalPower: number
+  previousRank: number
+  currentRank: number
+  rankDelta: number
+  previousPower: number
+}
+
+export type SummaryNarrationPayload = {
+  epoch: number
+  source: NarrationSource
+  highlights: {
+    majorEvents: SummaryHighlightMajorEvent[]
+    wars: SummaryHighlightBattle[]
+    betrayals: SummaryHighlightBetrayal[]
+  }
+  rankings: SummaryRankingRow[]
+  generatedAtMs?: number
+}
+
 export type FactionCurve = {
   factionId: FactionId
   points: Array<{ epoch: number; turn: number; totalPower: number }>

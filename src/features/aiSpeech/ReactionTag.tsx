@@ -1,19 +1,21 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { factionTokens } from '@/components/hudTheme'
 import { useFactionMeta } from '@/store/factionMetaStore'
-import type { FactionId } from '@/types/faction'
+import { useGameStore } from '@/store/gameStore'
 
 type ReactionTagProps = {
-  actor: FactionId
-  label: string
+  eventId: string
 }
 
-export function ReactionTag({ actor, label }: ReactionTagProps) {
+export function ReactionTag({ eventId }: ReactionTagProps) {
   const [visible, setVisible] = useState(true)
-  const faction = useFactionMeta(actor)
-  const token = factionTokens[actor]
+  const reactions = useGameStore((state) => state.aiReactionByEvent.get(eventId) ?? [])
+  const factionId = reactions[0]?.factionId ?? null
+  const faction = useFactionMeta(factionId ?? 'starlight')
+  const token = factionTokens[factionId ?? 'starlight']
+  const reactionLabel = useMemo(() => reactions[0]?.reaction ?? '', [reactions])
   const style = {
     '--reaction-border': token.glow,
     '--reaction-fill': token.shadow,
@@ -23,7 +25,11 @@ export function ReactionTag({ actor, label }: ReactionTagProps) {
     const timer = window.setTimeout(() => setVisible(false), 1_500)
 
     return () => window.clearTimeout(timer)
-  }, [label, actor])
+  }, [eventId, reactionLabel])
+
+  if (reactions.length === 0) {
+    return null
+  }
 
   return (
     <AnimatePresence>
@@ -40,7 +46,7 @@ export function ReactionTag({ actor, label }: ReactionTagProps) {
             boxShadow: '0 0 18px color-mix(in srgb, var(--reaction-border) 36%, transparent)',
           }}
         >
-          {faction?.name ?? actor} · {label}
+          {faction?.name ?? factionId ?? '未知'} · {reactionLabel}
         </motion.div>
       ) : null}
     </AnimatePresence>

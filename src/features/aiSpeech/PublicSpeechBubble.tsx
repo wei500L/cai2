@@ -1,18 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { CSSProperties } from 'react'
 import clsx from 'clsx'
-import { motion } from 'framer-motion'
+import { AnimatePresence, motion } from 'framer-motion'
 import { factionTokens } from '@/components/hudTheme'
 import { useFactionMeta } from '@/store/factionMetaStore'
+import { useGameStore } from '@/store/gameStore'
 import type { FactionId } from '@/types/faction'
 import { splitByKeywords, type KeywordTone } from '@/utils/keywords'
 
-type PublicSpeechBubbleProps = {
-  actor: FactionId
-  text: string
-  compact?: boolean
-  showTail?: boolean
-}
+const MAX_VISIBLE_SPEECHES = 3
 
 const keywordClass: Record<KeywordTone, string> = {
   hostile: 'text-[color:var(--text-hostile)]',
@@ -21,15 +17,46 @@ const keywordClass: Record<KeywordTone, string> = {
   neutral: '',
 }
 
-export function PublicSpeechBubble({
+export function PublicSpeechBubble() {
+  const publicSpeeches = useGameStore((state) =>
+    state.aiSpeakQueue.filter((item) => item.kind === 'public').slice(0, MAX_VISIBLE_SPEECHES),
+  )
+
+  if (publicSpeeches.length === 0) {
+    return null
+  }
+
+  return (
+    <AnimatePresence initial={false}>
+      <div className="flex flex-col items-center gap-2">
+        {publicSpeeches.map((entry, index) => (
+          <SpeechBubbleCard
+            key={`${entry.id}-${index}`}
+            actor={entry.factionId ?? 'starlight'}
+            text={entry.text}
+            compact={index > 0}
+            showTail={index === 0}
+          />
+        ))}
+      </div>
+    </AnimatePresence>
+  )
+}
+
+function SpeechBubbleCard({
   actor,
   text,
   compact = false,
   showTail = true,
-}: PublicSpeechBubbleProps) {
+}: {
+  actor: FactionId
+  text: string
+  compact?: boolean
+  showTail?: boolean
+}) {
   const faction = useFactionMeta(actor)
   const token = factionTokens[actor]
-  const [visibleLength, setVisibleLength] = useState(compact ? text.length : 0)
+  const [visibleLength, setVisibleLength] = useState(() => (compact ? text.length : 0))
 
   useEffect(() => {
     if (compact) {
@@ -60,13 +87,14 @@ export function PublicSpeechBubble({
 
   return (
     <motion.article
+      layout
       initial={{ opacity: 0, y: 12, scale: 0.97 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       exit={{ opacity: 0, y: -8, scale: 0.98 }}
       transition={{ duration: 0.24 }}
       className={clsx(
         'relative border bg-[color:rgba(0,0,0,0.72)] text-[color:var(--text-primary)]',
-        compact ? 'px-3 py-2' : 'max-w-[min(28rem,84vw)] px-4 py-3',
+        compact ? 'max-w-[22rem] px-3 py-2' : 'max-w-[min(28rem,84vw)] px-4 py-3',
       )}
       style={{
         ...style,

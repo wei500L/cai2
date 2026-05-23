@@ -1,4 +1,5 @@
 import type { ArbitratePhase, Epoch, GameEvent, GamePhase } from '@/types'
+import { useGameStore } from '@/store/gameStore'
 import { getRemainingMs } from '@/utils/serverClock'
 
 export type HudMode =
@@ -180,7 +181,17 @@ export function getPhaseSubtitle(hudMode: HudMode) {
 }
 
 export function getPhaseDuration(hudMode: HudMode) {
-  return phaseDurationsMs[hudMode]
+  const phase =
+    hudMode === 'observe'
+      ? 'observe'
+      : hudMode === 'action'
+        ? 'action'
+        : hudMode === 'resolve'
+          ? 'resolve'
+          : 'arbitrate'
+  const duration = useGameStore.getState().settings.phase_durations[phase]
+
+  return typeof duration === 'number' && duration > 0 ? duration : phaseDurationsMs[hudMode]
 }
 
 export function getPhaseProgress(

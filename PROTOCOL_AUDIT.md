@@ -1,5 +1,14 @@
 # Protocol Audit
 
+## 房间快照设置
+
+- `room.snapshot` 现在携带 `schema_version="1.0"` 与 `settings`。
+- `settings` 字段包含 `phase_durations`、`turns_per_epoch`、`max_epochs`。
+- `phase_durations` 默认值为 `observe=10000`、`action=60000`、`resolve=8000`、`arbitrate=12000`，单位毫秒。
+- `turns_per_epoch` 默认值为 `20`，`max_epochs` 默认值为 `5`。
+- `reconnect.snapshot.full_state.room` 同样携带 `settings`，重连不再依赖 mock 常量。
+- 环境变量覆盖项：`ROOM_PHASE_DURATIONS`、`ROOM_TURNS_PER_EPOCH`、`ROOM_MAX_EPOCHS`。
+
 ## v1.0-mock-to-real
 
 - 新增 `room.factions_meta` 事件，后端成为势力静态元数据 source of truth。
@@ -22,3 +31,12 @@
 - P0 演讲事件在 EventLog 中会补充 `cinematic_hint="speech"`，P1/P2 不受影响。
 - `reconnect.snapshot` / `reconnect.catchup` 会携带 `world_geometry`，并在快照前单独下发对应事件。
 - `room.start` 之后会立即广播 `room.world_geometry`。
+
+## AI 事件场景完整性
+
+- `ai.thinking` 由调度层在 resolve 前统一下发，作为所有 AI 结算输出的前置状态。
+- `SettlementService` 现在会补全公开演讲、密谈、条约、宣战四类场景的 AI 输出，并交由 `AIOutputService` 转成正式事件。
+- `ai.speak` 负载新增 `kind`，仅允许 `public` / `private` / `narration`。
+- `ai.reaction` 负载新增 `target_event_id`，并继续携带 `event` / `faction_id` / `reaction` / `target_faction`。
+- `OutboundDispatcher` 现在会把 `ai.speak` 与 `ai.reaction` 分开下发，避免把反应误发成普通发言。
+- 回归目标：thinking -> speak -> reaction 的顺序在 resolve 阶段保持稳定，且 reaction 不再缺少目标事件锚点。

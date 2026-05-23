@@ -9,6 +9,7 @@ from app.core.clock import Clock
 from app.core.errors import DiplomacyError
 from app.core.logging import get_logger
 from app.domain.enums import EventKind, EventPriority, FactionId, GamePhase, VisibilityScope
+from app.domain.factions import FACTION_LABELS
 from app.domain.models import (
     AISpeechItem,
     BattleEvent,
@@ -16,6 +17,7 @@ from app.domain.models import (
     FactionStatChange,
     FactionState,
     GameEvent,
+    GameRoom,
     MapRegion,
     MessageVisibility,
     Relationship,
@@ -36,6 +38,11 @@ from app.llm.prompt_builder import PromptBuilder
 from app.llm.retry import call_with_retry
 from app.repositories.factory import Repositories
 from app.services.ai_output_service import AIOutputBundle, AIOutputService
+from app.services.ai_templates import (
+    AI_PRIVATE_TEMPLATES,
+    AI_REACTION_TEMPLATES,
+    AI_SPEECH_TEMPLATES,
+)
 from app.services.arc_builder import (
     ArcSpec,
     Capital,
@@ -166,6 +173,28 @@ class SettlementService:
             self._log_repo_error(room_id, epoch, turn, "write_diary", error)
             raise DiplomacyError("failed to write diary entries") from error
 
+        self._log_step(room_id, epoch, turn, "build_ai_speech_plan")
+        try:
+            ai_speech_items = await self._build_ai_speech_plan(
+                room_id,
+                settlement_input,
+                settlement_result,
+            )
+            augmented_model_output = model_output.model_copy(
+                update={
+                    "ai_speeches": [
+                        *model_output.ai_speeches,
+                        *ai_speech_items,
+                    ],
+                },
+            )
+            settlement_result = settlement_result.model_copy(
+                update={"ai_speeches": list(augmented_model_output.ai_speeches)},
+            )
+        except Exception as error:
+            self._log_repo_error(room_id, epoch, turn, "build_ai_speech_plan", error)
+            raise DiplomacyError("failed to build AI speech plan") from error
+
         self._log_step(room_id, epoch, turn, "save_settlement")
         try:
             await self._repos.settlements.save(settlement_result)
@@ -186,7 +215,7 @@ class SettlementService:
                 room_id,
                 epoch,
                 turn,
-                model_output,
+                augmented_model_output,
                 factions_snapshot=settlement_input.factions_snapshot,
                 recent_events=settlement_input.recent_events,
             )
@@ -368,6 +397,144 @@ class SettlementService:
                 ),
                 room_id=room_id,
             )
+
+    async def _build_ai_speech_plan(
+        self,
+        room_id: str,
+        settlement_input: SettlementInput,
+        settlement_result: SettlementResult,
+    ) -> list[AISpeechItem]:
+        room = await self._repos.rooms.get(room_id)
+        ai_factions = _room_ai_factions(room)
+        ai_speeches: list[AISpeechItem] = []
+
+        for action in settlement_input.public_speeches:
+            responders = _other_ai_factions(ai_factions, action.actor_faction)
+            for faction_id in responders:
+                ai_speeches.append(
+                    AISpeechItem(
+                        faction_id=faction_id,
+                        kind="public",
+                        content=_render_ai_content(
+                            AI_SPEECH_TEMPLATES,
+                            faction_id,
+                            target_faction=action.actor_faction,
+                            epoch=settlement_input.epoch,
+                        ),
+                        target_faction=action.actor_faction,
+                        target_event_id=action.id,
+                    )
+                )
+            for faction_id in responders:
+                ai_speeches.append(
+                    AISpeechItem(
+                        faction_id=faction_id,
+                        kind="reaction",
+                        content=_render_ai_content(
+                            AI_REACTION_TEMPLATES,
+                            faction_id,
+                            target_faction=action.actor_faction,
+                            epoch=settlement_input.epoch,
+                        ),
+                        target_faction=action.actor_faction,
+                        target_event_id=action.id,
+                    )
+                )
+
+        for action in settlement_input.private_messages:
+            target = action.target_faction
+            if target not in ai_factions:
+                continue
+            ai_speeches.append(
+                AISpeechItem(
+                    faction_id=target,
+                    kind="private",
+                    content=_render_ai_content(
+                        AI_PRIVATE_TEMPLATES,
+                        target,
+                        target_faction=action.actor_faction,
+                        epoch=settlement_input.epoch,
+                    ),
+                    target_faction=action.actor_faction,
+                    target_event_id=action.id,
+                )
+            )
+
+        for action in settlement_input.treaty_requests:
+            responders = [
+                target
+                for target in action.target_factions
+                if target in ai_factions and target != action.actor_faction
+            ]
+            for faction_id in responders:
+                ai_speeches.append(
+                    AISpeechItem(
+                        faction_id=faction_id,
+                        kind="public",
+                        content=_render_ai_content(
+                            AI_SPEECH_TEMPLATES,
+                            faction_id,
+                            target_faction=action.actor_faction,
+                            epoch=settlement_input.epoch,
+                        ),
+                        target_faction=action.actor_faction,
+                        target_event_id=action.id,
+                    )
+                )
+
+        attack_orders = {
+            order.target_region: order
+            for order in settlement_input.military_orders
+            if order.movement == "attack"
+        }
+        seen_battles: set[tuple[str, str]] = set()
+        for battle in settlement_result.battle_results:
+            battle_key = (str(battle.attacker), str(battle.defender))
+            if battle_key in seen_battles:
+                continue
+            seen_battles.add(battle_key)
+            order = attack_orders.get(battle.region_id)
+            if order is None:
+                continue
+
+            defender = battle.defender
+            if defender in ai_factions:
+                ai_speeches.append(
+                    AISpeechItem(
+                        faction_id=defender,
+                        kind="public",
+                        content=_render_ai_content(
+                            AI_SPEECH_TEMPLATES,
+                            defender,
+                            target_faction=order.actor_faction,
+                            epoch=settlement_input.epoch,
+                        ),
+                        target_faction=order.actor_faction,
+                        target_event_id=order.id,
+                    )
+                )
+
+            for faction_id in _other_ai_factions(
+                ai_factions,
+                order.actor_faction,
+                defender,
+            ):
+                ai_speeches.append(
+                    AISpeechItem(
+                        faction_id=faction_id,
+                        kind="reaction",
+                        content=_render_ai_content(
+                            AI_REACTION_TEMPLATES,
+                            faction_id,
+                            target_faction=order.actor_faction,
+                            epoch=settlement_input.epoch,
+                        ),
+                        target_faction=order.actor_faction,
+                        target_event_id=order.id,
+                    )
+                )
+
+        return ai_speeches
 
     @staticmethod
     def _log_step(room_id: str, epoch: int, turn: int, step: str) -> None:
@@ -642,6 +809,42 @@ def _build_ai_output_events(ai_output: AIOutputBundle) -> list[dict[str, Any]]:
         *ai_output.private_message_events,
         *ai_output.ai_reaction_events,
     ]
+
+
+def _room_ai_factions(room: GameRoom | None) -> set[FactionId]:
+    if room is None:
+        return set(FactionId)
+    return {FactionId(str(faction_id)) for faction_id in room.ai_factions}
+
+
+def _other_ai_factions(
+    ai_factions: set[FactionId],
+    *excluded: FactionId | None,
+) -> list[FactionId]:
+    excluded_ids = {faction_id for faction_id in excluded if faction_id is not None}
+    return sorted(
+        [faction_id for faction_id in ai_factions if faction_id not in excluded_ids],
+        key=str,
+    )
+
+
+def _render_ai_content(
+    templates: dict[FactionId, list[str]],
+    faction_id: FactionId,
+    *,
+    target_faction: FactionId | None,
+    epoch: int,
+) -> str:
+    pool = templates.get(faction_id) or []
+    template = pool[0] if pool else "{faction}对{target}做出回应。"
+    target_label = (
+        FACTION_LABELS.get(target_faction, "各方") if target_faction is not None else "各方"
+    )
+    return template.format(
+        faction=FACTION_LABELS.get(faction_id, str(faction_id)),
+        target=target_label,
+        epoch=epoch,
+    )
 
 
 def compute_border_tension(

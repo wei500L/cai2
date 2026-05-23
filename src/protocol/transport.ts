@@ -1,8 +1,8 @@
 import { tryConsumeRate } from '@/features/commandTerminal/RateLimiter'
 import { militaryActionLabels, treatyKindLabels, type CommandMode } from '@/features/commandTerminal/types'
 import { factionMetaFixtures } from '@/mock/factions'
+import { SYSTEM_NARRATION_TEMPLATES } from '@/mock/aiTemplates'
 import type { FactionId, FactionMeta } from '@/types/faction'
-import { MAX_EPOCHS, TURNS_PER_EPOCH, getPhaseDurationMs } from '@/mock/gameState'
 import type {
   BattleEvent,
   Epoch,
@@ -13,11 +13,14 @@ import type {
   MapRegion,
   PrivateMessage,
   Relationship,
+  EpicNarrationPayload,
+  SummaryNarrationPayload,
 } from '@/types'
 import { clearAIResponseTimers, triggerAIResponses } from '@/mock/aiResponder'
 import { createMockWorldGeometry } from '@/mock/worldGeometry'
 import { createMockDiplomaticVisuals } from '@/mock/diplomaticArcs'
 import { gameStoreApi } from '@/store/gameStore'
+import { createInitialState } from '@/store/gameStoreSeed'
 import { useUIStore } from '@/store/uiStore'
 import type { SubmitSpeechResult } from '@/features/commandTerminal/types'
 import type {
@@ -28,6 +31,9 @@ import type {
   RelationshipPatch,
   RegionChange,
   ScorchedDiffPayload,
+  ReconnectEpochTurn,
+  RoomSnapshotPayload,
+  RoomStartedPayload,
   StatsDiffPayload,
 } from './types'
 
@@ -62,6 +68,7 @@ export type TransportConfig = {
   }
   mock?: {
     latencyMs?: number
+    startGameLoop?: boolean
   }
 }
 
@@ -101,6 +108,17 @@ function createPhaseKey(epoch: Epoch) {
   return `E${epoch.id}:T${epoch.turn}:${epoch.phase}`
 }
 
+function toReconnectEpochTurn(epoch: Epoch): ReconnectEpochTurn {
+  return {
+    epoch: epoch.id,
+    turn: epoch.turn,
+    phase: epoch.phase,
+    arbitrate_phase: epoch.arbitratePhase ?? null,
+    phase_started_at_ms: epoch.phaseStartedAt,
+    phase_duration_ms: epoch.phaseDurationMs,
+  }
+}
+
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
 }
@@ -136,8 +154,10 @@ function recalculateFaction(faction: FactionState): FactionState {
   }
 }
 
-function nextEpochState(epoch: Epoch): Epoch | null {
+function nextEpochState(epoch: Epoch, settings = gameStoreApi.getState().settings): Epoch | null {
   const now = Date.now()
+  const phaseDurations = settings.phase_durations
+  const getPhaseDuration = (phase: Epoch['phase']) => phaseDurations[phase] ?? 0
 
   if (epoch.phase === 'observe') {
     return {
@@ -145,7 +165,7 @@ function nextEpochState(epoch: Epoch): Epoch | null {
       phase: 'action',
       arbitratePhase: undefined,
       phaseStartedAt: now,
-      phaseDurationMs: getPhaseDurationMs('action'),
+      phaseDurationMs: getPhaseDuration('action'),
     }
   }
 
@@ -155,19 +175,19 @@ function nextEpochState(epoch: Epoch): Epoch | null {
       phase: 'resolve',
       arbitratePhase: undefined,
       phaseStartedAt: now,
-      phaseDurationMs: getPhaseDurationMs('resolve'),
+      phaseDurationMs: getPhaseDuration('resolve'),
     }
   }
 
   if (epoch.phase === 'resolve') {
-    if (epoch.turn < TURNS_PER_EPOCH) {
+    if (epoch.turn < settings.turns_per_epoch) {
       return {
         ...epoch,
         turn: epoch.turn + 1,
         phase: 'observe',
         arbitratePhase: undefined,
         phaseStartedAt: now,
-        phaseDurationMs: getPhaseDurationMs('observe'),
+        phaseDurationMs: getPhaseDuration('observe'),
       }
     }
 
@@ -176,7 +196,7 @@ function nextEpochState(epoch: Epoch): Epoch | null {
       phase: 'arbitrate',
       arbitratePhase: 'battle',
       phaseStartedAt: now,
-      phaseDurationMs: getPhaseDurationMs('arbitrate', 'battle'),
+      phaseDurationMs: getPhaseDuration('arbitrate'),
     }
   }
 
@@ -185,7 +205,7 @@ function nextEpochState(epoch: Epoch): Epoch | null {
       ...epoch,
       arbitratePhase: 'epic',
       phaseStartedAt: now,
-      phaseDurationMs: getPhaseDurationMs('arbitrate', 'epic'),
+      phaseDurationMs: getPhaseDuration('arbitrate'),
     }
   }
 
@@ -194,11 +214,11 @@ function nextEpochState(epoch: Epoch): Epoch | null {
       ...epoch,
       arbitratePhase: 'summary',
       phaseStartedAt: now,
-      phaseDurationMs: getPhaseDurationMs('arbitrate', 'summary'),
+      phaseDurationMs: getPhaseDuration('arbitrate'),
     }
   }
 
-  if (epoch.id >= MAX_EPOCHS) {
+  if (settings.max_epochs > 0 && epoch.id >= settings.max_epochs) {
     return null
   }
 
@@ -207,7 +227,189 @@ function nextEpochState(epoch: Epoch): Epoch | null {
     turn: 1,
     phase: 'observe',
     phaseStartedAt: now,
-    phaseDurationMs: getPhaseDurationMs('observe'),
+    phaseDurationMs: getPhaseDuration('observe'),
+  }
+}
+
+function replaceTemplate(template: string, params: Record<string, string | number | undefined>) {
+  return template.replace(/\{(\w+)\}/g, (_, key: string) => String(params[key] ?? ''))
+}
+
+function getFactionName(id: FactionId | null | undefined) {
+  return id ? mockFactionById[id]?.name ?? id : '无名势力'
+}
+
+function numberFromPayload(payload: Record<string, unknown>, key: string) {
+  const value = payload[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0
+}
+
+function moraleDeltaFor(event: GameEvent, id: FactionId) {
+  const shift = event.payload.morale_shift
+
+  if (typeof shift === 'number') {
+    return event.actor === id ? shift : event.target === id ? -shift : 0
+  }
+
+  if (!shift || typeof shift !== 'object') {
+    return 0
+  }
+
+  const attacker = 'attacker' in shift && typeof shift.attacker === 'number' ? shift.attacker : 0
+  const defender = 'defender' in shift && typeof shift.defender === 'number' ? shift.defender : 0
+
+  if (event.actor === id) {
+    return attacker
+  }
+
+  if (event.target === id) {
+    return defender
+  }
+
+  return 0
+}
+
+function estimatePreviousPower(faction: FactionState, events: GameEvent[]) {
+  let previousPower = faction.totalPower
+
+  for (const event of events) {
+    if (event.kind === 'battle') {
+      if (event.actor === faction.id) {
+        previousPower += numberFromPayload(event.payload, 'atk_loss')
+      }
+
+      if (event.target === faction.id) {
+        previousPower += numberFromPayload(event.payload, 'def_loss')
+      }
+
+      previousPower -= moraleDeltaFor(event, faction.id)
+    }
+
+    if (event.kind === 'speech' && event.actor === faction.id) {
+      previousPower -= numberFromPayload(event.payload, 'culture_gain')
+    }
+  }
+
+  return Math.max(0, Math.round(previousPower))
+}
+
+function rankByPower(items: Array<{ id: FactionId; totalPower: number }>) {
+  return new Map(
+    [...items]
+      .sort((a, b) => b.totalPower - a.totalPower)
+      .map((item, index) => [item.id, index + 1]),
+  )
+}
+
+function getTemplateIndex(epochId: number, eventCount: number, warCount: number, betrayalCount: number) {
+  return Math.abs(epochId * 17 + eventCount * 7 + warCount * 5 + betrayalCount * 3)
+}
+
+function buildEpicNarrationPayload(epoch: Epoch): EpicNarrationPayload {
+  const state = gameStoreApi.getState()
+  const epochEvents = state.events.filter((event) => event.epoch === epoch.id)
+  const warCount = epochEvents.filter((event) => event.kind === 'battle').length
+  const betrayalCount = epochEvents.filter((event) => event.kind === 'betrayal').length
+  const weakest = [...state.factions].sort((a, b) => a.totalPower - b.totalPower)[0]
+  const strongest = [...state.factions].sort((a, b) => b.totalPower - a.totalPower)[0]
+  const templates = SYSTEM_NARRATION_TEMPLATES.epoch_summary
+  const template = templates[getTemplateIndex(epoch.id, epochEvents.length, warCount, betrayalCount) % templates.length]
+  const majorEvent = epochEvents.find((event) => event.priority === 'P0' || event.priority === 'P1')
+
+  return {
+    epoch: epoch.id,
+    source: 'template_fallback',
+    narrative: replaceTemplate(template, {
+      epoch: epoch.id,
+      epochRoman: ['','I','II','III','IV','V','VI','VII','VIII','IX','X'][epoch.id] ?? String(epoch.id),
+      fallenName: getFactionName(weakest?.id),
+      topFactionName: getFactionName(strongest?.id),
+      warCount,
+      betrayalCount,
+      majorEvent: majorEvent?.narration ?? '沉默的边境仍在等待下一次裁决',
+    }),
+    model: 'mock-llm',
+    generatedAtMs: Date.now(),
+  }
+}
+
+function buildSummaryNarrationPayload(epoch: Epoch): SummaryNarrationPayload {
+  const state = gameStoreApi.getState()
+  const epochEvents = [...state.events].filter((event) => event.epoch === epoch.id)
+  const sortedEpochEvents = [...epochEvents].sort(
+    (left, right) => left.createdAt - right.createdAt || left.turn - right.turn || left.id.localeCompare(right.id),
+  )
+  const currentRanks = rankByPower(state.factions)
+  const previousPowers = state.factions.map((faction) => ({
+    id: faction.id,
+    totalPower: estimatePreviousPower(faction, epochEvents),
+  }))
+  const previousRanks = rankByPower(previousPowers)
+
+  return {
+    epoch: epoch.id,
+    source: 'template_fallback',
+    highlights: {
+      majorEvents: sortedEpochEvents
+        .filter((event) => event.priority === 'P0' || event.priority === 'P1')
+        .slice(0, 5)
+        .map((event) => ({
+          id: event.id,
+          kind: event.kind,
+          turn: event.turn,
+          priority: event.priority,
+          actor: event.actor ?? null,
+          target: event.target ?? null,
+          narration: event.narration,
+        })),
+      wars: sortedEpochEvents
+        .filter((event) => event.kind === 'battle' && event.actor && event.target)
+        .slice(0, 5)
+        .map((event) => ({
+          id: event.id,
+          kind: 'battle' as const,
+          turn: event.turn,
+          priority: event.priority,
+          actor: event.actor as FactionId,
+          target: event.target as FactionId,
+          regionId: String(event.payload.region_id ?? ''),
+          attackerLoss: numberFromPayload(event.payload, 'atk_loss'),
+          defenderLoss: numberFromPayload(event.payload, 'def_loss'),
+          attackerRemainingTroops: numberFromPayload(event.payload, 'attacker_remaining_troops'),
+          defenderRemainingTroops: numberFromPayload(event.payload, 'defender_remaining_troops'),
+          narration: event.narration,
+        })),
+      betrayals: sortedEpochEvents
+        .filter((event) => event.kind === 'betrayal' && event.actor && event.target)
+        .slice(0, 5)
+        .map((event) => ({
+          id: event.id,
+          kind: 'betrayal' as const,
+          turn: event.turn,
+          priority: event.priority,
+          actor: event.actor as FactionId,
+          target: event.target as FactionId,
+          narration: event.narration,
+        })),
+    },
+    rankings: state.factions
+      .map((faction) => {
+        const previousPower = previousPowers.find((item) => item.id === faction.id)?.totalPower ?? faction.totalPower
+        const previousRank = previousRanks.get(faction.id) ?? state.factions.length
+        const currentRank = currentRanks.get(faction.id) ?? state.factions.length
+
+        return {
+          id: faction.id,
+          name: mockFactionById[faction.id]?.name ?? faction.id,
+          totalPower: faction.totalPower,
+          previousRank,
+          currentRank,
+          rankDelta: previousRank - currentRank,
+          previousPower,
+        }
+      })
+      .sort((a, b) => a.currentRank - b.currentRank),
+    generatedAtMs: Date.now(),
   }
 }
 
@@ -423,9 +625,12 @@ export class MockTransport implements Transport {
   private handlers = new Set<MessageHandler>()
   private connected = false
   private latencyMs = 0
+  private startMockLoopOnConnect = false
+  private stopMockLoop: (() => void) | null = null
 
-  constructor(config: { latencyMs?: number } = {}) {
+  constructor(config: { latencyMs?: number; startGameLoop?: boolean } = {}) {
     this.latencyMs = Math.max(0, config.latencyMs ?? 0)
+    this.startMockLoopOnConnect = Boolean(config.startGameLoop)
   }
 
   connect() {
@@ -434,21 +639,92 @@ export class MockTransport implements Transport {
     }
 
     this.connected = true
+    const fixtureSeed = 2_026_052_2
+    const developmentState = createInitialState(fixtureSeed)
+    const roomId = getRoomId()
+    const humanFactions = factionMetaFixtures.slice(0, 4)
+    const aiFactions = factionMetaFixtures.slice(4).map((faction) => faction.id)
+    const players = humanFactions.map((faction, index) => ({
+      player_id: `mock-player-${index}`,
+      display_name: `Mock Player ${index + 1}`,
+      faction_id: faction.id,
+      connected: true,
+      ready: true,
+      ai_takeover: false,
+    }))
+    const roomSnapshot: RoomSnapshotPayload = {
+      room_id: roomId,
+      mode: 'multi_4v4',
+      status: 'running',
+      players,
+      ai_factions: aiFactions,
+      settings: developmentState.settings,
+      current_turn: toReconnectEpochTurn(developmentState.epoch),
+      factions: developmentState.factions,
+      regions: developmentState.regions,
+      relationships: developmentState.relationships,
+      treaties: developmentState.treaties,
+      recent_events: developmentState.events,
+      recent_messages: [],
+      ai_thinking_state: null,
+      border_tension: [],
+      winner: developmentState.winner,
+      final_narration: developmentState.finalNarration,
+    }
+    const roomStarted: RoomStartedPayload = {
+      room_id: roomId,
+      mode: 'multi_4v4',
+      status: 'running',
+      players,
+      ai_factions: aiFactions,
+      settings: developmentState.settings,
+      initial_state: {
+        room: {
+          id: roomId,
+          status: 'running',
+          mode: 'multi_4v4',
+          players,
+          ai_factions: aiFactions,
+          current_player_id: players[0]?.player_id ?? 'mock-player-0',
+        },
+        current_turn: toReconnectEpochTurn(developmentState.epoch),
+        factions: developmentState.factions,
+        regions: developmentState.regions,
+        relationships: developmentState.relationships,
+        treaties: developmentState.treaties,
+        recent_events: developmentState.events,
+        recent_messages: developmentState.privateMessages,
+        ai_thinking_state: null,
+        border_tension: [],
+        winner: developmentState.winner,
+        final_narration: developmentState.finalNarration,
+        settings: developmentState.settings,
+      },
+    }
+
     this.emit(nextEnvelope('conn.auth.ok', {
       player_id: gameStoreApi.getState().selectedFactionId ?? 'starlight',
       display_name: 'Mock Player',
       server_time_ms: Date.now(),
     }))
     this.emit(nextEnvelope('room.factions_meta', {
-      room_id: getRoomId(),
+      room_id: roomId,
       schema_version: 'mock',
       factions_meta: factionMetaFixtures,
     }))
-    this.emit(nextEnvelope('room.world_geometry', createMockWorldGeometry()))
+    this.emit(nextEnvelope('room.snapshot', roomSnapshot))
+    this.emit(nextEnvelope('room.started', roomStarted))
+    this.emitTurnBegin(developmentState.epoch, developmentState)
+    this.emit(nextEnvelope('room.world_geometry', createMockWorldGeometry(fixtureSeed)))
+    if (this.startMockLoopOnConnect) {
+      void this.ensureMockLoop()
+    }
   }
 
   disconnect() {
     this.connected = false
+    this.stopMockLoop?.()
+    this.stopMockLoop = null
     clearAIResponseTimers()
     this.handlers.clear()
   }
@@ -459,6 +735,24 @@ export class MockTransport implements Transport {
 
   off(handler: MessageHandler) {
     this.handlers.delete(handler)
+  }
+
+  emitAIThinking(payload: {
+    room_id: string
+    faction_id: FactionId
+    progress: number
+    phase?: string
+    model?: string | null
+  }) {
+    this.emit(nextEnvelope('ai.thinking', payload))
+  }
+
+  emitEpicNarration(epoch: Epoch) {
+    this.emit(nextEnvelope('arbitrate.epic_narration', buildEpicNarrationPayload(epoch)))
+  }
+
+  emitSummaryNarration(epoch: Epoch) {
+    this.emit(nextEnvelope('arbitrate.summary_narration', buildSummaryNarrationPayload(epoch)))
   }
 
   send(message: OutgoingMessage): SubmitSpeechResult {
@@ -527,8 +821,10 @@ export class MockTransport implements Transport {
     }))
   }
 
-  emitTurnBegin(epoch: Epoch) {
-    const state = gameStoreApi.getState()
+  emitTurnBegin(
+    epoch: Epoch,
+    visibleState: Pick<ReturnType<typeof gameStoreApi.getState>, 'factions' | 'relationships' | 'regions'> = gameStoreApi.getState(),
+  ) {
     this.emit(nextEnvelope('turn.begin', {
       room_id: getRoomId(),
       epoch: epoch.id,
@@ -540,9 +836,9 @@ export class MockTransport implements Transport {
       server_time_ms: Date.now(),
       visible_snapshot: {
         epoch,
-        factions: state.factions,
-        relationships: state.relationships,
-        regions: state.regions,
+        factions: visibleState.factions,
+        relationships: visibleState.relationships,
+        regions: visibleState.regions,
       },
     }))
   }
@@ -708,6 +1004,14 @@ export class MockTransport implements Transport {
 
     this.emitPhase(next)
 
+    if (next.phase === 'arbitrate' && next.arbitratePhase === 'epic') {
+      this.emitEpicNarration(next)
+    }
+
+    if (next.phase === 'arbitrate' && next.arbitratePhase === 'summary') {
+      this.emitSummaryNarration(next)
+    }
+
     if (next.phase === 'observe') {
       this.emitTurnBegin(next)
     }
@@ -871,6 +1175,10 @@ export class MockTransport implements Transport {
     this.emit(nextEnvelope('resolve.scorched_diff', payload))
   }
 
+  private handleClientSpeech(event: GameEvent) {
+    triggerAIResponses(event, this)
+  }
+
   private acceptPlayerAction(
     message: OutgoingMessage,
     mode: CommandMode,
@@ -973,7 +1281,7 @@ export class MockTransport implements Transport {
       }))
     }
 
-    triggerAIResponses(event, this)
+    this.handleClientSpeech(event)
 
     return { ok: true, eventId: event.id }
   }
@@ -1008,6 +1316,24 @@ export class MockTransport implements Transport {
     for (const handler of this.handlers) {
       handler(message)
     }
+  }
+
+  private async ensureMockLoop() {
+    if (!this.startMockLoopOnConnect || this.stopMockLoop) {
+      return
+    }
+
+    if (!import.meta.env.DEV) {
+      console.warn('startMockGameLoop skipped outside development build')
+      return
+    }
+
+    const { startMockGameLoop } = await import('@/mock/gameLoop')
+    if (!this.connected || !this.startMockLoopOnConnect || this.stopMockLoop) {
+      return
+    }
+
+    this.stopMockLoop = startMockGameLoop(this)
   }
 }
 

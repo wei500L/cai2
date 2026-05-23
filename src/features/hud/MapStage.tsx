@@ -3,8 +3,6 @@ import { EffectsLayer } from '@/effects/EffectsLayer'
 import { PublicSpeechBubble } from '@/features/aiSpeech/PublicSpeechBubble'
 import { ReactionTag } from '@/features/aiSpeech/ReactionTag'
 import { motion } from 'framer-motion'
-import type { FactionId } from '@/types/faction'
-import type { GameEvent } from '@/types'
 import { MapSwitcher } from '@/render/MapSwitcher'
 import { useGameStore } from '@/store/gameStore'
 import { useMapStore } from '@/store/mapStore'
@@ -12,32 +10,24 @@ import { useUIStore } from '@/store/uiStore'
 import { getPhaseUIConfig } from '@/features/phaseSystem/PhaseStateMachine'
 import { RegionInflowAnimation } from '@/effects/war/RegionInflowAnimation'
 
-function getPublicSpeechText(event: GameEvent) {
-  if (event.kind !== 'speech' || !event.actor || event.payload.channel !== 'public') {
-    return null
-  }
-
-  return typeof event.payload.text === 'string' ? event.payload.text : event.narration
-}
-
-function getReactionLabel(event: GameEvent) {
-  if (event.kind !== 'ai_reaction' || !event.actor) {
-    return null
-  }
-
-  return typeof event.payload.label === 'string' ? event.payload.label : event.narration
-}
-
 export function MapStage() {
   const epoch = useGameStore((state) => state.epoch)
   const events = useGameStore((state) => state.events)
+  const selectedFactionId = useGameStore((state) => state.selectedFactionId)
+  const aiReactionByEvent = useGameStore((state) => state.aiReactionByEvent)
   const mapQuality = useUIStore((state) => state.mapQuality)
   const renderer = useMapStore((state) => state.renderer)
   const hudMode = useUIStore((state) => state.hudMode)
   const phaseConfig = getPhaseUIConfig(hudMode)
   const allowFloatingSpeech = epoch.phase !== 'arbitrate'
-  const latestSpeech = allowFloatingSpeech ? events.find((event) => getPublicSpeechText(event)) : null
-  const latestReaction = allowFloatingSpeech ? events.find((event) => getReactionLabel(event)) : null
+  const latestReactionSourceEvent =
+    allowFloatingSpeech && selectedFactionId
+      ? events.find(
+          (event) =>
+            event.actor === selectedFactionId &&
+            aiReactionByEvent.has(event.id),
+        ) ?? null
+      : null
   const latestTransition = useGameStore((state) => state.regionTransitionLog[0] ?? null)
   const rendererLabel = renderer === 'globe' ? 'GLOBE' : renderer === 'r3f' ? 'R3F' : '2D'
 
@@ -83,22 +73,14 @@ export function MapStage() {
           />
         </div>
         <EffectsLayer mapQuality={mapQuality} />
-        {latestSpeech?.actor ? (
+        {allowFloatingSpeech ? (
           <div className="pointer-events-none absolute left-1/2 top-[18%] z-20 -translate-x-1/2">
-            <PublicSpeechBubble
-              key={latestSpeech.id}
-              actor={latestSpeech.actor as FactionId}
-              text={getPublicSpeechText(latestSpeech) ?? ''}
-            />
+            <PublicSpeechBubble />
           </div>
         ) : null}
-        {latestReaction?.actor ? (
+        {latestReactionSourceEvent?.id ? (
           <div className="pointer-events-none absolute left-1/2 top-[31%] z-30 -translate-x-1/2">
-            <ReactionTag
-              key={latestReaction.id}
-              actor={latestReaction.actor as FactionId}
-              label={getReactionLabel(latestReaction) ?? ''}
-            />
+            <ReactionTag key={latestReactionSourceEvent.id} eventId={latestReactionSourceEvent.id} />
           </div>
         ) : null}
         {mapQuality !== 'high' && latestTransition ? (

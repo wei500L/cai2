@@ -6,6 +6,7 @@ from typing import Literal
 
 import app.game.initializer as game_initializer
 from app.core.clock import Clock
+from app.core.config import get_settings
 from app.core.errors import (
     FactionAlreadyTakenError,
     InvalidActionError,
@@ -21,9 +22,26 @@ from app.domain.enums import FactionId, GamePhase, PlayerKind, RoomStatus
 from app.domain.factions import all_faction_ids
 from app.domain.models import EpochTurn, GameRoom, Player
 from app.game.globe_geometry import generate_world_geometry
+from app.protocol.outgoing import RoomPlayerSnapshot, RoomSettingsPayload, RoomSnapshotPayload
 from app.repositories.factory import Repositories
 
 RoomMode = Literal["solo_1v7", "multi_4v4"]
+
+
+def build_snapshot(room: GameRoom) -> RoomSnapshotPayload:
+    settings = get_settings().room_settings
+    return RoomSnapshotPayload(
+        room_id=room.id,
+        mode=room.mode,
+        status=room.status.value,
+        players=[_player_snapshot(player) for player in room.players],
+        ai_factions=list(room.ai_factions),
+        settings=RoomSettingsPayload(
+            phase_durations=dict(settings.phase_durations),
+            turns_per_epoch=settings.turns_per_epoch,
+            max_epochs=settings.max_epochs,
+        ),
+    )
 
 
 class RoomService:
@@ -309,3 +327,14 @@ def _default_seed(room_id: str) -> int:
     digest = blake2b(room_id.encode("utf-8"), digest_size=8).digest()
     seed = int.from_bytes(digest, "big") & 0x7FFF_FFFF
     return seed or 1
+
+
+def _player_snapshot(player: Player) -> RoomPlayerSnapshot:
+    return RoomPlayerSnapshot(
+        player_id=player.id,
+        display_name=player.display_name,
+        faction_id=player.faction_id,
+        connected=player.connected,
+        ready=player.ready,
+        ai_takeover=player.ai_takeover,
+    )

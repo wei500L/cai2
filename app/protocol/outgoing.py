@@ -81,13 +81,21 @@ class RoomPlayerSnapshot(OutgoingPayloadModel):
     ai_takeover: bool = False
 
 
+class RoomSettingsPayload(OutgoingPayloadModel):
+    phase_durations: dict[GamePhase, int]
+    turns_per_epoch: int
+    max_epochs: int
+
+
 class RoomSnapshotPayload(OutgoingPayloadModel):
     t: Literal["room.snapshot"] = Field("room.snapshot", exclude=True)
+    schema_version: str = "1.0"
     room_id: str
     mode: Literal["solo_1v7", "multi_4v4"]
     status: str
     players: list[RoomPlayerSnapshot]
     ai_factions: list[FactionId]
+    settings: RoomSettingsPayload
 
 
 class RoomPlayerTakeoverPayload(OutgoingPayloadModel):
@@ -315,6 +323,7 @@ class AIThinkingPayload(OutgoingPayloadModel):
 class AISpeakPayload(OutgoingPayloadModel):
     t: Literal["ai.speak"] = Field("ai.speak", exclude=True)
     room_id: str
+    kind: Literal["public", "private", "narration"]
     event: dict[str, Any]
     private_message: dict[str, Any] | None = None
 
@@ -326,6 +335,7 @@ class AIReactionPayload(OutgoingPayloadModel):
     private_message: dict[str, Any] | None = None
     faction_id: FactionId
     reaction: str
+    target_event_id: str
     target_faction: FactionId | None = None
 
 

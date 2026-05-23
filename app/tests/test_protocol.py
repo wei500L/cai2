@@ -489,6 +489,7 @@ def test_optional_protocol_fields_are_accepted() -> None:
 
     assert AISpeakPayload(
         room_id="room-1",
+        kind="public",
         event={"id": "event-1"},
         private_message={"id": "pm-1"},
     ).private_message == {"id": "pm-1"}
@@ -499,6 +500,7 @@ def test_optional_protocol_fields_are_accepted() -> None:
         private_message={"id": "pm-2"},
         faction_id=FactionId.starlight,
         reaction="concerned",
+        target_event_id="event-1",
     ).private_message == {"id": "pm-2"}
 
     assert (
