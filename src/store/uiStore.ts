@@ -3,6 +3,7 @@ import type { FactionId } from '@/mock/factions'
 import type { TreatyKind } from '@/mock/types'
 import type { CommandMode } from '@/features/commandTerminal/types'
 import type { HudMode } from '@/features/phaseSystem/PhaseStateMachine'
+import type { TransportStatus } from '@/protocol/transport'
 
 export type HudFocusTarget = 'left' | 'center' | 'right' | 'bottom'
 export type EventFilter = 'all' | 'P0' | 'P1' | 'mine'
@@ -42,6 +43,7 @@ type UIStoreState = {
   commandModeHotkey: CommandMode | null
   commandTerminalDraft: CommandTerminalDraft | null
   eventStreamScrollMode: EventStreamScrollMode
+  connectionStatus: TransportStatus
   setLeftPanelOpen: (open: boolean) => void
   toggleLeftPanel: () => void
   setRightPanelOpen: (open: boolean) => void
@@ -74,6 +76,7 @@ type UIStoreState = {
   setCommandModeHotkey: (mode: CommandMode | null) => void
   setCommandTerminalDraft: (draft: CommandTerminalDraft) => void
   setEventStreamScrollMode: (mode: EventStreamScrollMode) => void
+  setConnectionStatus: (status: TransportStatus) => void
 }
 
 const focusOrder: HudFocusTarget[] = ['left', 'center', 'right', 'bottom']
@@ -105,6 +108,7 @@ export const useUIStore = create<UIStoreState>((set) => ({
   commandModeHotkey: null,
   commandTerminalDraft: null,
   eventStreamScrollMode: 'auto',
+  connectionStatus: 'idle',
   setLeftPanelOpen: (leftPanelOpen) => {
     set({ leftPanelOpen })
   },
@@ -221,5 +225,8 @@ export const useUIStore = create<UIStoreState>((set) => ({
   },
   setEventStreamScrollMode: (eventStreamScrollMode) => {
     set({ eventStreamScrollMode })
+  },
+  setConnectionStatus: (connectionStatus) => {
+    set({ connectionStatus })
   },
 }))

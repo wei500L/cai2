@@ -8,6 +8,28 @@
 
 ## 联调启动
 
+一键启动后端 + 前端：
+
+```bash
+bash scripts/dev-up.sh
+```
+
+PowerShell：
+
+```powershell
+./scripts/dev-up.ps1
+```
+
+脚本按 后端 → `/readyz` → 前端 的顺序启动，后端默认 `http://127.0.0.1:8000`，前端默认 `http://127.0.0.1:5173`，按 Ctrl-C 同时退出两个本机 dev 进程。
+
+最小冒烟测试：
+
+```bash
+python scripts/integration-smoke.py
+```
+
+冒烟脚本要求后端已启动，只在本机联调时使用，未做并发 / 鉴权 / 多房间压测。
+
 后端本机联调启动：
 
 ```bash
@@ -21,6 +43,18 @@ PowerShell：
 ```
 
 按 Ctrl-C 退出本机 dev 进程。前端 Vite 开发服务器默认使用 `http://localhost:5173`，后端 dev 环境仅允许本机前端来源和 `EXTRA_CORS_ORIGINS` 中追加的来源访问。
+
+前端本机联调启动：
+
+```bash
+npm run dev
+```
+
+默认仍使用前端 mock transport，不影响纯前端调试。切到真实 WebSocket 联调：
+
+```bash
+VITE_USE_WS=true npm run dev
+```
 
 健康检查与联调握手：
 

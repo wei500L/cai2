@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react'
+import { ConnectionBadge } from '@/components/ConnectionBadge'
 import { PixelButton } from '@/components/PixelButton'
 import { ScrollNumber } from '@/components/ScrollNumber'
 import { GlowPanel } from '@/components/GlowPanel'
@@ -74,6 +75,7 @@ export function TopBar() {
           >
             {isPaused ? '继续' : '暂停'}
           </PixelButton>
+          <ConnectionBadge />
           <PixelButton
             tone="ghost"
             className="px-2 py-1 text-[0.72rem] tracking-0"

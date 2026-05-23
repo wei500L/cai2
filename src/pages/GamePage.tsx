@@ -7,6 +7,8 @@ import { DevPerfOverlay } from '@/components/DevPerfOverlay'
 import { ErrorPanel } from '@/components/ErrorPanel'
 import { HotkeysHelp } from '@/components/HotkeysHelp'
 import { SettingsPanel } from '@/components/SettingsPanel'
+import { ENV } from '@/app/env'
+import { setConnectionDebugSnapshot } from '@/app/connectionDebug'
 import { NarrationBanner } from '@/features/aiSpeech/NarrationBanner'
 import { PrivateMessageDrawer } from '@/features/aiSpeech/PrivateMessageDrawer'
 import { MapStage } from '@/features/hud/MapStage'
@@ -23,7 +25,8 @@ import { startMockGameLoop } from '@/mock/gameLoop'
 import EpochSummaryPage from '@/pages/EpochSummaryPage'
 import { attachAdapter } from '@/protocol/adapter'
 import { ActionDispatcher } from '@/protocol/dispatcher'
-import { MockTransport } from '@/protocol/transport'
+import { createTransport } from '@/protocol/transport'
+import type { MockTransport, Transport, TransportStatus } from '@/protocol/transport'
 import { gameStoreApi, useGameStore } from '@/store/gameStore'
 import { useUIStore } from '@/store/uiStore'
 import { useGlobalHotkeys } from '@/hooks/useGlobalHotkeys'
@@ -31,6 +34,21 @@ import { startPerfMonitor } from '@/utils/perfMonitor'
 
 const COMPACT_BREAKPOINT = 960
 const DENSE_BREAKPOINT = 1280
+
+type TransportDebugSource = Transport & {
+  getLastInboundSeq?: () => number
+  getQueueDepth?: () => number
+}
+
+function publishConnectionDebugSnapshot(transport: Transport) {
+  const source = transport as TransportDebugSource
+
+  setConnectionDebugSnapshot({
+    lastInboundSeq: source.getLastInboundSeq?.() ?? 0,
+    queueDepth: source.getQueueDepth?.() ?? 0,
+    wsUrl: ENV.wsUrl,
+  })
+}
 
 function useViewportWidth() {
   const [width, setWidth] = useState(() =>
@@ -114,6 +132,7 @@ export default function GamePage() {
   const setFocusToast = useUIStore((state) => state.setFocusToast)
   const lastError = useUIStore((state) => state.lastError)
   const setLastError = useUIStore((state) => state.setLastError)
+  const setConnectionStatus = useUIStore((state) => state.setConnectionStatus)
   const gamePhase = useGameStore((state) => state.epoch.phase)
   const arbitratePhase = useGameStore((state) => state.epoch.arbitratePhase)
   const hudMode = useUIStore((state) => state.hudMode)
@@ -122,19 +141,51 @@ export default function GamePage() {
 
   useEffect(() => {
     initGame()
-    const transport = new MockTransport()
-    transport.connect()
-    const detachAdapter = attachAdapter(transport, gameStoreApi)
-    ActionDispatcher.setTransport(transport)
-    const stopMockGameLoop = startMockGameLoop(transport)
+    let transport: Transport | null = null
+    const handleStatusChange = (status: TransportStatus) => {
+      setConnectionStatus(status)
+
+      if (transport) {
+        publishConnectionDebugSnapshot(transport)
+      }
+    }
+
+    transport = createTransport(
+      ENV.useWs
+        ? {
+            kind: 'ws',
+            ws: {
+              url: ENV.wsUrl,
+              token: ENV.wsToken,
+              clientVersion: ENV.clientVersion,
+              heartbeatIntervalMs: ENV.heartbeatMs,
+              onStatusChange: handleStatusChange,
+            },
+          }
+        : { kind: 'mock' },
+    )
+
+    const activeTransport = transport
+
+    setConnectionStatus('idle')
+    publishConnectionDebugSnapshot(activeTransport)
+    activeTransport.connect()
+    const detachAdapter = attachAdapter(activeTransport, gameStoreApi)
+    ActionDispatcher.setTransport(activeTransport)
+    const handleDebugMessage = () => publishConnectionDebugSnapshot(activeTransport)
+    activeTransport.on(handleDebugMessage)
+    const stopMockGameLoop = ENV.useWs
+      ? undefined
+      : startMockGameLoop(activeTransport as MockTransport)
 
     return () => {
-      stopMockGameLoop()
+      stopMockGameLoop?.()
       ActionDispatcher.setTransport(null)
+      activeTransport.off(handleDebugMessage)
       detachAdapter()
-      transport.disconnect()
+      activeTransport.disconnect()
     }
-  }, [initGame])
+  }, [initGame, setConnectionStatus])
 
   useEffect(() => {
     const monitor = startPerfMonitor()
