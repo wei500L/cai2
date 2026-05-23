@@ -18,6 +18,8 @@ from app.protocol import (
     WorldGeometryCellPayload,
     WorldGeometryEvent,
     WorldGeometryPayload,
+    WorldLightingEvent,
+    WorldLightingPayload,
     deserialize_json,
     make_envelope,
     parse_incoming,
@@ -223,6 +225,7 @@ def test_outgoing_payload_route_table_covers_expected_types() -> None:
         "resolve.events",
         "resolve.map_diff",
         "resolve.stats_diff",
+        "resolve.world_lighting",
         "ai.thinking",
         "ai.speak",
         "ai.reaction",
@@ -234,6 +237,32 @@ def test_outgoing_payload_route_table_covers_expected_types() -> None:
     assert all(
         issubclass(payload_type, BaseModel) for payload_type in OUTGOING_PAYLOAD_TYPES.values()
     )
+
+
+def test_world_lighting_event_round_trip_is_stable() -> None:
+    payload = WorldLightingEvent(
+        v=1,
+        id="msg_light",
+        t="resolve.world_lighting",
+        ts=321,
+        seq=15,
+        p=WorldLightingPayload(
+            room_id="room-1",
+            epoch=1,
+            turn=2,
+            sun_lat=18.0,
+            sun_lng=-75.0,
+            day_color="#d8c58a",
+            night_color="#0b1b2e",
+            phase_label="spring",
+        ),
+    )
+
+    raw = serialize_json(payload)
+    decoded = deserialize_json(raw, WorldLightingEvent)
+
+    assert decoded == payload
+    assert serialize_json(decoded) == raw
 
 
 def test_replay_ai_diary_reveal_payload_validates_entries() -> None:

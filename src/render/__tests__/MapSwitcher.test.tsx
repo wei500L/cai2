@@ -61,6 +61,14 @@ describe('MapSwitcher', () => {
       focusRegionId: null,
       explosionQueue: [],
       scorchedRegions: new Set(),
+      lighting: {
+        bloomStrength: 1.4,
+        bloomRadius: 0.6,
+        bloomThreshold: 0.85,
+        starfieldDensity: 0.7,
+        dayNightMaskAlpha: 0.6,
+        noiseEnabled: true,
+      },
     })
     lifecycle.globeMount.mockClear()
     lifecycle.globeUnmount.mockClear()

@@ -358,6 +358,7 @@ async def test_run_turn_settlement_persists_state_and_outbound_bundle(
     assert {"changes", "border_updates"} <= set(bundle.resolve_map_diff)
     assert {"faction_stats", "relationship_changes"} <= set(bundle.resolve_stats_diff)
     assert bundle.ai_speech_events
+    assert bundle.resolve_world_lighting is None
 
     events = await repos.events.list_by_turn(room.id, 1, 2)
     kinds = [event.kind for event in events]
@@ -380,6 +381,25 @@ async def test_llm_failure_uses_parser_fallback_and_returns_bundle(
     assert stored is not None
     assert stored.narration_events[0].narration.startswith("裁决系统暂未响应")
     assert bundle.resolve_events[0]["narration"].startswith("裁决系统暂未响应")
+
+
+@pytest.mark.asyncio
+async def test_world_lighting_can_be_enabled_via_env(
+    repos: Repositories,
+    clock: FrozenClock,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LIGHTING_DYNAMIC", "true")
+    room = await _seed_room_state(repos, clock)
+    await _seed_actions(repos)
+
+    bundle = await _service(repos, clock).run_turn_settlement(room.id, 1, 2)
+
+    assert bundle.resolve_world_lighting is not None
+    assert bundle.resolve_world_lighting["room_id"] == room.id
+    assert bundle.resolve_world_lighting["epoch"] == 1
+    assert bundle.resolve_world_lighting["turn"] == 2
+    assert bundle.resolve_world_lighting["phase_label"]
 
 
 @pytest.mark.asyncio

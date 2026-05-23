@@ -132,6 +132,23 @@ class WorldGeometryEvent(BaseEnvelope):
     p: WorldGeometryPayload
 
 
+class WorldLightingPayload(OutgoingPayloadModel):
+    t: Literal["resolve.world_lighting"] = Field("resolve.world_lighting", exclude=True)
+    room_id: str
+    epoch: int
+    turn: int
+    sun_lat: float
+    sun_lng: float
+    day_color: str
+    night_color: str
+    phase_label: str
+
+
+class WorldLightingEvent(BaseEnvelope):
+    t: Literal["resolve.world_lighting"] = Field("resolve.world_lighting", exclude=True)
+    p: WorldLightingPayload
+
+
 class RegionEntryOut(OutgoingPayloadModel):
     id: str
     owner: FactionId | None = None
@@ -312,6 +329,7 @@ OutgoingMessage: TypeAlias = Annotated[
     | ActionBroadcastPayload
     | ActionPrivateBroadcastPayload
     | ActionRejectedPayload
+    | WorldLightingPayload
     | ResolveEventsPayload
     | ResolveMapDiffPayload
     | ResolveStatsDiffPayload

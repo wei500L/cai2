@@ -1,18 +1,6 @@
-import { factionById, type FactionId } from '@/mock/factions'
+import type { FactionId } from '@/mock/factions'
 import type { MapRegion } from '@/mock/types'
-
-type Rgb = { r: number; g: number; b: number }
-
-const FALLBACK_FACTION_TONES: Record<FactionId, { primary: string; glow: string; shadow: string }> = {
-  ironCrown: { primary: '#8b1a1a', glow: '#ff3333', shadow: '#2d0a0a' },
-  starlight: { primary: '#1a5f8b', glow: '#33aaff', shadow: '#0a1a2d' },
-  emerald: { primary: '#1a8b3d', glow: '#33ff77', shadow: '#0a2d15' },
-  ashen: { primary: '#8b5a1a', glow: '#ff9933', shadow: '#2d1e0a' },
-  voidChurch: { primary: '#5a1a8b', glow: '#9933ff', shadow: '#1e0a2d' },
-  aurora: { primary: '#1a8b8b', glow: '#33ffff', shadow: '#0a2d2d' },
-  magma: { primary: '#8b3a1a', glow: '#ff6633', shadow: '#2d120a' },
-  darkTide: { primary: '#6b5a1a', glow: '#ccaa33', shadow: '#231e0a' },
-}
+import { hexPolygonColor as resolveHexPolygonColor } from '@/render/globe/stylePresets'
 
 export type HexPolygonInput = {
   lat: number
@@ -46,78 +34,6 @@ type HexPolygonRegion = {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
-}
-
-function parseCssColor(value: string, fallback: Rgb): Rgb {
-  const color = value.trim()
-
-  if (color.startsWith('#')) {
-    const hex = color.slice(1)
-    if (hex.length === 3) {
-      return {
-        r: Number.parseInt(hex[0] + hex[0], 16),
-        g: Number.parseInt(hex[1] + hex[1], 16),
-        b: Number.parseInt(hex[2] + hex[2], 16),
-      }
-    }
-
-    if (hex.length >= 6) {
-      return {
-        r: Number.parseInt(hex.slice(0, 2), 16),
-        g: Number.parseInt(hex.slice(2, 4), 16),
-        b: Number.parseInt(hex.slice(4, 6), 16),
-      }
-    }
-  }
-
-  const rgbMatch = color.match(/rgba?\(([^)]+)\)/)
-  if (rgbMatch) {
-    const [r, g, b] = rgbMatch[1].split(',').map((part) => Number.parseFloat(part.trim()))
-    if (Number.isFinite(r) && Number.isFinite(g) && Number.isFinite(b)) {
-      return { r, g, b }
-    }
-  }
-
-  return fallback
-}
-
-function mixRgb(a: Rgb, b: Rgb, amount: number) {
-  return {
-    r: a.r + (b.r - a.r) * amount,
-    g: a.g + (b.g - a.g) * amount,
-    b: a.b + (b.b - a.b) * amount,
-  }
-}
-
-function toRgba(color: Rgb, alpha: number) {
-  return `rgba(${Math.round(color.r)}, ${Math.round(color.g)}, ${Math.round(color.b)}, ${alpha})`
-}
-
-function resolveCssToken(token: string, fallback: string) {
-  const match = token.match(/^var\((--[^)]+)\)$/)
-  if (!match || typeof document === 'undefined') {
-    return fallback
-  }
-
-  const resolved = getComputedStyle(document.documentElement).getPropertyValue(match[1]).trim()
-  return resolved || fallback
-}
-
-function resolveFactionColors(factionId: FactionId) {
-  const faction = factionById[factionId]
-  const fallback = FALLBACK_FACTION_TONES[factionId]
-  const primary = resolveCssToken(faction.primary, fallback.primary)
-  const glow = resolveCssToken(faction.glow, fallback.glow)
-  const shadow = resolveCssToken(faction.shadow, fallback.shadow)
-
-  return {
-    primary,
-    glow,
-    shadow,
-    primaryRgb: parseCssColor(primary, parseCssColor(fallback.primary, { r: 128, g: 128, b: 128 })),
-    glowRgb: parseCssColor(glow, parseCssColor(fallback.glow, { r: 160, g: 160, b: 160 })),
-    shadowRgb: parseCssColor(shadow, parseCssColor(fallback.shadow, { r: 64, g: 64, b: 64 })),
-  }
 }
 
 function getElevation(region: HexPolygonRegion) {
@@ -199,30 +115,7 @@ export function buildHexPolygons(
 }
 
 export function hexPolygonColor(region: HexPolygonInput) {
-  if (region.factionId === null) {
-    return 'rgba(102, 110, 120, 0.55)'
-  }
-
-  const palette = resolveFactionColors(region.factionId)
-  const altitudeBoost = region.elevation > 0.7 ? 0.15 : 0
-  const isAshen = region.factionId === 'ashen'
-
-  if (region.scorched) {
-    return toRgba(
-      mixRgb(palette.primaryRgb, palette.shadowRgb, 0.7),
-      0.82,
-    )
-  }
-
-  if (isAshen) {
-    return toRgba(mixRgb(palette.primaryRgb, palette.shadowRgb, 0.45), 0.96)
-  }
-
-  if (altitudeBoost > 0) {
-    return toRgba(mixRgb(palette.primaryRgb, palette.glowRgb, altitudeBoost), 0.98)
-  }
-
-  return palette.primary
+  return resolveHexPolygonColor(region)
 }
 
 export function hexPolygonAltitude(region: HexPolygonInput) {

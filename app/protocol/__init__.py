@@ -56,6 +56,8 @@ from app.protocol.outgoing import (
     WorldGeometryCellPayload,
     WorldGeometryEvent,
     WorldGeometryPayload,
+    WorldLightingEvent,
+    WorldLightingPayload,
 )
 from app.protocol.routing import INCOMING_PAYLOAD_TYPES, OUTGOING_PAYLOAD_TYPES, parse_incoming
 from app.protocol.serialization import (
@@ -122,6 +124,8 @@ __all__ = [
     "WorldGeometryCellPayload",
     "WorldGeometryEvent",
     "WorldGeometryPayload",
+    "WorldLightingEvent",
+    "WorldLightingPayload",
     "deserialize_json",
     "deserialize_msgpack",
     "make_envelope",

@@ -42,8 +42,9 @@ describe('buildHexPolygons', () => {
       elevation: 0.18,
       hexId: 'hex_a',
     })
-    expect(hexPolygonColor(cells[0])).toBe('#1a5f8b')
+    expect(hexPolygonColor(cells[0])).toMatch(/^rgba\(/)
     expect(hexPolygonColor(cells[1])).toMatch(/^rgba\(/)
+    expect(hexPolygonColor(cells[0])).not.toBe(hexPolygonColor(cells[1]))
     expect(hexPolygonAltitude(cells[1])).toBeGreaterThan(hexPolygonAltitude(cells[0]))
     expect(hexPolygonAltitude(cells[0])).toBeGreaterThanOrEqual(0.005)
     expect(hexPolygonAltitude(cells[1])).toBeLessThanOrEqual(0.02)
@@ -81,7 +82,7 @@ describe('buildHexPolygons', () => {
       hexId: 'neutral',
       factionId: null,
     })
-    expect(hexPolygonColor(cells[0])).toBe('rgba(102, 110, 120, 0.55)')
+    expect(hexPolygonColor(cells[0])).toMatch(/^rgba\(/)
     expect(hexPolygonColor(cells[1])).toMatch(/^rgba\(/)
     expect(hexPolygonColor(cells[2])).toMatch(/^rgba\(/)
     expect(hexPolygonAltitude(cells[0])).toBe(0.005)

@@ -9,6 +9,7 @@ from app.api.websocket.dispatcher import OutboundDispatcher
 from app.domain.enums import FactionId, PlayerKind, VisibilityScope
 from app.domain.models import Player
 from app.repositories.factory import make_repositories
+from app.services.settlement_service import SettlementOutboundBundle
 
 
 class FakeSocket:
@@ -131,3 +132,53 @@ async def test_self_visibility_reaches_only_actor_player() -> None:
     )
 
     assert _received_player_ids(sockets) == ["p2"]
+
+
+@pytest.mark.asyncio
+async def test_resolve_bundle_emits_world_lighting_last() -> None:
+    dispatcher, sockets = await _seed_dispatcher()
+    bundle = SettlementOutboundBundle(
+        room_id="room-1",
+        epoch=1,
+        turn=2,
+        generated_at_ms=1000,
+        seq_base=20,
+        resolve_events=[
+            {
+                "id": "resolve-1",
+                "visibility": {"scope": "public", "faction_ids": []},
+                "narration": "resolve event",
+            }
+        ],
+        resolve_map_diff={"changes": [], "border_updates": []},
+        resolve_stats_diff={"faction_stats": [], "relationship_changes": []},
+        ai_speech_events=[
+            {
+                "id": "ai-1",
+                "visibility": {"scope": "public", "faction_ids": []},
+                "narration": "ai speech",
+            }
+        ],
+        resolve_world_lighting={
+            "room_id": "room-1",
+            "epoch": 1,
+            "turn": 2,
+            "sun_lat": 18.0,
+            "sun_lng": -75.0,
+            "day_color": "#d8c58a",
+            "night_color": "#0b1b2e",
+            "phase_label": "spring",
+        },
+    )
+
+    await dispatcher.dispatch_resolve_bundle("room-1", bundle)
+
+    sent_types = [json.loads(text)["t"] for text in sockets["p1"].sent_texts]
+    assert sent_types == [
+        "resolve.events",
+        "resolve.map_diff",
+        "resolve.stats_diff",
+        "ai.speak",
+        "resolve.world_lighting",
+    ]
+    assert json.loads(sockets["p1"].sent_texts[-1])["seq"] == 24

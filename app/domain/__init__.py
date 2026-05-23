@@ -55,6 +55,7 @@ from app.domain.models import (
     TreatyDecision,
 )
 from app.domain.world_geometry import Terrain
+from app.domain.world_lighting import WorldLighting, WorldLightingPolicy
 
 __all__ = [
     "FACTION_IDS",
@@ -104,6 +105,8 @@ __all__ = [
     "TreatyDecision",
     "TreatyKind",
     "VisibilityScope",
+    "WorldLighting",
+    "WorldLightingPolicy",
     "all_faction_ids",
     "get_faction_meta",
 ]

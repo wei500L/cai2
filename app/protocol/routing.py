@@ -52,6 +52,7 @@ from app.protocol.outgoing import (
     RoomStartPayload,
     TurnBeginPayload,
     WorldGeometryEvent,
+    WorldLightingEvent,
 )
 
 INCOMING_PAYLOAD_TYPES: dict[str, type[BaseModel]] = {
@@ -95,6 +96,7 @@ OUTGOING_PAYLOAD_TYPES: dict[str, type[BaseModel]] = {
     "resolve.events": ResolveEventsPayload,
     "resolve.map_diff": ResolveMapDiffPayload,
     "resolve.stats_diff": ResolveStatsDiffPayload,
+    "resolve.world_lighting": WorldLightingEvent,
     "ai.thinking": AIThinkingPayload,
     "ai.speak": AISpeakPayload,
     "ai.reaction": AIReactionPayload,

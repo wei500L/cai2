@@ -31,7 +31,9 @@ export function SettingsPanel() {
   const setPhaseDurationScale = useUIStore((state) => state.setPhaseDurationScale)
   const setFocusToast = useUIStore((state) => state.setFocusToast)
   const renderer = useMapStore((state) => state.renderer)
+  const lighting = useMapStore((state) => state.lighting)
   const setRenderer = useMapStore((state) => state.setRenderer)
+  const setLighting = useMapStore((state) => state.setLighting)
   const initGame = useGameStore((state) => state.initGame)
 
   return (
@@ -118,6 +120,79 @@ export function SettingsPanel() {
                         </button>
                       ))}
                     </div>
+
+                    <details open className="mt-3 border border-[color:rgba(196,228,255,0.14)] bg-[color:rgba(255,255,255,0.02)] px-3 py-2">
+                      <summary className="cursor-pointer list-none text-[0.58rem] uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
+                        视觉氛围
+                      </summary>
+                      <div className="mt-3 grid gap-3">
+                        <label className="grid gap-1 text-[0.56rem] uppercase tracking-[0.14em] text-[color:var(--text-muted)]">
+                          <span className="flex items-center justify-between">
+                            <span>Bloom 强度</span>
+                            <span>{lighting.bloomStrength.toFixed(1)}</span>
+                          </span>
+                          <input
+                            type="range"
+                            min="0"
+                            max="3"
+                            step="0.05"
+                            value={lighting.bloomStrength}
+                            onChange={(event) =>
+                              setLighting({ bloomStrength: Number(event.target.value) })
+                            }
+                            className="w-full accent-[var(--border-glow)]"
+                          />
+                        </label>
+
+                        <label className="grid gap-1 text-[0.56rem] uppercase tracking-[0.14em] text-[color:var(--text-muted)]">
+                          <span className="flex items-center justify-between">
+                            <span>星空密度</span>
+                            <span>{lighting.starfieldDensity.toFixed(2)}</span>
+                          </span>
+                          <input
+                            type="range"
+                            min="0"
+                            max="1"
+                            step="0.01"
+                            value={lighting.starfieldDensity}
+                            onChange={(event) =>
+                              setLighting({ starfieldDensity: Number(event.target.value) })
+                            }
+                            className="w-full accent-[var(--border-glow)]"
+                          />
+                        </label>
+
+                        <label className="grid gap-1 text-[0.56rem] uppercase tracking-[0.14em] text-[color:var(--text-muted)]">
+                          <span className="flex items-center justify-between">
+                            <span>日夜遮罩</span>
+                            <span>{lighting.dayNightMaskAlpha.toFixed(2)}</span>
+                          </span>
+                          <input
+                            type="range"
+                            min="0"
+                            max="1"
+                            step="0.01"
+                            value={lighting.dayNightMaskAlpha}
+                            onChange={(event) =>
+                              setLighting({ dayNightMaskAlpha: Number(event.target.value) })
+                            }
+                            className="w-full accent-[var(--border-glow)]"
+                          />
+                        </label>
+
+                        <label className="flex items-center justify-between border border-[color:rgba(255,255,255,0.08)] px-3 py-2 text-[0.56rem] uppercase tracking-[0.14em] text-[color:var(--text-muted)]">
+                          <span>抖动噪点</span>
+                          <input
+                            type="checkbox"
+                            checked={lighting.noiseEnabled}
+                            onChange={(event) =>
+                              setLighting({ noiseEnabled: event.target.checked })
+                            }
+                            className="h-4 w-4 accent-[var(--border-glow)]"
+                          />
+                        </label>
+                      </div>
+                    </details>
                   </section>
 
                   <section>

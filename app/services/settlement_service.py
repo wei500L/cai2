@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from os import getenv
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict
@@ -21,6 +22,7 @@ from app.domain.models import (
     Treaty,
 )
 from app.domain.world_geometry import WorldGeometry
+from app.domain.world_lighting import WorldLightingPolicy
 from app.game.map_neighbors import build_region_neighbors
 from app.game.relationships_init import relationship_status_for_value
 from app.game.rule_resolver import RuleResolver
@@ -30,7 +32,6 @@ from app.llm.output_parser import ModelOutputParser
 from app.llm.output_schema import SettlementModelOutput
 from app.llm.prompt_builder import PromptBuilder
 from app.llm.retry import call_with_retry
-from app.protocol.outgoing import RegionEntryOut
 from app.repositories.factory import Repositories
 from app.services.ai_output_service import AIOutputBundle, AIOutputService
 
@@ -56,6 +57,7 @@ class SettlementOutboundBundle(BaseModel):
     resolve_map_diff: dict[str, Any]
     resolve_stats_diff: dict[str, Any]
     ai_speech_events: list[dict[str, Any]]
+    resolve_world_lighting: dict[str, Any] | None = None
 
 
 class SettlementService:
@@ -70,6 +72,8 @@ class SettlementService:
         parser: ModelOutputParser,
         rule_resolver: RuleResolver,
         ai_output_service: AIOutputService | None = None,
+        lighting_policy: WorldLightingPolicy | None = None,
+        lighting_dynamic: bool | None = None,
     ) -> None:
         self._repos = repos
         self._clock = clock
@@ -82,6 +86,12 @@ class SettlementService:
             repos=repos,
             clock=clock,
             rng_seed=0,
+        )
+        self._lighting_policy = lighting_policy or WorldLightingPolicy()
+        self._lighting_dynamic = (
+            _read_bool_env("LIGHTING_DYNAMIC", False)
+            if lighting_dynamic is None
+            else lighting_dynamic
         )
 
     async def run_turn_settlement(
@@ -166,6 +176,12 @@ class SettlementService:
             resolve_map_diff=_build_map_diff(settlement_result, settlement_input),
             resolve_stats_diff=_build_stats_diff(settlement_result, settlement_input),
             ai_speech_events=_build_ai_output_events(ai_output),
+            resolve_world_lighting=_build_world_lighting(
+                room_id=room_id,
+                epoch=epoch,
+                turn=turn,
+                lighting_policy=self._lighting_policy if self._lighting_dynamic else None,
+            ),
         )
 
         self._log_step(room_id, epoch, turn, "append_events")
@@ -467,6 +483,29 @@ def _build_ai_speech_events(
     ]
 
 
+def _build_world_lighting(
+    *,
+    room_id: str,
+    epoch: int,
+    turn: int,
+    lighting_policy: WorldLightingPolicy | None,
+) -> dict[str, Any] | None:
+    if lighting_policy is None:
+        return None
+
+    lighting = lighting_policy.next(turn)
+    return {
+        "room_id": room_id,
+        "epoch": epoch,
+        "turn": turn,
+        "sun_lat": lighting.sun_lat,
+        "sun_lng": lighting.sun_lng,
+        "day_color": lighting.day_color,
+        "night_color": lighting.night_color,
+        "phase_label": lighting.phase_label,
+    }
+
+
 def _build_ai_output_events(ai_output: AIOutputBundle) -> list[dict[str, Any]]:
     return [
         *ai_output.ai_speak_events,
@@ -743,6 +782,19 @@ def _clamp(value: float, lower: float, upper: float) -> float:
     return min(upper, max(lower, value))
 
 
+def _read_bool_env(name: str, default: bool) -> bool:
+    raw = getenv(name)
+    if raw is None:
+        return default
+
+    normalized = raw.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
 def _dump_event(event: GameEvent) -> dict[str, Any]:
     return _dump_model(event)
 
@@ -759,9 +811,24 @@ def _dump_region_entry(region: MapRegion | None) -> dict[str, Any] | None:
     lat = region.lat if region.lat is not None else region.center_lat_lng[0]
     lng = region.lng if region.lng is not None else region.center_lat_lng[1]
     hex_id = region.hex_id if region.hex_id is not None else region.id
-    payload = region.model_dump(mode="python")
-    payload.update({"lat": lat, "lng": lng, "hex_id": hex_id})
-    return RegionEntryOut.model_validate(payload).model_dump(mode="json", exclude_none=True)
+    payload = {
+        "id": region.id,
+        "owner": _value(region.owner),
+        "resource_value": region.resource_value,
+        "development_level": region.development_level,
+        "terrain": _value(region.terrain),
+        "center_lat_lng": list(region.center_lat_lng),
+        "lat": lat,
+        "lng": lng,
+        "hex_id": hex_id,
+        "min_garrison": region.min_garrison,
+        "supply_lines": region.supply_lines,
+        "neighbors": list(region.neighbors),
+        "resistance": region.resistance,
+    }
+    if region.captured_at_turn is not None:
+        payload["captured_at_turn"] = region.captured_at_turn
+    return payload
 
 
 def _value(value: Any) -> Any:

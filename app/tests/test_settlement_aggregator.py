@@ -266,7 +266,7 @@ async def test_aggregate_builds_settlement_input_buckets_and_snapshots(
 
     assert len(result.factions_snapshot) == 8
     assert len(result.relationships_snapshot) == 56
-    assert len(result.regions_snapshot) == 64
+    assert len(result.regions_snapshot) == 642
     assert result.treaties_snapshot == []
 
     assert len(result.recent_events) <= 20

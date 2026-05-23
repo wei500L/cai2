@@ -2,12 +2,22 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 import { create } from 'zustand'
 import type { CameraPreset, ExplosionEvent, GlobeRenderer } from '@/render/globe/globeTypes'
 
+export type MapLightingState = {
+  bloomStrength: number
+  bloomRadius: number
+  bloomThreshold: number
+  starfieldDensity: number
+  dayNightMaskAlpha: number
+  noiseEnabled: boolean
+}
+
 type MapStoreState = {
   renderer: GlobeRenderer
   cameraPreset: CameraPreset
   focusRegionId: string | null
   explosionQueue: ExplosionEvent[]
   scorchedRegions: Set<string>
+  lighting: MapLightingState
   setRenderer: (renderer: GlobeRenderer) => void
   setCameraPreset: (preset: CameraPreset, options?: { immediate?: boolean }) => void
   focusOnRegion: (regionId: string) => void
@@ -16,6 +26,7 @@ type MapStoreState = {
   consumeExplosion: (id: string) => void
   markScorched: (regionId: string) => void
   clearScorched: (regionId: string) => void
+  setLighting: (lighting: Partial<MapLightingState>) => void
 }
 
 const memoryStorage = (() => {
@@ -59,6 +70,14 @@ export const useMapStore = create<MapStoreState>()(
       focusRegionId: null,
       explosionQueue: [],
       scorchedRegions: new Set<string>(),
+      lighting: {
+        bloomStrength: 1.4,
+        bloomRadius: 0.6,
+        bloomThreshold: 0.85,
+        starfieldDensity: 0.7,
+        dayNightMaskAlpha: 0.6,
+        noiseEnabled: true,
+      },
       setRenderer: (renderer) => {
         set({ renderer })
       },
@@ -95,11 +114,19 @@ export const useMapStore = create<MapStoreState>()(
           return { scorchedRegions }
         })
       },
+      setLighting: (lighting) => {
+        set((state) => ({
+          lighting: {
+            ...state.lighting,
+            ...lighting,
+          },
+        }))
+      },
     }),
     {
       name: 'mapRenderer',
       storage,
-      partialize: (state) => ({ renderer: state.renderer }),
+      partialize: (state) => ({ renderer: state.renderer, lighting: state.lighting }),
     },
   ),
 )
