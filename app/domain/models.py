@@ -78,6 +78,9 @@ class MapRegion(DomainModel):
     development_level: float = Field(ge=0.0, le=1.5)
     terrain: TerrainKind
     center_lat_lng: tuple[float, float]
+    lat: float | None = Field(default=None, ge=-90.0, le=90.0)
+    lng: float | None = Field(default=None, ge=-180.0, le=180.0)
+    hex_id: str | None = Field(default=None, max_length=32)
     min_garrison: int
     supply_lines: int
     neighbors: list[str] = Field(default_factory=list, max_length=8)

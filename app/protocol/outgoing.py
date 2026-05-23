@@ -4,7 +4,7 @@ from typing import Annotated, Any, Literal, TypeAlias
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.domain.enums import ArbitratePhase, FactionId, GamePhase
+from app.domain.enums import ArbitratePhase, FactionId, GamePhase, TerrainKind
 
 
 class OutgoingPayloadModel(BaseModel):
@@ -96,6 +96,23 @@ class RoomStartPayload(OutgoingPayloadModel):
     t: Literal["room.start"] = Field("room.start", exclude=True)
     room_id: str
     initial_state: dict[str, Any]
+
+
+class RegionEntryOut(OutgoingPayloadModel):
+    id: str
+    owner: FactionId | None = None
+    resource_value: float
+    development_level: float
+    terrain: TerrainKind
+    center_lat_lng: tuple[float, float]
+    lat: float | None = Field(default=None, ge=-90.0, le=90.0)
+    lng: float | None = Field(default=None, ge=-180.0, le=180.0)
+    hex_id: str | None = Field(default=None, max_length=32)
+    min_garrison: int
+    supply_lines: int
+    neighbors: list[str] = Field(default_factory=list, max_length=8)
+    resistance: float = Field(default=0.0, ge=0.0, le=1.0)
+    captured_at_turn: int | None = None
 
 
 class RoomFinishedPayload(OutgoingPayloadModel):

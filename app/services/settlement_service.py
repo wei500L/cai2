@@ -29,6 +29,7 @@ from app.llm.output_parser import ModelOutputParser
 from app.llm.output_schema import SettlementModelOutput
 from app.llm.prompt_builder import PromptBuilder
 from app.llm.retry import call_with_retry
+from app.protocol.outgoing import RegionEntryOut
 from app.repositories.factory import Repositories
 from app.services.ai_output_service import AIOutputBundle, AIOutputService
 
@@ -299,7 +300,7 @@ def _build_map_diff(
                 "transition": change.transition,
                 "animation_params": change.animation_params
                 or _animation_params_for_transition(change.transition),
-                "previous": _dump_model(before) if before is not None else None,
+                "previous": _dump_region_entry(before),
             }
         )
 
@@ -725,6 +726,15 @@ def _dump_model(model: BaseModel | None) -> dict[str, Any] | None:
     if model is None:
         return None
     return model.model_dump(mode="json")
+
+
+def _dump_region_entry(region: MapRegion | None) -> dict[str, Any] | None:
+    if region is None:
+        return None
+    return RegionEntryOut.model_validate(region.model_dump(mode="python")).model_dump(
+        mode="json",
+        exclude_none=True,
+    )
 
 
 def _value(value: Any) -> Any:

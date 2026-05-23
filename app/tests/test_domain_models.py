@@ -164,6 +164,34 @@ def test_map_region_rejects_development_outside_allowed_range() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("kwargs", "expected_field"),
+    [
+        ({"lat": 91.0}, "lat"),
+        ({"lng": -181.0}, "lng"),
+        ({"hex_id": "x" * 33}, "hex_id"),
+    ],
+)
+def test_map_region_rejects_invalid_globe_fields(
+    kwargs: dict[str, object],
+    expected_field: str,
+) -> None:
+    with pytest.raises(ValidationError) as exc_info:
+        MapRegion(
+            id="region-1",
+            owner=FactionId.ironCrown,
+            resource_value=1.0,
+            development_level=1.0,
+            terrain=TerrainKind.plains,
+            center_lat_lng=(12.0, 34.0),
+            min_garrison=10,
+            supply_lines=2,
+            **kwargs,
+        )
+
+    assert expected_field in str(exc_info.value)
+
+
 def test_game_event_payload_accepts_arbitrary_dict() -> None:
     event = GameEvent(
         id="event-1",

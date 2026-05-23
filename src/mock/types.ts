@@ -137,6 +137,9 @@ export type MapRegion = {
   resistance: number
   capturedAtTurn: number | null
   centerLatLng: [number, number]
+  lat?: number | null
+  lng?: number | null
+  hex_id?: string | null
   terrain: 'mountain' | 'plains' | 'river' | 'fortress' | 'desert'
   minGarrison: number
   supplyLines: number

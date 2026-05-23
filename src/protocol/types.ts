@@ -121,6 +121,23 @@ export type ReconnectFullState = {
   final_narration: string | null
 }
 
+export type RegionEntry = {
+  id: string
+  owner: FactionId | null
+  resourceValue: number
+  developmentLevel: number
+  resistance: number
+  capturedAtTurn: number | null
+  centerLatLng: MapRegion['centerLatLng']
+  lat?: number | null
+  lng?: number | null
+  hex_id?: string | null
+  terrain: MapRegion['terrain']
+  minGarrison: number
+  supplyLines: number
+  neighbors: string[]
+}
+
 export type RegionTransition = 'conquest' | 'cede' | 'negotiated' | 'abandoned'
 export type RegionFlowDirection =
   | 'south_to_north'
@@ -156,6 +173,9 @@ export type MapRegionPatch = Partial<RegionChange> & {
   resistance?: MapRegion['resistance']
   capturedAtTurn?: MapRegion['capturedAtTurn']
   centerLatLng?: MapRegion['centerLatLng']
+  lat?: number | null
+  lng?: number | null
+  hex_id?: string | null
   terrain?: MapRegion['terrain']
   minGarrison?: MapRegion['minGarrison']
   supplyLines?: MapRegion['supplyLines']

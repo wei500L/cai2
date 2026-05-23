@@ -276,6 +276,26 @@ function toNumberValue(value: unknown, fallback = 0) {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
 }
 
+function toNullableNumberValue(value: unknown): number | null | undefined {
+  if (value === null) {
+    return null
+  }
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+
+  return undefined
+}
+
+function toNullableStringValue(value: unknown): string | null | undefined {
+  if (value === null) {
+    return null
+  }
+
+  return typeof value === 'string' ? value : undefined
+}
+
 function toFactionIdValue(value: unknown): FactionId | null {
   return typeof value === 'string' && value in factionById ? (value as FactionId) : null
 }
@@ -351,6 +371,9 @@ function normalizeRegion(region: unknown): MapRegion {
           ? raw.captured_at_turn
           : null,
     centerLatLng: normalizeLatLng(raw.centerLatLng ?? raw.center_lat_lng),
+    lat: toNullableNumberValue(raw.lat ?? raw.latitude),
+    lng: toNullableNumberValue(raw.lng ?? raw.longitude),
+    hex_id: toNullableStringValue(raw.hex_id ?? raw.hexId),
     terrain: (raw.terrain as MapRegion['terrain']) ?? 'plains',
     minGarrison: Math.max(0, Math.round(toNumberValue(raw.minGarrison ?? raw.min_garrison, 10))),
     supplyLines: Math.max(0, Math.round(toNumberValue(raw.supplyLines ?? raw.supply_lines, 1))),
@@ -525,6 +548,15 @@ function normalizeRegionPatch(patch: unknown): MapRegionPatch | null {
   }
   if (Array.isArray(raw.centerLatLng) || Array.isArray(raw.center_lat_lng)) {
     normalized.centerLatLng = normalizeLatLng(raw.centerLatLng ?? raw.center_lat_lng)
+  }
+  if ('lat' in raw || 'latitude' in raw) {
+    normalized.lat = toNullableNumberValue(raw.lat ?? raw.latitude)
+  }
+  if ('lng' in raw || 'longitude' in raw) {
+    normalized.lng = toNullableNumberValue(raw.lng ?? raw.longitude)
+  }
+  if ('hex_id' in raw || 'hexId' in raw) {
+    normalized.hex_id = toNullableStringValue(raw.hex_id ?? raw.hexId)
   }
   if (typeof raw.minGarrison === 'number' || typeof raw.min_garrison === 'number') {
     normalized.minGarrison = Math.round(toNumberValue(raw.minGarrison ?? raw.min_garrison))
@@ -1289,6 +1321,9 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
                   patch.capturedAtTurn ??
                   (patch.transition === 'conquest' ? state.epoch.turn : region.capturedAtTurn),
                 centerLatLng: patch.centerLatLng ?? region.centerLatLng,
+                lat: patch.lat !== undefined ? patch.lat : region.lat,
+                lng: patch.lng !== undefined ? patch.lng : region.lng,
+                hex_id: patch.hex_id !== undefined ? patch.hex_id : region.hex_id,
                 terrain: patch.terrain ?? region.terrain,
                 minGarrison: patch.minGarrison ?? region.minGarrison,
                 supplyLines: patch.supplyLines ?? region.supplyLines,

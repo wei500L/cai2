@@ -88,3 +88,13 @@
 | `app/api/websocket/dispatcher.py` | 运行期剥离 `internal_thought`，并在 finished 时推送 `replay.ai_diary_reveal`。 |
 | `app/tests/test_protocol.py` | 为 `AIReactionPayload.event` / `private_message` 增加协议测试覆盖。 |
 | `docs/PROTOCOL_AUDIT.md` | 新增本审计报告，覆盖信封、14 个入站消息、24 个出站消息、7 组枚举和差异清单。 |
+
+## 7. 球体地图扩展
+
+| 字段 | 前端类型 | 后端类型 | 是否必填 | 引入版本 |
+| --- | --- | --- | --- | --- |
+| `region.lat` | `number \| null` | `float \| None` | 否 | `v1.0-globe` |
+| `region.lng` | `number \| null` | `float \| None` | 否 | `v1.0-globe` |
+| `region.hex_id` | `string \| null` | `str \| None` | 否 | `v1.0-globe` |
+
+说明：后端 `MapRegion` 与 `resolve.map_diff` 内部 region payload 现已携带上述可选字段；当值为 `None` 时序列化会省略对应键，前端可继续回退到 `center_lat_lng`。

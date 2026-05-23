@@ -4,7 +4,7 @@ import pytest
 from pydantic import BaseModel, ValidationError
 
 from app.core.clock import FrozenClock
-from app.domain.enums import ArbitratePhase, FactionId, GamePhase
+from app.domain.enums import ArbitratePhase, FactionId, GamePhase, TerrainKind
 from app.protocol import (
     INCOMING_PAYLOAD_TYPES,
     OUTGOING_PAYLOAD_TYPES,
@@ -12,7 +12,9 @@ from app.protocol import (
     Envelope,
     PhaseChangePayload,
     ProtocolError,
+    RegionEntryOut,
     ReplayAIDiaryRevealPayload,
+    ResolveMapDiffPayload,
     deserialize_json,
     make_envelope,
     parse_incoming,
@@ -305,6 +307,107 @@ def test_optional_protocol_fields_are_accepted() -> None:
         full_state={"room": {"id": "room-1"}},
         seq=12,
     ).seq == 12
+
+
+def test_region_entry_out_serializes_globe_fields_when_present() -> None:
+    payload = RegionEntryOut(
+        id="region-1",
+        owner=FactionId.starlight,
+        resource_value=18.0,
+        development_level=1.0,
+        terrain=TerrainKind.plains,
+        center_lat_lng=(12.0, 34.0),
+        lat=12.5,
+        lng=34.5,
+        hex_id="abc123",
+        min_garrison=10,
+        supply_lines=2,
+        neighbors=["region-2"],
+        resistance=0.25,
+        captured_at_turn=7,
+    )
+
+    assert payload.model_dump(mode="json", exclude_none=True) == {
+        "id": "region-1",
+        "owner": "starlight",
+        "resource_value": 18.0,
+        "development_level": 1.0,
+        "terrain": "plains",
+        "center_lat_lng": [12.0, 34.0],
+        "lat": 12.5,
+        "lng": 34.5,
+        "hex_id": "abc123",
+        "min_garrison": 10,
+        "supply_lines": 2,
+        "neighbors": ["region-2"],
+        "resistance": 0.25,
+        "captured_at_turn": 7,
+    }
+
+
+def test_region_entry_out_excludes_none_globe_fields_when_missing() -> None:
+    payload = RegionEntryOut(
+        id="region-1",
+        owner=None,
+        resource_value=18.0,
+        development_level=1.0,
+        terrain=TerrainKind.plains,
+        center_lat_lng=(12.0, 34.0),
+        lat=None,
+        lng=None,
+        hex_id=None,
+        min_garrison=10,
+        supply_lines=2,
+        neighbors=[],
+        resistance=0.25,
+        captured_at_turn=None,
+    )
+
+    dumped = payload.model_dump(mode="json", exclude_none=True)
+
+    assert "lat" not in dumped
+    assert "lng" not in dumped
+    assert "hex_id" not in dumped
+    assert dumped["center_lat_lng"] == [12.0, 34.0]
+
+
+def test_resolve_map_diff_payload_accepts_region_entry_dump() -> None:
+    previous = RegionEntryOut(
+        id="region-1",
+        owner=FactionId.starlight,
+        resource_value=18.0,
+        development_level=1.0,
+        terrain=TerrainKind.plains,
+        center_lat_lng=(12.0, 34.0),
+        lat=12.5,
+        lng=34.5,
+        hex_id="abc123",
+        min_garrison=10,
+        supply_lines=2,
+        neighbors=[],
+        resistance=0.25,
+        captured_at_turn=None,
+    )
+    payload = ResolveMapDiffPayload(
+        room_id="room-1",
+        epoch=1,
+        turn=2,
+        changes=[
+            {
+                "region_id": "region-1",
+                "prev_owner": "starlight",
+                "new_owner": "ironCrown",
+                "transition": "conquest",
+                "animation_params": {"direction": "south_to_north"},
+                "previous": previous.model_dump(mode="json", exclude_none=True),
+            }
+        ],
+        border_updates=[],
+    )
+
+    dumped = payload.model_dump(mode="json")
+    assert dumped["changes"][0]["previous"]["hex_id"] == "abc123"
+    assert dumped["changes"][0]["previous"]["lat"] == 12.5
 
 
 def test_protocol_payloads_use_strict_validation() -> None:

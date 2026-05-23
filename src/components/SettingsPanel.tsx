@@ -2,6 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { GlowPanel } from './GlowPanel'
 import { PixelButton } from './PixelButton'
 import { useGameStore } from '@/store/gameStore'
+import { useMapStore } from '@/store/mapStore'
 import { useUIStore, type GlobalParticleDensity } from '@/store/uiStore'
 
 const densityOptions: Array<{ value: GlobalParticleDensity; label: string }> = [
@@ -9,6 +10,12 @@ const densityOptions: Array<{ value: GlobalParticleDensity; label: string }> = [
   { value: 'mid', label: 'MID' },
   { value: 'high', label: 'HIGH' },
   { value: 'ultra', label: 'ULTRA' },
+]
+
+const rendererOptions: Array<{ value: 'globe' | 'r3f' | '2d'; label: string }> = [
+  { value: 'globe', label: '球体（推荐）' },
+  { value: 'r3f', label: '径向 3D（调试）' },
+  { value: '2d', label: '2D 平面（兼容）' },
 ]
 
 export function SettingsPanel() {
@@ -22,6 +29,9 @@ export function SettingsPanel() {
   const setQuality = useUIStore((state) => state.setMapQuality)
   const setDevOverlayOpen = useUIStore((state) => state.setDevOverlayOpen)
   const setPhaseDurationScale = useUIStore((state) => state.setPhaseDurationScale)
+  const setFocusToast = useUIStore((state) => state.setFocusToast)
+  const renderer = useMapStore((state) => state.renderer)
+  const setRenderer = useMapStore((state) => state.setRenderer)
   const initGame = useGameStore((state) => state.initGame)
 
   return (
@@ -75,6 +85,34 @@ export function SettingsPanel() {
                             color: density === option.value ? 'var(--text-primary)' : 'var(--text-muted)',
                           }}
                           onClick={() => setDensity(option.value)}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section>
+                    <div className="mb-2 text-[0.58rem] uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
+                      渲染器
+                    </div>
+                    <div className="grid grid-cols-3 gap-1">
+                      {rendererOptions.map((option) => (
+                        <button
+                          key={option.value}
+                          type="button"
+                          aria-pressed={renderer === option.value}
+                          className="min-h-10 border px-2 py-1 font-hud text-[0.53rem] uppercase leading-tight tracking-[0.12em] transition-holo"
+                          style={{
+                            borderColor: renderer === option.value ? 'var(--border-glow)' : 'rgba(255,255,255,0.14)',
+                            background:
+                              renderer === option.value ? 'rgba(51,170,255,0.14)' : 'rgba(255,255,255,0.025)',
+                            color: renderer === option.value ? 'var(--text-primary)' : 'var(--text-muted)',
+                          }}
+                          onClick={() => {
+                            setRenderer(option.value)
+                            setFocusToast('渲染器已切换，画面将重建一次')
+                          }}
                         >
                           {option.label}
                         </button>

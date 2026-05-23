@@ -5,9 +5,9 @@ import { ReactionTag } from '@/features/aiSpeech/ReactionTag'
 import { motion } from 'framer-motion'
 import type { FactionId } from '@/mock/factions'
 import type { GameEvent } from '@/mock/types'
-import { MapStageR3F } from '@/render/MapStageR3F'
-import { MapStage2D } from '@/render/MapStage2D'
+import { MapSwitcher } from '@/render/MapSwitcher'
 import { useGameStore } from '@/store/gameStore'
+import { useMapStore } from '@/store/mapStore'
 import { useUIStore } from '@/store/uiStore'
 import { getPhaseUIConfig } from '@/features/phaseSystem/PhaseStateMachine'
 import { RegionInflowAnimation } from '@/effects/war/RegionInflowAnimation'
@@ -32,13 +32,14 @@ export function MapStage() {
   const epoch = useGameStore((state) => state.epoch)
   const events = useGameStore((state) => state.events)
   const mapQuality = useUIStore((state) => state.mapQuality)
+  const renderer = useMapStore((state) => state.renderer)
   const hudMode = useUIStore((state) => state.hudMode)
   const phaseConfig = getPhaseUIConfig(hudMode)
   const allowFloatingSpeech = epoch.phase !== 'arbitrate'
   const latestSpeech = allowFloatingSpeech ? events.find((event) => getPublicSpeechText(event)) : null
   const latestReaction = allowFloatingSpeech ? events.find((event) => getReactionLabel(event)) : null
   const latestTransition = useGameStore((state) => state.regionTransitionLog[0] ?? null)
-  const MapRenderer = mapQuality === 'high' ? MapStageR3F : MapStage2D
+  const rendererLabel = renderer === 'globe' ? 'GLOBE' : renderer === 'r3f' ? 'R3F' : '2D'
 
   return (
     <GlowPanel className="h-full w-full rounded-none">
@@ -49,7 +50,7 @@ export function MapStage() {
           transition={{ duration: phaseConfig.transitionMs / 1000, ease: [0.22, 1, 0.36, 1] }}
           style={{ transformOrigin: 'center' }}
         >
-          <MapRenderer />
+          <MapSwitcher />
         </motion.div>
         {phaseConfig.borderSparkBoost > 1 ? (
           <motion.div
@@ -67,7 +68,7 @@ export function MapStage() {
           />
         ) : null}
         <div className="pointer-events-none absolute left-3 top-3 z-20 border border-[color:rgba(196,228,255,0.16)] bg-[color:rgba(1,3,8,0.68)] px-2 py-1 font-hud text-[0.52rem] uppercase tracking-[0.16em] text-[color:rgba(196,228,255,0.58)]">
-          MAP / {mapQuality === 'high' ? 'R3F' : 'CANVAS2D'} / {mapQuality} / Z{phaseConfig.mapZoom.toFixed(2)}
+          MAP / {rendererLabel} / {mapQuality} / Z{phaseConfig.mapZoom.toFixed(2)}
         </div>
         <div className="pointer-events-none absolute inset-0 z-10">
           <div className="absolute left-1/2 top-0 h-full w-[1px] -translate-x-1/2 bg-[color:rgba(196,228,255,0.04)]" />
