@@ -1,5 +1,6 @@
 import { GlowPanel } from '@/components/GlowPanel'
 import { PixelButton } from '@/components/PixelButton'
+import { ActionDispatcher } from '@/protocol/dispatcher'
 import { useGameStore } from '@/store/gameStore'
 import type { FactionMeta } from '@/mock/factions'
 
@@ -14,6 +15,7 @@ function navigateToGame() {
 
 export function ConfirmBar({ selectedFaction }: ConfirmBarProps) {
   const selectFaction = useGameStore((state) => state.selectFaction)
+  const currentRoomId = useGameStore((state) => state.currentRoomId)
 
   const handleConfirm = () => {
     if (!selectedFaction) {
@@ -21,6 +23,10 @@ export function ConfirmBar({ selectedFaction }: ConfirmBarProps) {
     }
 
     selectFaction(selectedFaction.id)
+    if (currentRoomId) {
+      ActionDispatcher.selectFaction(selectedFaction.id)
+      ActionDispatcher.setReady(true)
+    }
     navigateToGame()
   }
 

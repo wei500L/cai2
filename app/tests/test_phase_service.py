@@ -154,9 +154,12 @@ async def test_begin_turn_writes_observe_and_phase_change_event(
         "epoch": 1,
         "turn": 1,
         "phase": "observe",
+        "arbitrate_phase": None,
         "phase_duration_ms": OBSERVE_DURATION_MS,
         "phase_started_at_ms": 10_000,
+        "server_time_ms": 10_000,
     }
+    assert events[0].payload["server_time_ms"] == 10_000
 
 
 @pytest.mark.asyncio
@@ -245,6 +248,35 @@ async def test_epoch_eight_summary_finishes_room(
     events = await repos.events.list_all(room.id)
     assert events[-1].kind == EventKind.phase_change
     assert events[-1].payload["new_phase"] == "finished"
+
+
+@pytest.mark.asyncio
+async def test_on_room_finished_called_after_status_is_finished(
+    repos: Repositories,
+    clock: FrozenClock,
+) -> None:
+    calls: list[tuple[str, RoomStatus]] = []
+
+    async def on_room_finished(room_id: str) -> None:
+        stored_room = await repos.rooms.get(room_id)
+        assert stored_room is not None
+        calls.append((room_id, stored_room.status))
+
+    room = await _seed_room(
+        repos,
+        current=_turn(
+            epoch=8,
+            turn=3,
+            phase=GamePhase.arbitrate,
+            arbitrate_phase=ArbitratePhase.summary,
+            duration_ms=ARBITRATE_SUMMARY_DURATION_MS,
+        ),
+    )
+    service = PhaseService(repos, clock, on_room_finished=on_room_finished)
+
+    await service.advance_phase(room.id)
+
+    assert calls == [(room.id, RoomStatus.finished)]
 
 
 @pytest.mark.asyncio

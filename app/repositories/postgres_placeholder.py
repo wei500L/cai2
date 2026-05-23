@@ -142,6 +142,9 @@ class PostgresMessageLogRepository(MessageLogRepository):
 
 
 class PostgresEventLogRepository(EventLogRepository):
+    def current_seq(self, room_id: str) -> int:
+        raise NotImplementedError("postgres adapter pending; see docs/PERSISTENCE_PLAN.md")
+
     def next_seq(self, room_id: str) -> int:
         raise NotImplementedError("postgres adapter pending; see docs/PERSISTENCE_PLAN.md")
 
@@ -155,7 +158,9 @@ class PostgresEventLogRepository(EventLogRepository):
         self,
         room_id: str,
         faction_id: FactionId,
-        since_ms: int = 0,
+        *,
+        since_seq: int = 0,
+        since_ms: int | None = None,
     ) -> list[GameEvent]:
         raise NotImplementedError("postgres adapter pending; see docs/PERSISTENCE_PLAN.md")
 

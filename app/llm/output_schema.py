@@ -82,6 +82,7 @@ class AISpeechItem(BaseModel):
     kind: Literal["public", "private", "reaction", "narration"]
     content: str = Field(min_length=1, max_length=400)
     target_faction: FactionId | None = None
+    internal_thought: str | None = Field(default=None, max_length=600)
 
 
 class SettlementModelOutput(BaseModel):

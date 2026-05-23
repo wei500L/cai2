@@ -12,7 +12,7 @@ export const PHASE_DURATIONS_MS: Record<GamePhase, number> = {
 
 export const ARBITRATE_PHASE_DURATIONS_MS: Record<ArbitratePhase, number> = {
   battle: 20_000,
-  epic: 15_000,
+  epic: 60_000,
   summary: 15_000,
 }
 

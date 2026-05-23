@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Scanlines } from '@/components/Scanlines'
 import { ConfirmBar } from '@/features/factionSelect/ConfirmBar'
 import { FactionDetailPanel } from '@/features/factionSelect/FactionDetailPanel'
 import { FactionSelectGrid } from '@/features/factionSelect/FactionSelectGrid'
-import { FACTIONS, type FactionMeta } from '@/mock/factions'
+import { FACTIONS, factionById, type FactionMeta } from '@/mock/factions'
+import { ActionDispatcher } from '@/protocol/dispatcher'
 import { useGameStore } from '@/store/gameStore'
 
 const GRID_COLUMNS_DESKTOP = 2
@@ -26,16 +27,40 @@ function getFactionIndex(factionId: string | null) {
   return index >= 0 ? index : 0
 }
 
+function getFactionLabel(factionId: string | null) {
+  return factionId && factionId in factionById ? factionById[factionId as keyof typeof factionById].name : '未选择'
+}
+
 export default function FactionSelectPage() {
   const selectedFactionId = useGameStore((state) => state.selectedFactionId)
+  const currentRoomId = useGameStore((state) => state.currentRoomId)
+  const currentPlayerId = useGameStore((state) => state.currentPlayerId)
+  const roomPlayers = useGameStore((state) => state.roomPlayers)
   const selectFaction = useGameStore((state) => state.selectFaction)
   const clearFaction = useGameStore((state) => state.clearFaction)
   const selectedFaction = useMemo(
     () => FACTIONS.find((faction) => faction.id === selectedFactionId) ?? null,
     [selectedFactionId],
   )
+  const otherRoomPlayers = useMemo(
+    () =>
+      currentPlayerId
+        ? roomPlayers.filter((player) => player.player_id !== currentPlayerId)
+        : roomPlayers,
+    [currentPlayerId, roomPlayers],
+  )
   const [activeIndex, setActiveIndex] = useState(() => getFactionIndex(selectedFactionId))
   const cardRefs = useRef<Array<HTMLButtonElement | null>>([])
+
+  const commitFactionSelection = useCallback(
+    (factionId: FactionMeta['id']) => {
+      selectFaction(factionId)
+      if (currentRoomId) {
+        ActionDispatcher.selectFaction(factionId)
+      }
+    },
+    [currentRoomId, selectFaction],
+  )
 
   useEffect(() => {
     const activeCard = cardRefs.current[activeIndex]
@@ -103,13 +128,13 @@ export default function FactionSelectPage() {
 
       if (event.key === 'Enter') {
         event.preventDefault()
-        selectFaction(FACTIONS[currentIndex].id)
+        commitFactionSelection(FACTIONS[currentIndex].id)
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [activeIndex, clearFaction, selectFaction])
+  }, [activeIndex, clearFaction, commitFactionSelection])
 
   const registerCardRef =
     (index: number) =>
@@ -122,7 +147,7 @@ export default function FactionSelectPage() {
     if (index >= 0) {
       setActiveIndex(index)
     }
-    selectFaction(faction.id)
+    commitFactionSelection(faction.id)
   }
 
   return (
@@ -173,8 +198,54 @@ export default function FactionSelectPage() {
             />
           </div>
 
-          <div className="xl:sticky xl:top-4">
+          <div className="grid content-start gap-4 xl:sticky xl:top-4">
             <FactionDetailPanel faction={selectedFaction} />
+            {currentRoomId ? (
+              <section className="border border-[color:rgba(255,255,255,0.1)] bg-[color:rgba(5,9,18,0.74)] p-4">
+                <div className="flex items-center justify-between gap-3 font-hud">
+                  <h2 className="text-[0.66rem] uppercase tracking-[0.24em] text-[color:rgba(196,228,255,0.68)]">
+                    房间内其它玩家
+                  </h2>
+                  <span className="text-[0.56rem] tracking-[0.16em] text-[color:rgba(196,228,255,0.42)]">
+                    {otherRoomPlayers.length}
+                  </span>
+                </div>
+                <div className="mt-3 grid gap-2">
+                  {otherRoomPlayers.length === 0 ? (
+                    <div className="border border-[color:rgba(255,255,255,0.06)] bg-white/[0.025] px-3 py-2 text-[0.72rem] text-[color:rgba(196,228,255,0.48)]">
+                      等待其他玩家加入
+                    </div>
+                  ) : (
+                    otherRoomPlayers.map((player) => (
+                      <div
+                        key={player.player_id}
+                        className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 border border-[color:rgba(255,255,255,0.07)] bg-white/[0.025] px-3 py-2"
+                      >
+                        <div className="min-w-0">
+                          <div className="truncate text-[0.82rem] text-[color:var(--text-primary)]">
+                            {player.display_name}
+                          </div>
+                          <div className="mt-1 truncate font-hud text-[0.54rem] tracking-[0.12em] text-[color:rgba(196,228,255,0.46)]">
+                            {getFactionLabel(player.faction_id)}
+                          </div>
+                        </div>
+                        <div className="flex flex-none items-center gap-2 font-hud text-[0.52rem] tracking-[0.12em]">
+                          <span className={player.connected ? 'text-[color:rgba(112,255,166,0.86)]' : 'text-[color:rgba(196,228,255,0.42)]'}>
+                            {player.connected ? '在线' : '离线'}
+                          </span>
+                          <span className={player.ready ? 'text-[color:var(--text-warn)]' : 'text-[color:rgba(196,228,255,0.42)]'}>
+                            {player.ready ? 'READY' : 'WAIT'}
+                          </span>
+                          {player.ai_takeover ? (
+                            <span className="text-[color:rgb(255,181,100)]">AI 托管</span>
+                          ) : null}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </section>
+            ) : null}
           </div>
         </div>
 

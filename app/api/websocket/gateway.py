@@ -6,16 +6,25 @@ from uuid import uuid4
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
+from app.api.rest.deps import (
+    get_action_service,
+    get_clock,
+    get_connection_manager,
+    get_outbound_dispatcher,
+    get_phase_scheduler,
+    get_phase_service,
+    get_repositories,
+    get_room_service,
+    get_settlement_service,
+    get_takeover_service,
+)
 from app.api.websocket.connection import ConnectionManager
 from app.api.websocket.dispatcher import OutboundDispatcher
 from app.api.websocket.router import InboundRouter
-from app.core.clock import SystemClock
 from app.core.config import get_settings
 from app.core.logging import get_logger
-from app.repositories.factory import make_repositories
-from app.services.action_service import ActionService
-from app.services.phase_service import PhaseService
-from app.services.room_service import RoomService
+from app.services.phase_scheduler import PhaseScheduler
+from app.services.takeover_service import TakeoverService
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -28,10 +37,20 @@ class GameWebSocketGateway:
         connection_manager: ConnectionManager,
         inbound_router: InboundRouter,
         dispatcher: OutboundDispatcher,
+        takeover_service: TakeoverService,
+        phase_scheduler: PhaseScheduler,
     ) -> None:
         self._connection_manager = connection_manager
         self._inbound_router = inbound_router
         self._dispatcher = dispatcher
+        self._takeover_service = takeover_service
+        self._phase_scheduler = phase_scheduler
+
+    async def startup(self) -> None:
+        await self._phase_scheduler.start_running_rooms()
+
+    async def shutdown(self) -> None:
+        await self._phase_scheduler.shutdown()
 
     async def handle(self, websocket: WebSocket) -> None:
         player_id = websocket.query_params.get("player_id") or f"conn_{uuid4().hex[:12]}"
@@ -47,26 +66,36 @@ class GameWebSocketGateway:
         except WebSocketDisconnect:
             pass
         finally:
-            await self._connection_manager.unregister(player_id)
+            session = await self._connection_manager.unregister(player_id)
+            if session is not None and session.room_id is not None:
+                await self._takeover_service.on_disconnect(session.room_id, player_id)
 
 
 def build_gateway() -> GameWebSocketGateway:
-    repos = make_repositories("memory")
-    clock = SystemClock()
-    connection_manager = ConnectionManager()
+    repos = get_repositories()
+    clock = get_clock()
+    connection_manager = get_connection_manager()
+    dispatcher = get_outbound_dispatcher()
+    takeover_service = get_takeover_service()
+    phase_scheduler = get_phase_scheduler()
+    settlement_service = get_settlement_service(repos, clock)
     inbound_router = InboundRouter(
-        room_service=RoomService(repos, clock),
-        action_service=ActionService(repos, clock),
-        phase_service=PhaseService(repos, clock),
-        settlement_service=None,
+        room_service=get_room_service(repos, clock, phase_scheduler),
+        action_service=get_action_service(repos, clock),
+        phase_service=get_phase_service(repos, clock, dispatcher),
+        settlement_service=settlement_service,
         repos=repos,
         clock=clock,
+        connection_manager=connection_manager,
+        dispatcher=dispatcher,
+        takeover_service=takeover_service,
     )
-    dispatcher = OutboundDispatcher(connection_manager, repos)
     return GameWebSocketGateway(
         connection_manager=connection_manager,
         inbound_router=inbound_router,
         dispatcher=dispatcher,
+        takeover_service=takeover_service,
+        phase_scheduler=phase_scheduler,
     )
 
 

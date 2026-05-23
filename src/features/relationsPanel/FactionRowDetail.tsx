@@ -2,6 +2,8 @@ import { motion } from 'framer-motion'
 import type { FactionMeta } from '@/mock/factions'
 import { speechStyleDescriptions } from '@/mock/factions'
 import type { FactionState } from '@/mock/types'
+import type { DiaryEntry } from '@/protocol/types'
+import { useGameStore } from '@/store/gameStore'
 import { metricLabels, treatyIcons, treatyLabels } from './relationVisuals'
 import type { TreatyDisplay } from './types'
 
@@ -56,6 +58,13 @@ export function FactionRowDetail({
   treaties,
   isSelf,
 }: FactionRowDetailProps) {
+  const hasDiariesRevealed = useGameStore((state) => state.hasDiariesRevealed())
+  const latestDiary = useGameStore((state) => {
+    const entries = state.aiDiaries[faction.id]
+    return entries && entries.length > 0 ? entries[entries.length - 1] : null
+  })
+  const diaryPreview = latestDiary ? formatDiaryPreview(latestDiary) : null
+
   return (
     <motion.div
       className="grid gap-3 border-t border-[color:rgba(255,255,255,0.08)] px-3 pb-3 pt-2"
@@ -111,6 +120,40 @@ export function FactionRowDetail({
         </div>
         <p className="line-clamp-2">{speechStyleDescriptions[faction.speechStyle]}</p>
       </div>
+
+      <div className="border-t border-[color:rgba(153,51,255,0.16)] pt-2">
+        <div className="mb-1 font-hud text-[0.56rem] tracking-[0.16em] text-[color:rgba(220,196,255,0.72)]">
+          最近想法
+        </div>
+        {hasDiariesRevealed && diaryPreview ? (
+          <p className="text-[0.68rem] leading-5 text-[color:rgba(244,235,255,0.88)]">
+            <span className="font-hud text-[0.55rem] text-[color:rgba(220,196,255,0.58)]">
+              {diaryPreview.meta}
+            </span>
+            <span className="mx-1 text-[color:rgba(196,228,255,0.42)]">/</span>
+            {diaryPreview.text}
+          </p>
+        ) : (
+          <p className="italic text-[0.68rem] leading-5 text-[color:rgba(196,228,255,0.38)]">
+            此势力的想法仍是迷雾
+          </p>
+        )}
+      </div>
     </motion.div>
   )
+}
+
+export function formatDiaryPreview(entry: DiaryEntry) {
+  return {
+    meta: `E${entry.epoch}.T${entry.turn} · ${entry.emotion}`,
+    text: truncateDiaryText(entry.internal_thought),
+  }
+}
+
+function truncateDiaryText(text: string) {
+  if (text.length <= 80) {
+    return text
+  }
+
+  return `${text.slice(0, 77)}...`
 }

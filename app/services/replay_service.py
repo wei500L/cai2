@@ -7,7 +7,7 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.clock import Clock
-from app.core.errors import InvalidPhaseError, RoomNotFoundError
+from app.core.errors import RoomNotFoundError
 from app.domain.enums import (
     EventKind,
     EventPriority,
@@ -75,8 +75,7 @@ class ReplayService:
         room = await self._repos.rooms.get(room_id)
         if room is None:
             raise RoomNotFoundError(f"room {room_id} not found")
-        if room.status != RoomStatus.finished:
-            raise InvalidPhaseError(f"room {room_id} is not finished")
+        is_finished = room.status == RoomStatus.finished
 
         (
             events,
@@ -85,6 +84,7 @@ class ReplayService:
             final_factions,
             final_relationships,
             actions,
+            diaries_by_faction,
         ) = await asyncio.gather(
             self._repos.events.list_all(room_id),
             self._repos.messages.list_by_room(room_id),
@@ -92,6 +92,7 @@ class ReplayService:
             self._repos.state.get_factions(room_id),
             self._repos.state.get_relationships(room_id),
             self._repos.actions.list_by_room(room_id),
+            self._repos.diaries.list_all_by_room(room_id),
         )
 
         events = sorted(events, key=_event_sort_key)
@@ -111,7 +112,9 @@ class ReplayService:
             timeline=timeline,
             public_events=[_dump_model(event) for event in events],
             private_messages=[_dump_model(message) for message in _private_messages(messages)],
-            ai_internal_thoughts=_ai_internal_thoughts(room, turn_keys, settlements, actions),
+            ai_internal_thoughts=_ai_internal_thoughts(diaries_by_faction)
+            if is_finished
+            else [],
             faction_curves=_faction_curves(turn_keys, settlements, final_factions),
             relationship_snapshots=_relationship_snapshots(
                 turn_keys,
@@ -123,8 +126,10 @@ class ReplayService:
             betrayal_events=[_dump_model(event) for event in _betrayal_events(events)],
             deception_stats=_deception_stats(settlements, actions, events),
             final_factions=sorted(final_factions, key=lambda faction: str(faction.id)),
-            winner=_winner(final_factions),
-            final_narration=_final_narration(settlements, events),
+            winner=_winner(final_factions) if is_finished else None,
+            final_narration=_final_narration(settlements, events)
+            if is_finished
+            else "游戏尚未结束, 当前复盘为中途快照。",
         )
         await self._repos.replays.save_replay(room_id, replay.model_dump(mode="json"))
         return replay
@@ -186,40 +191,17 @@ def _private_messages(messages: list[MessageRecord]) -> list[MessageRecord]:
 
 
 def _ai_internal_thoughts(
-    room: GameRoom,
-    turn_keys: list[tuple[int, int]],
-    settlements: list[SettlementResult],
-    actions: list[GameAction],
+    diaries_by_faction: dict[FactionId, list[Any]],
 ) -> list[dict[str, Any]]:
     thoughts: list[dict[str, Any]] = []
-    seen: set[tuple[FactionId, int, int]] = set()
-
-    for settlement in settlements:
-        for event in sorted(settlement.narration_events, key=_event_sort_key):
-            if event.actor_faction is None:
-                continue
-            thoughts.append(
-                {
-                    "faction_id": event.actor_faction.value,
-                    "epoch": settlement.epoch,
-                    "turn": settlement.turn,
-                    "text": event.narration,
-                }
-            )
-            seen.add((event.actor_faction, settlement.epoch, settlement.turn))
-
-    speech_by_turn = _first_speech_by_turn(actions)
-    for faction_id in _ai_factions(room):
-        for epoch, turn in turn_keys:
-            if (faction_id, epoch, turn) in seen:
-                continue
-            proposal = speech_by_turn.get((epoch, turn), "局势变化")
+    for faction_id, entries in diaries_by_faction.items():
+        for entry in entries:
             thoughts.append(
                 {
                     "faction_id": faction_id.value,
-                    "epoch": epoch,
-                    "turn": turn,
-                    "text": f"玩家提出 {proposal} 时语气太急切了，我需要保留余地再观察一轮。",  # noqa: RUF001
+                    "epoch": entry.epoch,
+                    "turn": entry.turn,
+                    "text": entry.internal_thought,
                 }
             )
 

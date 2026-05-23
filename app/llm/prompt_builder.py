@@ -22,6 +22,11 @@ SYSTEM_PROMPT_TEMPLATE = """你是《外交风云》的裁决与叙事 AI。
 你需要输出士气变化建议，但单次 morale delta 的绝对值不得超过 0.2。
 你需要输出文化影响，体现宣传、信仰、荣誉、贸易声誉和科技叙事的后果。
 你需要输出 AI 发言，发言应符合对应势力的语气和利益。
+对于每条 ai_speeches，请同时输出 internal_thought 字段（不超过 600 字符）。
+internal_thought 代表该势力本回合的真实想法，可以与公开发言不一致。
+它可以包含欺骗、记仇、计算等内心活动。
+internal_thought 不会被其他势力看到。
+当用户 prompt 含有 "## 八势力近期内心独白" 时，你必须考虑这些记忆做决策。
 你需要输出条约结果，对每个条约请求给出接受、拒绝或反提案理由。
 你需要输出战争建议，判断进攻合法性、战略含义和叙事后果。
 战争建议仅作为后端规则引擎参考。
@@ -58,7 +63,8 @@ OUTPUT_JSON_SCHEMA_HINT = """{
       "faction_id": "faction_id",
       "kind": "public|private|reaction|narration",
       "content": "string(1..400)",
-      "target_faction": "faction_id|null"
+      "target_faction": "faction_id|null",
+      "internal_thought": "string|null(<=600, hidden)"
     }
   ],
   "treaty_decisions": [
@@ -137,6 +143,8 @@ class PromptBuilder:
                 f"{input.relationship_summary_text}",
                 "## 八势力性格简要（faction_personality_summary 序列化文本）\n"
                 f"{format_personality_summary(input.faction_personality_summary)}",
+                "## 八势力近期内心独白（仅给模型，不对外）\n"
+                f"{format_recent_diaries(input.faction_recent_diaries)}",
                 "## 本回合公开演讲\n"
                 f"{_join_lines(format_action_lines(input.public_speeches, '公开演讲'))}",
                 "## 本回合密谈\n"
@@ -238,6 +246,31 @@ def format_personality_summary(personality_dict: Mapping[Any, Mapping[str, Any]]
             f"{key}={_format_value(summary[key])}" for key in sorted(summary, key=str)
         )
         lines.append(f"- {_stringify(faction_id)}: {values}")
+    return "\n".join(lines)
+
+
+def format_recent_diaries(diaries_by_faction: Mapping[Any, Sequence[Any]]) -> str:
+    if not diaries_by_faction:
+        return "- （无历史内心独白）"
+
+    lines: list[str] = []
+    for faction_id in sorted(diaries_by_faction, key=lambda item: _stringify(item)):
+        entries = list(diaries_by_faction[faction_id])
+        lines.append(f"- {_stringify(faction_id)}:")
+        if not entries:
+            lines.append("  - （无）")
+            continue
+
+        for entry in entries:
+            epoch = _stringify(getattr(entry, "epoch", "?"))
+            turn = _stringify(getattr(entry, "turn", "?"))
+            emotion = _stringify(getattr(entry, "emotion", "（未知）"))
+            thought = truncate(
+                _stringify(getattr(entry, "internal_thought", "")),
+                max_chars=220,
+            )
+            lines.append(f"  - E{epoch}/T{turn}; emotion={emotion}; thought={thought}")
+
     return "\n".join(lines)
 
 

@@ -5,28 +5,44 @@ import { treatyKindLabels, militaryActionLabels } from '@/features/commandTermin
 import { factionById, type FactionId } from '@/mock/factions'
 import { createInitialState } from '@/mock/initialState'
 import { MAX_EPOCHS, TURNS_PER_EPOCH, getPhaseDurationMs } from '@/mock/gameState'
+import { useUIStore } from '@/store/uiStore'
 import type {
   BattleEvent,
   Epoch,
   EventKind,
   FactionState,
   GameEvent,
+  MapRegion,
   MockGameWorldState,
   PrivateMessage,
   Relationship,
   RelationshipStatus,
+  Treaty,
 } from '@/mock/types'
 import type {
+  BorderTensionEntry,
+  DiaryEntry,
   EventBundlePayload,
   FactionStatsPatch,
   MapRegionPatch,
   PhasePayload,
+  ReconnectAIThinkingState,
+  ReconnectFullState,
+  ReconnectSnapshotMessage,
+  RoomFinishedPayload,
+  RoomPlayerSnapshot,
   RelationshipPatch,
   StatsDiffPayload,
+  RoomMode,
+  TurnBeginPayload,
 } from '@/protocol/types'
 
 const MAX_EVENTS = 200
 const MAX_PRIVATE_MESSAGES = 100
+type BorderTension = {
+  tension: number
+  visual_state: BorderTensionEntry['visual_state']
+}
 
 type GameStoreActions = {
   initGame: (seed?: number) => void
@@ -46,19 +62,66 @@ type GameStoreActions = {
   addPrivateMessage: (message: PrivateMessage) => void
   submitSpeech: (submission: CommandSubmission) => SubmitSpeechResult
   _applyPhase: (payload: Epoch | PhasePayload) => void
+  _applyTurnBegin: (payload: TurnBeginPayload) => void
   _applyEvents: (payload: GameEvent[] | EventBundlePayload) => void
-  _applyMapDiff: (payload: MapRegionPatch[] | { changes: MapRegionPatch[] }) => void
+  _applyMapDiff: (
+    payload: MapRegionPatch[] | { changes: MapRegionPatch[]; border_updates?: BorderTensionEntry[] },
+  ) => void
   _applyStatsDiff: (payload: StatsDiffPayload | {
     faction_stats?: FactionStatsPatch[]
     relationship_changes?: RelationshipPatch[]
+    border_updates?: BorderTensionEntry[]
   }) => void
+  _applyAIDiaries: (payload: {
+    room_id: string
+    faction_id: FactionId
+    entries: DiaryEntry[]
+  }) => void
+  _applyAIThinking: (payload: { progress: number; phase?: string; model?: string | null }) => void
+  _applySnapshot: (payload: ReconnectSnapshotMessage['p'] | ReconnectFullState) => void
+  _applyServerClockSample: (serverTimeMs: number, clientTimeMs?: number) => void
   togglePause: () => void
   selectFaction: (id: FactionId) => void
   clearFaction: () => void
+  hasDiariesRevealed: () => boolean
+  _applyRoomJoined: (payload: Record<string, unknown>) => void
+  _applyRoomSnapshot: (payload: {
+    room_id: string
+    mode: RoomMode
+    status: string
+    players: RoomPlayerSnapshot[]
+    ai_factions: FactionId[]
+  }) => void
+  _applyPlayerTakeover: (payload: {
+    room_id: string
+    player_id: string
+    faction_id: FactionId
+    reason: 'disconnected_30s' | 'manual_leave'
+  }) => void
+  _applyPlayerResume: (payload: {
+    room_id: string
+    player_id: string
+    faction_id: FactionId
+  }) => void
+  _applyRoomFinished: (payload: RoomFinishedPayload) => void
 }
 
 export type GameStoreState = MockGameWorldState & {
   selectedFactionId: FactionId | null
+  currentRoomId: string | null
+  currentPlayerId: string | null
+  roomMode: RoomMode | null
+  roomStatus: string | null
+  roomPlayers: RoomPlayerSnapshot[]
+  aiFactions: FactionId[]
+  currentTurn: Epoch | null
+  aiThinkingState: (ReconnectAIThinkingState & { fallback: boolean }) | null
+  borderTensionMap: Record<string, BorderTension>
+  winner: FactionId | null
+  finalNarration: string | null
+  serverClockOffsetMs: number
+  serverClockSampleAtMs: number
+  aiDiaries: Record<FactionId, DiaryEntry[]>
 } & GameStoreActions
 
 let eventSequence = 0
@@ -135,6 +198,397 @@ function pushPrivateMessagesToList(messages: PrivateMessage[], incoming: Private
   const freshMessages = incoming.filter((message) => !existingIds.has(message.id))
 
   return [...freshMessages, ...messages].slice(0, MAX_PRIVATE_MESSAGES)
+}
+
+function eventSortKey(event: GameEvent) {
+  return [
+    event.seq ?? -1,
+    event.createdAt,
+    event.epoch,
+    event.turn,
+    event.id,
+  ] as const
+}
+
+function privateMessageSortKey(message: PrivateMessage) {
+  return [message.createdAt, message.epoch, message.turn, message.id] as const
+}
+
+function dedupeAndSortEvents(events: GameEvent[]) {
+  const byId = new Map<string, GameEvent>()
+  for (const event of events) {
+    const existing = byId.get(event.id)
+    if (!existing || compareTuple(eventSortKey(event), eventSortKey(existing)) > 0) {
+      byId.set(event.id, event)
+    }
+  }
+
+  return [...byId.values()].sort((left, right) => compareTuple(eventSortKey(right), eventSortKey(left)))
+}
+
+function dedupeAndSortPrivateMessages(messages: PrivateMessage[]) {
+  const byId = new Map<string, PrivateMessage>()
+  for (const message of messages) {
+    if (!byId.has(message.id)) {
+      byId.set(message.id, message)
+    }
+  }
+
+  return [...byId.values()].sort((left, right) =>
+    compareTuple(privateMessageSortKey(right), privateMessageSortKey(left)),
+  )
+}
+
+function compareTuple(left: readonly (string | number)[], right: readonly (string | number)[]) {
+  for (let index = 0; index < left.length; index += 1) {
+    if (left[index] === right[index]) {
+      continue
+    }
+
+    const leftValue = left[index]
+    const rightValue = right[index]
+
+    if (leftValue === undefined) {
+      return -1
+    }
+    if (rightValue === undefined) {
+      return 1
+    }
+    return leftValue < rightValue ? -1 : 1
+  }
+
+  return 0
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function toStringValue(value: unknown, fallback = '') {
+  return typeof value === 'string' ? value : fallback
+}
+
+function toNumberValue(value: unknown, fallback = 0) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback
+}
+
+function toFactionIdValue(value: unknown): FactionId | null {
+  return typeof value === 'string' && value in factionById ? (value as FactionId) : null
+}
+
+function normalizeLatLng(value: unknown): [number, number] {
+  if (!Array.isArray(value) || value.length < 2) {
+    return [0, 0]
+  }
+
+  return [toNumberValue(value[0]), toNumberValue(value[1])]
+}
+
+function normalizeBorderState(value: unknown): BorderTensionEntry['visual_state'] {
+  if (
+    value === 'watch' ||
+    value === 'tense' ||
+    value === 'critical' ||
+    value === 'hostile_sparking' ||
+    value === 'war_frontline'
+  ) {
+    return value
+  }
+
+  return 'calm'
+}
+
+function normalizeBorderKey(pair: [string, string]) {
+  return [...pair].sort().join(':')
+}
+
+function normalizeRegion(region: unknown): MapRegion {
+  const raw = isRecord(region) ? region : {}
+  const neighbors = Array.isArray(raw.neighbors)
+    ? raw.neighbors.filter((neighbor): neighbor is string => typeof neighbor === 'string')
+    : []
+
+  return {
+    id: toStringValue(raw.id ?? raw.region_id),
+    owner: toFactionIdValue(raw.owner ?? raw.owner_id),
+    resourceValue: toNumberValue(raw.resourceValue ?? raw.resource_value),
+    developmentLevel: toNumberValue(raw.developmentLevel ?? raw.development_level),
+    centerLatLng: normalizeLatLng(raw.centerLatLng ?? raw.center_lat_lng),
+    terrain: (raw.terrain as MapRegion['terrain']) ?? 'plains',
+    minGarrison: Math.max(0, Math.round(toNumberValue(raw.minGarrison ?? raw.min_garrison, 10))),
+    supplyLines: Math.max(0, Math.round(toNumberValue(raw.supplyLines ?? raw.supply_lines, 1))),
+    neighbors,
+  }
+}
+
+function normalizeFaction(faction: unknown): FactionState {
+  const raw = isRecord(faction) ? faction : {}
+  const military = toNumberValue(raw.military)
+  const economy = toNumberValue(raw.economy)
+  const diplomacy = toNumberValue(raw.diplomacy)
+  const culture = toNumberValue(raw.culture)
+  const morale = toNumberValue(raw.morale, 0)
+  const totalPower = toNumberValue(raw.totalPower ?? raw.total_power, military + economy + diplomacy + culture + morale)
+
+  return {
+    id: toFactionIdValue(raw.id) ?? 'starlight',
+    military,
+    economy,
+    diplomacy,
+    culture,
+    morale,
+    totalPower,
+    status: (raw.status as FactionState['status']) ?? 'critical',
+  }
+}
+
+function normalizeRelationship(relationship: unknown): Relationship {
+  const raw = isRecord(relationship) ? relationship : {}
+  const treaties = Array.isArray(raw.treaties)
+    ? raw.treaties.filter((treaty): treaty is Treaty['kind'] => typeof treaty === 'string')
+    : []
+
+  return {
+    from: toFactionIdValue(raw.from ?? raw.from_faction) ?? 'starlight',
+    to: toFactionIdValue(raw.to ?? raw.to_faction) ?? 'starlight',
+    value: toNumberValue(raw.value),
+    status: (raw.status as RelationshipStatus) ?? 'neutral',
+    treaties,
+  }
+}
+
+function normalizeGameEvent(event: unknown): GameEvent {
+  const raw = isRecord(event) ? event : {}
+  return {
+    id: toStringValue(raw.id),
+    seq: typeof raw.seq === 'number' ? raw.seq : undefined,
+    createdAt: toNumberValue(raw.createdAt ?? raw.created_at_ms),
+    epoch: toNumberValue(raw.epoch, 1),
+    turn: toNumberValue(raw.turn, 1),
+    phase: (raw.phase as Epoch['phase']) ?? 'observe',
+    priority: (raw.priority as GameEvent['priority']) ?? 'P2',
+    kind: (raw.kind as GameEvent['kind']) ?? 'narration',
+    actor: toFactionIdValue(raw.actor ?? raw.actor_faction) ?? undefined,
+    target: toFactionIdValue(raw.target ?? raw.target_faction) ?? undefined,
+    payload: isRecord(raw.payload) ? { ...raw.payload } : {},
+    narration: toStringValue(raw.narration),
+  }
+}
+
+function normalizePrivateMessage(message: unknown): PrivateMessage | null {
+  const raw = isRecord(message) ? message : {}
+  const id = toStringValue(raw.id)
+  if (!id) {
+    return null
+  }
+
+  const from = toFactionIdValue(raw.from ?? raw.from_faction)
+  const toArray = Array.isArray(raw.to_factions) ? raw.to_factions : []
+  const to = toFactionIdValue(raw.to ?? toArray[0] ?? raw.target_faction)
+
+  return {
+    id,
+    createdAt: toNumberValue(raw.createdAt ?? raw.created_at_ms),
+    epoch: toNumberValue(raw.epoch, 1),
+    turn: toNumberValue(raw.turn, 1),
+    phase: (raw.phase as Epoch['phase']) ?? 'observe',
+    from: from ?? 'starlight',
+    to: to ?? from ?? 'starlight',
+    priority: (raw.priority as PrivateMessage['priority']) ?? 'P2',
+    subject: toStringValue(raw.subject ?? raw.content ?? '密谈记录'),
+    body: toStringValue(raw.body ?? raw.content),
+    encrypted:
+      typeof raw.encrypted === 'boolean'
+        ? raw.encrypted
+        : raw.visibility && isRecord(raw.visibility)
+          ? raw.visibility.scope !== 'public'
+          : true,
+    payload: isRecord(raw.payload) ? { ...raw.payload } : {},
+  }
+}
+
+function isReconnectPrivateMessage(message: unknown) {
+  const raw = isRecord(message) ? message : {}
+  if (raw.kind === 'private') {
+    return true
+  }
+
+  if (raw.kind === 'public') {
+    return false
+  }
+
+  return raw.visibility && isRecord(raw.visibility) ? raw.visibility.scope !== 'public' : false
+}
+
+function normalizeBorderTensionEntry(entry: unknown): [string, BorderTension] | null {
+  const raw = isRecord(entry) ? entry : {}
+  const between = Array.isArray(raw.between) ? raw.between : []
+  if (between.length < 2 || typeof between[0] !== 'string' || typeof between[1] !== 'string') {
+    return null
+  }
+
+  return [
+    normalizeBorderKey([between[0], between[1]]),
+    {
+      tension: toNumberValue(raw.tension),
+      visual_state: normalizeBorderState(raw.visual_state),
+    },
+  ]
+}
+
+function normalizeBorderTensionMap(entries: unknown): Record<string, BorderTension> {
+  if (!Array.isArray(entries)) {
+    return {}
+  }
+
+  return entries.reduce<Record<string, BorderTension>>((next, entry) => {
+    const normalized = normalizeBorderTensionEntry(entry)
+    if (normalized) {
+      const [key, value] = normalized
+      next[key] = value
+    }
+    return next
+  }, {})
+}
+
+function normalizeRegionPatch(patch: unknown): MapRegionPatch | null {
+  const raw = isRecord(patch) ? patch : {}
+  const regionId = toStringValue(raw.id ?? raw.region_id)
+  if (!regionId) {
+    return null
+  }
+
+  const normalized: MapRegionPatch = {
+    id: regionId,
+  }
+
+  const owner = toFactionIdValue(raw.owner ?? raw.new_owner ?? raw.newOwner)
+  if (owner !== null) {
+    normalized.owner = owner
+  }
+  if (typeof raw.resourceValue === 'number' || typeof raw.resource_value === 'number') {
+    normalized.resourceValue = toNumberValue(raw.resourceValue ?? raw.resource_value)
+  }
+  if (typeof raw.developmentLevel === 'number' || typeof raw.development_level === 'number') {
+    normalized.developmentLevel = toNumberValue(raw.developmentLevel ?? raw.development_level)
+  }
+  if (typeof raw.terrain === 'string') {
+    normalized.terrain = raw.terrain as MapRegion['terrain']
+  }
+  if (Array.isArray(raw.centerLatLng) || Array.isArray(raw.center_lat_lng)) {
+    normalized.centerLatLng = normalizeLatLng(raw.centerLatLng ?? raw.center_lat_lng)
+  }
+  if (typeof raw.minGarrison === 'number' || typeof raw.min_garrison === 'number') {
+    normalized.minGarrison = Math.round(toNumberValue(raw.minGarrison ?? raw.min_garrison))
+  }
+  if (typeof raw.supplyLines === 'number' || typeof raw.supply_lines === 'number') {
+    normalized.supplyLines = Math.round(toNumberValue(raw.supplyLines ?? raw.supply_lines))
+  }
+  if (Array.isArray(raw.neighbors)) {
+    normalized.neighbors = raw.neighbors.filter((neighbor): neighbor is string => typeof neighbor === 'string')
+  }
+
+  return normalized
+}
+
+function normalizeEpochTurn(value: unknown): Epoch | null {
+  const raw = isRecord(value) ? value : {}
+  const epoch = toNumberValue(raw.id ?? raw.epoch)
+  if (!epoch) {
+    return null
+  }
+
+  return {
+    id: epoch,
+    turn: toNumberValue(raw.turn, 1),
+    phase: (raw.phase as Epoch['phase']) ?? 'observe',
+    arbitratePhase: (raw.arbitratePhase ?? raw.arbitrate_phase) as Epoch['arbitratePhase'] | undefined,
+    phaseStartedAt: toNumberValue(raw.phaseStartedAt ?? raw.phase_started_at_ms),
+    phaseDurationMs: toNumberValue(raw.phaseDurationMs ?? raw.phase_duration_ms),
+  }
+}
+
+function normalizeSnapshotPayload(payload: unknown) {
+  const raw = isRecord(payload) ? payload : {}
+  const currentTurn = normalizeEpochTurn(raw.current_turn ?? raw.currentTurn ?? raw.epoch)
+
+  return {
+    currentTurn,
+    factions: Array.isArray(raw.factions) ? raw.factions.map((faction) => normalizeFaction(faction)) : [],
+    regions: Array.isArray(raw.regions) ? raw.regions.map((region) => normalizeRegion(region)) : [],
+    relationships: Array.isArray(raw.relationships)
+      ? raw.relationships.map((relationship) => normalizeRelationship(relationship))
+      : [],
+    treaties: Array.isArray(raw.treaties)
+      ? raw.treaties.map((treaty) => ({ ...treaty }))
+      : [],
+    events: Array.isArray(raw.recent_events)
+      ? raw.recent_events.map((event) => normalizeGameEvent(event))
+      : [],
+    privateMessages: Array.isArray(raw.recent_messages)
+      ? raw.recent_messages
+          .filter((message) => isReconnectPrivateMessage(message))
+          .map((message) => normalizePrivateMessage(message))
+          .filter((message): message is PrivateMessage => message !== null)
+      : [],
+    aiThinkingState: raw.ai_thinking_state
+      ? { ...(raw.ai_thinking_state as ReconnectAIThinkingState), fallback: false }
+      : null,
+    borderTensionMap: normalizeBorderTensionMap(raw.border_tension ?? raw.borderTension),
+    winner: toFactionIdValue(raw.winner),
+    finalNarration: typeof raw.final_narration === 'string' ? raw.final_narration : null,
+  }
+}
+
+function normalizeVisibleSnapshot(payload: unknown) {
+  const raw = isRecord(payload) ? payload : {}
+  const epoch = normalizeEpochTurn(raw.epoch ?? raw.current_turn ?? raw.currentTurn)
+
+  return {
+    epoch,
+    factions: Array.isArray(raw.factions) ? raw.factions.map((faction) => normalizeFaction(faction)) : [],
+    regions: Array.isArray(raw.regions) ? raw.regions.map((region) => normalizeRegion(region)) : [],
+    relationships: Array.isArray(raw.relationships)
+      ? raw.relationships.map((relationship) => normalizeRelationship(relationship))
+      : [],
+  }
+}
+
+function normalizeActionEvents(payload: unknown) {
+  const raw = isRecord(payload) ? payload : {}
+  const events = Array.isArray(raw.events) ? raw.events.map((event) => normalizeGameEvent(event)) : []
+  const privateMessages = Array.isArray(raw.private_messages)
+    ? raw.private_messages
+        .map((message) => normalizePrivateMessage(message))
+        .filter((message): message is PrivateMessage => message !== null)
+    : []
+
+  return { events, privateMessages }
+}
+
+function updateRoomPlayer(
+  roomPlayers: RoomPlayerSnapshot[],
+  playerId: string,
+  patch: Partial<RoomPlayerSnapshot>,
+) {
+  return roomPlayers.map((player) =>
+    player.player_id === playerId ? { ...player, ...patch } : player,
+  )
+}
+
+function normalizeRoomPlayer(player: RoomPlayerSnapshot): RoomPlayerSnapshot {
+  return {
+    player_id: player.player_id,
+    display_name: player.display_name,
+    faction_id: player.faction_id ?? null,
+    connected: player.connected,
+    ready: player.ready,
+    ai_takeover: player.ai_takeover ?? false,
+  }
+}
+
+function emptyAIDiaries() {
+  return {} as Record<FactionId, DiaryEntry[]>
 }
 
 function createEventId(prefix: string) {
@@ -340,12 +794,40 @@ const initialState = createInitialState()
 export const useGameStore = create<GameStoreState>((set, get) => ({
   ...initialState,
   selectedFactionId: null,
+  currentRoomId: null,
+  currentPlayerId: null,
+  roomMode: null,
+  roomStatus: null,
+  roomPlayers: [],
+  aiFactions: [],
+  currentTurn: initialState.epoch,
+  aiThinkingState: null,
+  borderTensionMap: {},
+  winner: null,
+  finalNarration: null,
+  serverClockOffsetMs: 0,
+  serverClockSampleAtMs: 0,
+  aiDiaries: emptyAIDiaries(),
 
   initGame: (seed) => {
     const nextState = createInitialState(seed)
     set((state) => ({
       ...nextState,
       selectedFactionId: state.selectedFactionId,
+      currentRoomId: state.currentRoomId,
+      currentPlayerId: state.currentPlayerId,
+      roomMode: state.roomMode,
+      roomStatus: state.roomStatus,
+      roomPlayers: state.roomPlayers,
+      aiFactions: state.aiFactions,
+      currentTurn: state.currentTurn,
+      aiThinkingState: state.aiThinkingState,
+      borderTensionMap: state.borderTensionMap,
+      winner: state.winner,
+      finalNarration: state.finalNarration,
+      serverClockOffsetMs: state.serverClockOffsetMs,
+      serverClockSampleAtMs: state.serverClockSampleAtMs,
+      aiDiaries: emptyAIDiaries(),
     }))
   },
 
@@ -666,6 +1148,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   },
 
   _applyPhase: (payload) => {
+    const receivedAtMs = Date.now()
     const epoch: Epoch =
       'phase_started_at_ms' in payload
         ? {
@@ -680,35 +1163,86 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
     set((state) => ({
       epoch,
+      currentTurn: epoch,
       isPaused: 'is_paused' in payload && typeof payload.is_paused === 'boolean' ? payload.is_paused : state.isPaused,
+    }))
+
+    if ('phase_started_at_ms' in payload) {
+      get()._applyServerClockSample(payload.server_time_ms ?? receivedAtMs, receivedAtMs)
+    }
+  },
+
+  _applyTurnBegin: (payload) => {
+    const snapshot = normalizeVisibleSnapshot(payload.visible_snapshot)
+    const phase = payload.phase ?? snapshot.epoch?.phase
+    const phaseStartedAt = payload.phase_started_at_ms ?? snapshot.epoch?.phaseStartedAt
+    const phaseDurationMs = payload.phase_duration_ms ?? snapshot.epoch?.phaseDurationMs
+
+    if (phase && typeof phaseStartedAt === 'number' && typeof phaseDurationMs === 'number') {
+      get()._applyPhase({
+        room_id: payload.room_id,
+        epoch: payload.epoch,
+        turn: payload.turn,
+        phase,
+        arbitrate_phase: payload.arbitrate_phase ?? snapshot.epoch?.arbitratePhase,
+        phase_started_at_ms: phaseStartedAt,
+        phase_duration_ms: phaseDurationMs,
+        server_time_ms: payload.server_time_ms,
+      })
+    }
+
+    set((state) => ({
+      factions: snapshot.factions.length > 0 ? snapshot.factions : state.factions,
+      regions: snapshot.regions.length > 0 ? snapshot.regions : state.regions,
+      relationships: snapshot.relationships.length > 0 ? snapshot.relationships : state.relationships,
     }))
   },
 
   _applyEvents: (payload) => {
-    const events = Array.isArray(payload) ? payload : payload.events
-    const privateMessages = Array.isArray(payload) ? [] : (payload.private_messages ?? [])
+    const normalized = Array.isArray(payload)
+      ? {
+          events: payload.map((event) => normalizeGameEvent(event)),
+          privateMessages: [],
+        }
+      : normalizeActionEvents(payload)
 
     set((state) => ({
-      events: pushEventsToList(state.events, events),
+      events: pushEventsToList(state.events, normalized.events),
       privateMessages:
-        privateMessages.length > 0
-          ? pushPrivateMessagesToList(state.privateMessages, privateMessages)
+        normalized.privateMessages.length > 0
+          ? pushPrivateMessagesToList(state.privateMessages, normalized.privateMessages)
           : state.privateMessages,
     }))
   },
 
   _applyMapDiff: (payload) => {
-    const changes = Array.isArray(payload) ? payload : payload.changes
+    const rawPayload: Record<string, unknown> = isRecord(payload) ? payload : {}
+    const changes = (Array.isArray(payload) ? payload : payload.changes)
+      .map((change) => normalizeRegionPatch(change))
+      .filter((change): change is MapRegionPatch => change !== null)
+    const borderTensionMap = Array.isArray(payload)
+      ? {}
+      : normalizeBorderTensionMap(rawPayload.border_updates)
 
-    if (changes.length === 0) {
+    if (changes.length === 0 && Object.keys(borderTensionMap).length === 0) {
       return
     }
 
     set((state) => ({
-      regions: state.regions.map((region) => {
-        const patch = changes.find((change) => change.id === region.id)
-        return patch ? { ...region, ...patch } : region
-      }),
+      regions:
+        changes.length > 0
+          ? state.regions.map((region) => {
+              const patch = changes.find((change) => change.id === region.id)
+              return patch ? { ...region, ...patch } : region
+            })
+          : state.regions,
+      borderTensionMap:
+        Object.keys(borderTensionMap).length > 0
+          ? {
+              ...state.borderTensionMap,
+              ...borderTensionMap,
+            }
+          : state.borderTensionMap,
     }))
   },
 
@@ -782,16 +1316,208 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     }))
   },
 
+  _applySnapshot: (payload) => {
+    const serverTimeMs = 'server_time_ms' in payload ? payload.server_time_ms : Date.now()
+    const fullState = 'full_state' in payload ? payload.full_state : payload
+    const now = Date.now()
+    const snapshot = normalizeSnapshotPayload(fullState)
+
+    set((state) => {
+      const room = isRecord(fullState.room) ? fullState.room : null
+      return {
+        currentRoomId: room && typeof room.id === 'string' ? room.id : state.currentRoomId,
+        roomMode: room && typeof room.mode === 'string' ? (room.mode as RoomMode) : state.roomMode,
+        roomStatus: room && typeof room.status === 'string' ? room.status : state.roomStatus,
+        roomPlayers: room && Array.isArray(room.players)
+          ? room.players.map((value) => {
+              const player: Record<string, unknown> = isRecord(value) ? value : {}
+              return {
+                player_id: toStringValue(player['id'] ?? player['player_id']),
+                display_name: toStringValue(player['display_name']),
+                faction_id: toFactionIdValue(player['faction_id'] ?? player['factionId']),
+                connected: Boolean(player['connected']),
+                ready: Boolean(player['ready']),
+                ai_takeover: Boolean(player['ai_takeover']),
+              }
+            })
+          : state.roomPlayers,
+        aiFactions: room && Array.isArray(room.ai_factions)
+          ? room.ai_factions.filter(
+              (faction): faction is FactionId => typeof faction === 'string' && faction in factionById,
+            )
+          : state.aiFactions,
+        currentPlayerId:
+          room && typeof room.current_player_id === 'string'
+            ? room.current_player_id
+            : state.currentPlayerId,
+        currentTurn: snapshot.currentTurn ?? state.currentTurn,
+        epoch: snapshot.currentTurn ?? state.epoch,
+        factions: snapshot.factions,
+        regions: snapshot.regions,
+        relationships: snapshot.relationships,
+        treaties: snapshot.treaties,
+        events: dedupeAndSortEvents(snapshot.events),
+        privateMessages: dedupeAndSortPrivateMessages(snapshot.privateMessages),
+        aiThinkingState: snapshot.aiThinkingState,
+        borderTensionMap: snapshot.borderTensionMap,
+        winner: snapshot.winner,
+        finalNarration: snapshot.finalNarration,
+      }
+    })
+
+    get()._applyServerClockSample(serverTimeMs, now)
+    useUIStore.getState().setLastSyncAt(now)
+    useUIStore.getState().setConnectionFailureReason(null)
+  },
+
+  _applyServerClockSample: (serverTimeMs, clientTimeMs = Date.now()) => {
+    set((state) => {
+      const offset = serverTimeMs - clientTimeMs
+      const nextOffset =
+        state.serverClockSampleAtMs > 0
+          ? state.serverClockOffsetMs * 0.7 + offset * 0.3
+          : offset
+
+      return {
+        serverClockOffsetMs: nextOffset,
+        serverClockSampleAtMs: clientTimeMs,
+      }
+    })
+  },
+
+  _applyAIDiaries: ({ faction_id, entries }) => {
+    set((state) => ({
+      aiDiaries: {
+        ...state.aiDiaries,
+        [faction_id]: entries.map((entry) => ({
+          ...entry,
+          triggers: [...entry.triggers],
+        })),
+      },
+    }))
+  },
+
+  _applyAIThinking: (payload) => {
+    set((state) => ({
+      aiThinkingState: {
+        progress: payload.progress,
+        phase: payload.phase ?? state.epoch.phase,
+        model: payload.model ?? null,
+        elapsed_ms: 0,
+        fallback: false,
+      },
+    }))
+  },
+
   togglePause: () => {
     set((state) => ({ isPaused: !state.isPaused }))
   },
 
   selectFaction: (selectedFactionId) => {
-    set({ selectedFactionId })
+    set((state) => {
+      const nextPlayers =
+        state.currentPlayerId && state.roomPlayers.length > 0
+          ? updateRoomPlayer(state.roomPlayers, state.currentPlayerId, {
+              faction_id: selectedFactionId,
+              ready: false,
+            })
+          : state.roomPlayers
+
+      return {
+        selectedFactionId,
+        roomPlayers: nextPlayers,
+      }
+    })
   },
 
   clearFaction: () => {
-    set({ selectedFactionId: null })
+    set((state) => ({
+      selectedFactionId: null,
+      roomPlayers:
+        state.currentPlayerId && state.roomPlayers.length > 0
+          ? updateRoomPlayer(state.roomPlayers, state.currentPlayerId, {
+              faction_id: null,
+              ready: false,
+            })
+          : state.roomPlayers,
+    }))
+  },
+
+  hasDiariesRevealed: () => {
+    const state = get()
+    return state.roomStatus === 'finished' || Object.keys(state.aiDiaries).length > 0
+  },
+
+  _applyRoomJoined: (payload) => {
+    const snapshot = payload as Record<string, unknown>
+    const room = snapshot.room as
+      | {
+          id?: string
+          mode?: RoomMode
+          status?: string
+          players?: RoomPlayerSnapshot[]
+          ai_factions?: FactionId[]
+        }
+      | undefined
+    const currentPlayerId =
+      typeof snapshot.current_player_id === 'string' ? snapshot.current_player_id : null
+    const roomId = typeof room?.id === 'string' ? room.id : null
+
+    if (!room) {
+      return
+    }
+
+    set((state) => ({
+      currentRoomId: roomId ?? state.currentRoomId,
+      currentPlayerId,
+      roomMode: room.mode ?? state.roomMode,
+      roomStatus: room.status ?? state.roomStatus,
+      roomPlayers: Array.isArray(room.players) ? room.players.map(normalizeRoomPlayer) : state.roomPlayers,
+      aiFactions: Array.isArray(room.ai_factions) ? room.ai_factions : state.aiFactions,
+      aiDiaries:
+        roomId !== null && roomId !== state.currentRoomId ? emptyAIDiaries() : state.aiDiaries,
+    }))
+  },
+
+  _applyRoomSnapshot: (payload) => {
+    set((state) => ({
+      currentRoomId: payload.room_id,
+      roomMode: payload.mode,
+      roomStatus: payload.status,
+      roomPlayers: payload.players.map(normalizeRoomPlayer),
+      aiFactions: payload.ai_factions,
+      aiDiaries:
+        payload.room_id !== state.currentRoomId ? emptyAIDiaries() : state.aiDiaries,
+    }))
+  },
+
+  _applyPlayerTakeover: (payload) => {
+    set((state) => ({
+      currentRoomId: state.currentRoomId ?? payload.room_id,
+      roomPlayers: updateRoomPlayer(state.roomPlayers, payload.player_id, {
+        ai_takeover: true,
+        connected: false,
+      }),
+    }))
+  },
+
+  _applyPlayerResume: (payload) => {
+    set((state) => ({
+      currentRoomId: state.currentRoomId ?? payload.room_id,
+      roomPlayers: updateRoomPlayer(state.roomPlayers, payload.player_id, {
+        ai_takeover: false,
+        connected: true,
+      }),
+    }))
+  },
+
+  _applyRoomFinished: (payload) => {
+    set({
+      currentRoomId: payload.room_id,
+      roomStatus: 'finished',
+      winner: payload.winner,
+      finalNarration: payload.final_narration,
+    })
   },
 }))
 

@@ -7,6 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.domain.enums import FactionId, GamePhase
 from app.domain.models import (
+    DiaryEntry,
     EpochTurn,
     FactionState,
     GameAction,
@@ -167,6 +168,9 @@ class MessageLogRepository(Protocol):
 
 @runtime_checkable
 class EventLogRepository(Protocol):
+    def current_seq(self, room_id: str) -> int:
+        ...
+
     def next_seq(self, room_id: str) -> int:
         ...
 
@@ -180,7 +184,9 @@ class EventLogRepository(Protocol):
         self,
         room_id: str,
         faction_id: FactionId,
-        since_ms: int = 0,
+        *,
+        since_seq: int = 0,
+        since_ms: int | None = None,
     ) -> list[GameEvent]:
         ...
 
@@ -206,4 +212,22 @@ class ReplayRepository(Protocol):
         ...
 
     async def get_replay(self, room_id: str) -> dict[str, Any] | None:
+        ...
+
+
+@runtime_checkable
+class DiaryRepository(Protocol):
+    async def append(self, entry: DiaryEntry, *, room_id: str) -> None:
+        ...
+
+    async def list_recent(
+        self,
+        room_id: str,
+        faction_id: FactionId,
+        *,
+        max_entries: int,
+    ) -> list[DiaryEntry]:
+        ...
+
+    async def list_all_by_room(self, room_id: str) -> dict[FactionId, list[DiaryEntry]]:
         ...

@@ -1,4 +1,5 @@
 import type { ArbitratePhase, Epoch, GameEvent, GamePhase } from '@/mock/types'
+import { getRemainingMs } from '@/utils/serverClock'
 
 export type HudMode =
   | 'observe'
@@ -50,7 +51,7 @@ export const phaseDurationsMs: Record<HudMode, number> = {
   action: 90_000,
   resolve: 30_000,
   'arbitrate-battle': 20_000,
-  'arbitrate-epic': 15_000,
+  'arbitrate-epic': 60_000,
   'arbitrate-summary': 15_000,
 }
 
@@ -182,14 +183,18 @@ export function getPhaseDuration(hudMode: HudMode) {
   return phaseDurationsMs[hudMode]
 }
 
-export function getPhaseProgress(epoch: Pick<Epoch, 'phaseDurationMs'>, hudMode: HudMode) {
+export function getPhaseProgress(
+  epoch: Pick<Epoch, 'phaseStartedAt' | 'phaseDurationMs'>,
+  hudMode: HudMode,
+) {
   const duration = getPhaseDuration(hudMode)
 
   if (duration <= 0) {
     return 1
   }
 
-  return Math.min(1, Math.max(0, 1 - epoch.phaseDurationMs / duration))
+  const remainingMs = getRemainingMs(epoch.phaseStartedAt, epoch.phaseDurationMs)
+  return Math.min(1, Math.max(0, 1 - remainingMs / duration))
 }
 
 export function isKeyResolveEvent(event: GameEvent) {

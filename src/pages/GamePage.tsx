@@ -7,57 +7,27 @@ import { DevPerfOverlay } from '@/components/DevPerfOverlay'
 import { ErrorPanel } from '@/components/ErrorPanel'
 import { HotkeysHelp } from '@/components/HotkeysHelp'
 import { SettingsPanel } from '@/components/SettingsPanel'
-import { ENV } from '@/app/env'
-import { setConnectionDebugSnapshot } from '@/app/connectionDebug'
 import { NarrationBanner } from '@/features/aiSpeech/NarrationBanner'
 import { PrivateMessageDrawer } from '@/features/aiSpeech/PrivateMessageDrawer'
 import { MapStage } from '@/features/hud/MapStage'
 import { CommandTerminal } from '@/features/hud/CommandTerminal'
 import { EventStreamPanel } from '@/features/hud/EventStreamPanel'
 import { RelationsPanel } from '@/features/hud/RelationsPanel'
+import { TopBar } from '@/features/hud/TopBar'
 import { AIThinkingPanel } from '@/features/phaseSystem/AIThinkingPanel'
-import { PhaseIndicator } from '@/features/phaseSystem/PhaseIndicator'
 import { PhaseTransitionOverlay } from '@/features/phaseSystem/PhaseTransitionOverlay'
 import { ResolveEventPlayer } from '@/features/phaseSystem/ResolveEventPlayer'
 import { getHudModeFromPhase, getPhaseUIConfig } from '@/features/phaseSystem/PhaseStateMachine'
 import { factionTokens, resolveFactionId } from '@/components/hudTheme'
-import { startMockGameLoop } from '@/mock/gameLoop'
 import EpochSummaryPage from '@/pages/EpochSummaryPage'
-import { attachAdapter } from '@/protocol/adapter'
-import { ActionDispatcher } from '@/protocol/dispatcher'
-import { createTransport } from '@/protocol/transport'
-import type { MockTransport, Transport, TransportStatus } from '@/protocol/transport'
-import type { IncomingMessage } from '@/protocol/types'
-import { gameStoreApi, useGameStore } from '@/store/gameStore'
-import { useUIStore } from '@/store/uiStore'
+import { factionById } from '@/mock/factions'
+import { useGameStore } from '@/store/gameStore'
+import { useUIStore, type GameFinishedBanner as GameFinishedBannerState } from '@/store/uiStore'
 import { useGlobalHotkeys } from '@/hooks/useGlobalHotkeys'
 import { startPerfMonitor } from '@/utils/perfMonitor'
 
 const COMPACT_BREAKPOINT = 960
 const DENSE_BREAKPOINT = 1280
-
-type TransportDebugSource = Transport & {
-  getLastInboundSeq?: () => number
-  getQueueDepth?: () => number
-}
-
-type ReconnectableTransport = Transport & {
-  setReconnectContext?: (context: {
-    roomId?: string
-    playerId?: string
-    sessionToken?: string
-  }) => void
-}
-
-function publishConnectionDebugSnapshot(transport: Transport) {
-  const source = transport as TransportDebugSource
-
-  setConnectionDebugSnapshot({
-    lastInboundSeq: source.getLastInboundSeq?.() ?? 0,
-    queueDepth: source.getQueueDepth?.() ?? 0,
-    wsUrl: ENV.wsUrl,
-  })
-}
 
 function useViewportWidth() {
   const [width, setWidth] = useState(() =>
@@ -75,6 +45,12 @@ function useViewportWidth() {
   }, [])
 
   return width
+}
+
+function navigateToReplay(roomId: string | null) {
+  const query = roomId ? `?room=${encodeURIComponent(roomId)}` : ''
+  window.history.pushState(null, '', `/replay${query}`)
+  window.dispatchEvent(new PopStateEvent('popstate'))
 }
 
 function EpicCurtain({ visible }: { visible: boolean }) {
@@ -128,6 +104,7 @@ export default function GamePage() {
   const isDense = viewportWidth < DENSE_BREAKPOINT
   const initGame = useGameStore((state) => state.initGame)
   const selectedFactionId = useGameStore((state) => state.selectedFactionId)
+  const currentRoomId = useGameStore((state) => state.currentRoomId)
   const factionId = resolveFactionId(selectedFactionId) ?? 'starlight'
   const faction = factionTokens[factionId]
   const leftPanelOpen = useUIStore((state) => state.leftPanelOpen)
@@ -141,103 +118,49 @@ export default function GamePage() {
   const setFocusToast = useUIStore((state) => state.setFocusToast)
   const lastError = useUIStore((state) => state.lastError)
   const setLastError = useUIStore((state) => state.setLastError)
-  const setConnectionStatus = useUIStore((state) => state.setConnectionStatus)
+  const gameFinishedBanner = useUIStore((state) => state.gameFinishedBanner)
+  const gameFinishedRedirectAtMs = useUIStore((state) => state.gameFinishedRedirectAtMs)
   const gamePhase = useGameStore((state) => state.epoch.phase)
   const arbitratePhase = useGameStore((state) => state.epoch.arbitratePhase)
   const hudMode = useUIStore((state) => state.hudMode)
   const setHudMode = useUIStore((state) => state.setHudMode)
   const phaseConfig = getPhaseUIConfig(hudMode)
+  const [finishNowMs, setFinishNowMs] = useState(() => Date.now())
 
   useEffect(() => {
     initGame()
-    let transport: Transport | null = null
-    let roomId = 'mock-room'
-    let playerId = ''
-    const handleStatusChange = (status: TransportStatus) => {
-      setConnectionStatus(status)
-
-      if (transport) {
-        publishConnectionDebugSnapshot(transport)
-      }
-    }
-    const handleReconnectContextMessage = (message: IncomingMessage) => {
-      if (message.t === 'conn.auth.ok') {
-        playerId = message.p.player_id
-      }
-
-      if ('room_id' in message.p && typeof message.p.room_id === 'string') {
-        roomId = message.p.room_id
-      }
-
-      if (
-        message.t === 'room.joined' &&
-        typeof message.p.room_snapshot === 'object' &&
-        message.p.room_snapshot !== null
-      ) {
-        const snapshot = message.p.room_snapshot as Record<string, unknown>
-        const nextPlayerId = snapshot.current_player_id
-        if (typeof nextPlayerId === 'string') {
-          playerId = nextPlayerId
-        }
-
-        const room = snapshot.room as Record<string, unknown> | undefined
-        const nextRoomId = room?.id
-        if (typeof nextRoomId === 'string') {
-          roomId = nextRoomId
-        }
-      }
-
-      const reconnectable = transport as ReconnectableTransport | null
-      reconnectable?.setReconnectContext?.({
-        roomId,
-        playerId,
-        sessionToken: ENV.wsToken,
-      })
-    }
-
-    transport = createTransport(
-      ENV.useWs
-        ? {
-            kind: 'ws',
-            ws: {
-              url: ENV.wsUrl,
-              token: ENV.wsToken,
-              clientVersion: ENV.clientVersion,
-              heartbeatIntervalMs: ENV.heartbeatMs,
-              onStatusChange: handleStatusChange,
-            },
-          }
-        : { kind: 'mock' },
-    )
-
-    const activeTransport = transport
-
-    setConnectionStatus('idle')
-    publishConnectionDebugSnapshot(activeTransport)
-    const detachAdapter = attachAdapter(activeTransport, gameStoreApi)
-    ActionDispatcher.setTransport(activeTransport)
-    const handleDebugMessage = () => publishConnectionDebugSnapshot(activeTransport)
-    activeTransport.on(handleDebugMessage)
-    activeTransport.on(handleReconnectContextMessage)
-    activeTransport.connect()
-    const stopMockGameLoop = ENV.useWs
-      ? undefined
-      : startMockGameLoop(activeTransport as MockTransport)
-
-    return () => {
-      stopMockGameLoop?.()
-      ActionDispatcher.setTransport(null)
-      activeTransport.off(handleDebugMessage)
-      activeTransport.off(handleReconnectContextMessage)
-      detachAdapter()
-      activeTransport.disconnect()
-    }
-  }, [initGame, setConnectionStatus])
+  }, [initGame])
 
   useEffect(() => {
     const monitor = startPerfMonitor()
     return () => monitor.stop()
   }, [])
+
+  useEffect(() => {
+    if (!gameFinishedBanner || gameFinishedRedirectAtMs === null) {
+      return undefined
+    }
+
+    setFinishNowMs(Date.now())
+    const timer = window.setInterval(() => setFinishNowMs(Date.now()), 250)
+    return () => window.clearInterval(timer)
+  }, [gameFinishedBanner, gameFinishedRedirectAtMs])
+
+  useEffect(() => {
+    if (
+      !gameFinishedBanner ||
+      !gameFinishedBanner.replayAvailable ||
+      gameFinishedRedirectAtMs === null
+    ) {
+      return undefined
+    }
+
+    const timer = window.setTimeout(
+      () => navigateToReplay(currentRoomId),
+      Math.max(0, gameFinishedRedirectAtMs - Date.now()),
+    )
+    return () => window.clearTimeout(timer)
+  }, [currentRoomId, gameFinishedBanner, gameFinishedRedirectAtMs])
 
   useEffect(() => {
     const nextHudMode = getHudModeFromPhase(gamePhase, arbitratePhase)
@@ -334,13 +257,21 @@ export default function GamePage() {
           <ErrorPanel message={lastError} onRetry={() => setLastError(null)} onClose={() => setLastError(null)} />
         </div>
       ) : null}
+      {gameFinishedBanner ? (
+        <GameFinishedRedirectBanner
+          banner={gameFinishedBanner}
+          redirectAtMs={gameFinishedRedirectAtMs}
+          nowMs={finishNowMs}
+          roomId={currentRoomId}
+        />
+      ) : null}
 
       <motion.div
         className="relative z-30 grid h-full"
         animate={{ gridTemplateRows: `56px minmax(0, 1fr) ${bottomHeight}px` }}
         transition={sideTransition}
       >
-        <PhaseIndicator />
+        <TopBar />
 
         <section className="relative min-h-0 overflow-hidden px-2 pt-2 sm:px-3 lg:px-4">
           <div className={isCompact ? 'relative flex h-full min-h-0' : 'flex h-full min-h-0 gap-3'}>
@@ -480,5 +411,47 @@ export default function GamePage() {
       </motion.div>
       <EpochSummaryPage />
     </main>
+  )
+}
+
+function GameFinishedRedirectBanner({
+  banner,
+  redirectAtMs,
+  nowMs,
+  roomId,
+}: {
+  banner: GameFinishedBannerState
+  redirectAtMs: number | null
+  nowMs: number
+  roomId: string | null
+}) {
+  const remainingSeconds =
+    redirectAtMs === null ? 0 : Math.max(0, Math.ceil((redirectAtMs - nowMs) / 1000))
+  const winnerName = banner.winner ? factionById[banner.winner].name : '胜者未定'
+
+  return (
+    <div className="fixed left-1/2 top-5 z-[135] w-[min(42rem,calc(100vw-2rem))] -translate-x-1/2 border border-[color:rgba(255,204,102,0.48)] bg-[linear-gradient(180deg,rgba(24,13,6,0.96),rgba(7,4,3,0.94))] p-3 shadow-[0_0_44px_rgba(255,204,102,0.18)]">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <div className="font-hud text-[0.62rem] uppercase tracking-[0.24em] text-[color:rgba(255,204,102,0.72)]">
+            纪元终结，复盘即将开启...
+          </div>
+          <div className="mt-1 text-sm text-[color:rgba(255,250,235,0.92)]">
+            {winnerName} · {banner.finalNarration}
+          </div>
+          <div className="mt-1 font-hud text-[0.58rem] tracking-[0.18em] text-[color:rgba(212,227,235,0.58)]">
+            {banner.replayAvailable ? `${remainingSeconds}s 后进入上帝视角` : '复盘生成中'}
+          </div>
+        </div>
+        <PixelButton
+          tone="primary"
+          disabled={!banner.replayAvailable}
+          className="shrink-0 px-4 py-2 text-[0.62rem]"
+          onClick={() => navigateToReplay(roomId)}
+        >
+          立即复盘
+        </PixelButton>
+      </div>
+    </div>
   )
 }

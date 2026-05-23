@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import random
+from collections.abc import Awaitable, Callable
 from typing import Literal
 
 import app.game.initializer as game_initializer
@@ -33,12 +34,16 @@ class RoomService:
         max_solo_players: int = 1,
         max_multi_players: int = 4,
         total_factions: int = 8,
+        on_room_started: Callable[[str], Awaitable[None]] | None = None,
+        on_room_stopped: Callable[[str], Awaitable[None]] | None = None,
     ) -> None:
         self._repos = repos
         self._clock = clock
         self._max_solo_players = max_solo_players
         self._max_multi_players = max_multi_players
         self._total_factions = total_factions
+        self._on_room_started = on_room_started
+        self._on_room_stopped = on_room_stopped
 
     async def create_room(
         self,
@@ -46,9 +51,14 @@ class RoomService:
         mode: RoomMode,
         host_display_name: str,
         seed: int | None = None,
+        host_player_id: str | None = None,
     ) -> tuple[GameRoom, Player]:
         room_id = new_room_id()
-        host = self._new_human_player(room_id=room_id, display_name=host_display_name)
+        host = self._new_human_player(
+            room_id=room_id,
+            display_name=host_display_name,
+            player_id=host_player_id,
+        )
         now_ms = self._clock.now_ms()
         room = GameRoom(
             id=room_id,
@@ -73,14 +83,37 @@ class RoomService:
         await self._repos.players.upsert(host)
         return created_room, host
 
-    async def join_room(self, *, room_id: str, display_name: str) -> tuple[GameRoom, Player]:
+    async def join_room(
+        self,
+        *,
+        room_id: str,
+        display_name: str,
+        player_id: str | None = None,
+    ) -> tuple[GameRoom, Player]:
         room = await self._get_room_or_raise(room_id)
         self._require_lobby(room)
+
+        if player_id is not None:
+            existing = next(
+                (candidate for candidate in room.players if candidate.id == player_id),
+                None,
+            )
+            if existing is not None:
+                existing.display_name = display_name
+                existing.connected = True
+                existing.disconnected_at_ms = None
+                await self._repos.rooms.update(room)
+                await self._repos.players.upsert(existing)
+                return room, existing
 
         if len(room.players) >= room.max_players:
             raise RoomFullError(f"room {room_id} is full")
 
-        player = self._new_human_player(room_id=room.id, display_name=display_name)
+        player = self._new_human_player(
+            room_id=room.id,
+            display_name=display_name,
+            player_id=player_id,
+        )
         room.players.append(player)
 
         await self._repos.rooms.update(room)
@@ -93,6 +126,7 @@ class RoomService:
 
         if room.status == RoomStatus.running:
             player.connected = False
+            player.disconnected_at_ms = self._clock.now_ms()
             await self._repos.rooms.update(room)
             await self._repos.players.upsert(player)
             return room
@@ -102,12 +136,15 @@ class RoomService:
             player.room_id = None
             player.faction_id = None
             player.connected = False
+            player.disconnected_at_ms = self._clock.now_ms()
             player.ready = False
             if not room.players:
                 room.status = RoomStatus.aborted
 
             await self._repos.rooms.update(room)
             await self._repos.players.upsert(player)
+            if room.status != RoomStatus.running and self._on_room_stopped is not None:
+                await self._on_room_stopped(room.id)
             return room
 
         raise InvalidPhaseError(f"cannot leave room {room_id} while status={room.status}")
@@ -182,6 +219,8 @@ class RoomService:
         room.current = initial_state.current_turn
         room.status = RoomStatus.running
         await self._repos.rooms.update(room)
+        if self._on_room_started is not None:
+            await self._on_room_started(room.id)
 
         return room
 
@@ -191,9 +230,15 @@ class RoomService:
     async def get_room(self, room_id: str) -> GameRoom:
         return await self._get_room_or_raise(room_id)
 
-    def _new_human_player(self, *, room_id: str, display_name: str) -> Player:
+    def _new_human_player(
+        self,
+        *,
+        room_id: str,
+        display_name: str,
+        player_id: str | None = None,
+    ) -> Player:
         return Player(
-            id=new_player_id(),
+            id=player_id or new_player_id(),
             room_id=room_id,
             display_name=display_name,
             kind=PlayerKind.human,
@@ -201,6 +246,8 @@ class RoomService:
             connected=True,
             joined_at_ms=self._clock.now_ms(),
             ready=False,
+            ai_takeover=False,
+            disconnected_at_ms=None,
         )
 
     async def _get_room_or_raise(self, room_id: str) -> GameRoom:

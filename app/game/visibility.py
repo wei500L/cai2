@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.core.logging import get_logger
 from app.domain.enums import EventKind, EventPriority, FactionId, TreatyKind, VisibilityScope
 from app.domain.models import (
     GameAction,
@@ -8,6 +9,8 @@ from app.domain.models import (
     MessageVisibility,
     MilitaryAction,
 )
+
+logger = get_logger(__name__)
 
 
 def derive_events_from_action(
@@ -171,6 +174,17 @@ def adjacent_factions(region_id: str, regions: list[MapRegion]) -> set[FactionId
     if origin is None:
         return set()
 
+    if origin.neighbors:
+        regions_by_id = {region.id: region for region in regions}
+        adjacent: set[FactionId] = set()
+        for neighbor_id in origin.neighbors:
+            neighbor = regions_by_id.get(neighbor_id)
+            if neighbor is None or neighbor.id == origin.id or neighbor.owner is None:
+                continue
+            adjacent.add(neighbor.owner)
+        return adjacent
+
+    logger.warning("region %s missing neighbors; falling back to distance adjacency", region_id)
     adjacent: set[FactionId] = set()
     for region in regions:
         if region.id == origin.id or region.owner is None:

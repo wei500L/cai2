@@ -11,6 +11,7 @@ import type {
   RelationshipStatus,
   TreatyKind,
 } from '@/mock/types'
+import { buildNeighbors } from '@/render/buildNeighbors'
 import { mulberry32, randomFloat, randomInt, shuffle } from '@/utils/random'
 
 const DEFAULT_INITIAL_SEED = 2_026_052_2
@@ -101,6 +102,9 @@ function createRegions(seed: number) {
         Number((72 + col * 5.2 + randomFloat(rng, -1.1, 1.1)).toFixed(3)),
       ],
       terrain,
+      minGarrison: 10,
+      supplyLines: randomInt(rng, 1, 3),
+      neighbors: [],
     }
   })
 }
@@ -166,6 +170,8 @@ function createInitialEvents(now: number): GameEvent[] {
 
 export function createInitialState(seed = DEFAULT_INITIAL_SEED): MockGameWorldState {
   const now = Date.now()
+  const regions = createRegions(seed)
+  const neighborsByRegion = buildNeighbors(regions)
 
   return {
     epoch: {
@@ -177,7 +183,11 @@ export function createInitialState(seed = DEFAULT_INITIAL_SEED): MockGameWorldSt
     },
     factions: createFactionStates(),
     relationships: createRelationships(seed),
-    regions: createRegions(seed),
+    treaties: [],
+    regions: regions.map((region) => ({
+      ...region,
+      neighbors: neighborsByRegion[region.id] ?? [],
+    })),
     events: createInitialEvents(now),
     privateMessages: [],
     isPaused: false,

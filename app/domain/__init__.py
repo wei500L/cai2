@@ -25,6 +25,7 @@ from app.domain.factions import (
 from app.domain.models import (
     AISpeechItem,
     BattleEvent,
+    DiaryEntry,
     EpochTurn,
     FactionStatChange,
     FactionState,
@@ -61,6 +62,7 @@ __all__ = [
     "AISpeechItem",
     "ArbitratePhase",
     "BattleEvent",
+    "DiaryEntry",
     "EpochTurn",
     "EventKind",
     "EventPriority",

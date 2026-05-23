@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from collections.abc import Awaitable, Callable
 from functools import lru_cache
 from typing import Annotated
 
 from fastapi import Depends
 
+from app.api.websocket.connection import ConnectionManager
+from app.api.websocket.dispatcher import OutboundDispatcher
 from app.core.clock import Clock, SystemClock
 from app.game.rule_resolver import RuleResolver
 from app.game.settlement_aggregator import SettlementAggregator
@@ -13,10 +16,12 @@ from app.llm.output_parser import ModelOutputParser
 from app.llm.prompt_builder import PromptBuilder
 from app.repositories.factory import Repositories, make_repositories
 from app.services.action_service import ActionService
+from app.services.phase_scheduler import PhaseScheduler
 from app.services.phase_service import PhaseService
 from app.services.replay_service import ReplayService
 from app.services.room_service import RoomService
 from app.services.settlement_service import SettlementService
+from app.services.takeover_service import TakeoverService
 
 
 @lru_cache(maxsize=1)
@@ -29,11 +34,19 @@ def get_clock() -> Clock:
     return SystemClock()
 
 
-def get_room_service(
-    repos: Annotated[Repositories, Depends(get_repositories)],
-    clock: Annotated[Clock, Depends(get_clock)],
-) -> RoomService:
-    return RoomService(repos, clock)
+@lru_cache(maxsize=1)
+def get_connection_manager() -> ConnectionManager:
+    return ConnectionManager()
+
+
+@lru_cache(maxsize=1)
+def get_outbound_dispatcher() -> OutboundDispatcher:
+    return OutboundDispatcher(get_connection_manager(), get_repositories(), get_clock())
+
+
+@lru_cache(maxsize=1)
+def get_takeover_service() -> TakeoverService:
+    return TakeoverService(get_repositories(), get_clock(), get_outbound_dispatcher())
 
 
 def get_action_service(
@@ -46,8 +59,33 @@ def get_action_service(
 def get_phase_service(
     repos: Annotated[Repositories, Depends(get_repositories)],
     clock: Annotated[Clock, Depends(get_clock)],
+    dispatcher: Annotated[OutboundDispatcher, Depends(get_outbound_dispatcher)],
 ) -> PhaseService:
-    return PhaseService(repos, clock)
+    return PhaseService(
+        repos,
+        clock,
+        on_room_finished=_build_room_finished_callback(repos, clock, dispatcher),
+    )
+
+
+def _build_room_finished_callback(
+    repos: Repositories,
+    clock: Clock,
+    dispatcher: OutboundDispatcher,
+) -> Callable[[str], Awaitable[None]]:
+    replay_service = ReplayService(repos, clock)
+
+    async def on_room_finished(room_id: str) -> None:
+        replay = await replay_service.build_replay(room_id)
+        await dispatcher.dispatch_room_finished(
+            room_id,
+            winner=replay.winner,
+            final_narration=replay.final_narration,
+            replay_available=True,
+        )
+        await dispatcher.dispatch_diary_reveal(room_id)
+
+    return on_room_finished
 
 
 def get_settlement_service(
@@ -62,6 +100,37 @@ def get_settlement_service(
         llm_client=MockLLMClient(),
         parser=ModelOutputParser(),
         rule_resolver=RuleResolver(deterministic_rng_seed=0),
+    )
+
+
+@lru_cache(maxsize=1)
+def get_phase_scheduler() -> PhaseScheduler:
+    repos = get_repositories()
+    clock = get_clock()
+    dispatcher = get_outbound_dispatcher()
+    return PhaseScheduler(
+        phase_service=PhaseService(
+            repos,
+            clock,
+            on_room_finished=_build_room_finished_callback(repos, clock, dispatcher),
+        ),
+        settlement_service=get_settlement_service(repos, clock),
+        repos=repos,
+        clock=clock,
+        dispatcher=dispatcher,
+    )
+
+
+def get_room_service(
+    repos: Annotated[Repositories, Depends(get_repositories)],
+    clock: Annotated[Clock, Depends(get_clock)],
+    phase_scheduler: Annotated[PhaseScheduler, Depends(get_phase_scheduler)],
+) -> RoomService:
+    return RoomService(
+        repos,
+        clock,
+        on_room_started=phase_scheduler.start_room,
+        on_room_stopped=phase_scheduler.stop_room,
     )
 
 

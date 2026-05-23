@@ -118,6 +118,9 @@ def test_regions_are_generated_for_all_factions_with_required_terrain() -> None:
         assert region.min_garrison == 10
         assert 1 <= region.supply_lines <= 3
         assert 0.5 <= region.development_level <= 1.0
+        assert 4 <= len(region.neighbors) <= 6
+        assert region.id not in region.neighbors
+        assert len(region.neighbors) == len(set(region.neighbors))
         lat, lng = region.center_lat_lng
         assert -60.0 <= lat <= 60.0
         assert -180.0 <= lng <= 180.0

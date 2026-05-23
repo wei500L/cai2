@@ -7,11 +7,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.rest.deps import (
     get_action_service,
+    get_outbound_dispatcher,
     get_phase_service,
     get_replay_service,
     get_repositories,
     get_room_service,
     get_settlement_service,
+    get_takeover_service,
 )
 from app.api.rest.dto import (
     ActionAckResponse,
@@ -42,6 +44,7 @@ from app.api.rest.dto import (
     StartResponse,
     TreatyRequest,
 )
+from app.api.websocket.dispatcher import OutboundDispatcher
 from app.core.config import get_settings
 from app.domain.enums import FactionId
 from app.repositories.factory import Repositories
@@ -50,6 +53,7 @@ from app.services.phase_service import PhaseService
 from app.services.replay_service import ReplayService
 from app.services.room_service import RoomService
 from app.services.settlement_service import SettlementService
+from app.services.takeover_service import TakeoverService
 
 router = APIRouter(prefix=get_settings().rest_prefix, tags=["debug"])
 
@@ -73,12 +77,14 @@ async def runtime_config() -> dict[str, str | int]:
 async def create_room(
     request: CreateRoomRequest,
     room_service: Annotated[RoomService, Depends(get_room_service)],
+    dispatcher: Annotated[OutboundDispatcher, Depends(get_outbound_dispatcher)],
 ) -> CreateRoomResponse:
     room, host = await room_service.create_room(
         mode=request.mode,
         host_display_name=request.host_display_name,
         seed=request.seed,
     )
+    await dispatcher.dispatch_room_snapshot(room.id)
     return CreateRoomResponse(room=_dump(room), host=_dump(host))
 
 
@@ -87,8 +93,13 @@ async def join_room(
     room_id: str,
     request: JoinRoomRequest,
     room_service: Annotated[RoomService, Depends(get_room_service)],
+    dispatcher: Annotated[OutboundDispatcher, Depends(get_outbound_dispatcher)],
 ) -> JoinRoomResponse:
-    room, player = await room_service.join_room(room_id=room_id, display_name=request.display_name)
+    room, player = await room_service.join_room(
+        room_id=room_id,
+        display_name=request.display_name,
+    )
+    await dispatcher.dispatch_room_snapshot(room.id)
     return JoinRoomResponse(room=_dump(room), player=_dump(player))
 
 
@@ -97,8 +108,14 @@ async def leave_room(
     room_id: str,
     request: LeaveRoomRequest,
     room_service: Annotated[RoomService, Depends(get_room_service)],
+    dispatcher: Annotated[OutboundDispatcher, Depends(get_outbound_dispatcher)],
+    takeover_service: Annotated[TakeoverService, Depends(get_takeover_service)],
 ) -> LeaveRoomResponse:
     room = await room_service.leave_room(room_id=room_id, player_id=request.player_id)
+    if any(player.id == request.player_id for player in room.players):
+        await takeover_service.on_manual_leave(room.id, request.player_id)
+    else:
+        await dispatcher.dispatch_room_snapshot(room.id)
     return LeaveRoomResponse(room=_dump(room))
 
 
@@ -107,12 +124,14 @@ async def select_faction(
     room_id: str,
     request: SelectFactionRequest,
     room_service: Annotated[RoomService, Depends(get_room_service)],
+    dispatcher: Annotated[OutboundDispatcher, Depends(get_outbound_dispatcher)],
 ) -> SelectFactionResponse:
     room = await room_service.select_faction(
         room_id=room_id,
         player_id=request.player_id,
         faction_id=request.faction_id,
     )
+    await dispatcher.dispatch_room_snapshot(room.id)
     return SelectFactionResponse(room=_dump(room))
 
 
@@ -121,12 +140,14 @@ async def set_ready(
     room_id: str,
     request: ReadyRequest,
     room_service: Annotated[RoomService, Depends(get_room_service)],
+    dispatcher: Annotated[OutboundDispatcher, Depends(get_outbound_dispatcher)],
 ) -> ReadyResponse:
     room = await room_service.set_ready(
         room_id=room_id,
         player_id=request.player_id,
         ready=request.ready,
     )
+    await dispatcher.dispatch_room_snapshot(room.id)
     return ReadyResponse(room=_dump(room))
 
 
@@ -135,11 +156,14 @@ async def start_game(
     room_id: str,
     request: StartRequest,
     room_service: Annotated[RoomService, Depends(get_room_service)],
+    dispatcher: Annotated[OutboundDispatcher, Depends(get_outbound_dispatcher)],
 ) -> StartResponse:
     room = await room_service.start_game(
         room_id=room_id,
         requester_player_id=request.player_id,
     )
+    await dispatcher.dispatch_room_start(room.id)
+    await dispatcher.dispatch_room_snapshot(room.id)
     return StartResponse(room=_dump(room))
 
 
@@ -302,7 +326,11 @@ async def list_events(
 ) -> list[dict[str, Any]]:
     await room_service.get_room(room_id)
     if faction_id is not None:
-        events = await repos.events.list_visible_to_faction(room_id, faction_id, since_ms)
+        events = await repos.events.list_visible_to_faction(
+            room_id,
+            faction_id,
+            since_ms=since_ms,
+        )
     else:
         events = [
             event

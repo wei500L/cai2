@@ -14,10 +14,12 @@ const densityOptions: Array<{ value: GlobalParticleDensity; label: string }> = [
 export function SettingsPanel() {
   const open = useUIStore((state) => state.settingsOpen)
   const density = useUIStore((state) => state.globalParticleDensity)
+  const quality = useUIStore((state) => state.mapQuality)
   const devOverlayOpen = useUIStore((state) => state.devOverlayOpen)
   const phaseDurationScale = useUIStore((state) => state.phaseDurationScale)
   const setOpen = useUIStore((state) => state.setSettingsOpen)
   const setDensity = useUIStore((state) => state.setGlobalParticleDensity)
+  const setQuality = useUIStore((state) => state.setMapQuality)
   const setDevOverlayOpen = useUIStore((state) => state.setDevOverlayOpen)
   const setPhaseDurationScale = useUIStore((state) => state.setPhaseDurationScale)
   const initGame = useGameStore((state) => state.initGame)
@@ -75,6 +77,30 @@ export function SettingsPanel() {
                           onClick={() => setDensity(option.value)}
                         >
                           {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+
+                  <section>
+                    <div className="mb-2 text-[0.58rem] uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
+                      地图质量
+                    </div>
+                    <div className="grid grid-cols-3 gap-1">
+                      {(['low', 'mid', 'high'] as const).map((value) => (
+                        <button
+                          key={value}
+                          type="button"
+                          className="h-9 border font-hud text-[0.58rem] uppercase tracking-[0.14em] transition-holo"
+                          style={{
+                            borderColor: quality === value ? 'var(--border-glow)' : 'rgba(255,255,255,0.14)',
+                            background:
+                              quality === value ? 'rgba(51,170,255,0.14)' : 'rgba(255,255,255,0.025)',
+                            color: quality === value ? 'var(--text-primary)' : 'var(--text-muted)',
+                          }}
+                          onClick={() => setQuality(value)}
+                        >
+                          {value.toUpperCase()}
                         </button>
                       ))}
                     </div>

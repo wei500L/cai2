@@ -1,0 +1,165 @@
+from __future__ import annotations
+
+import asyncio
+from typing import Any
+
+from app.api.websocket.dispatcher import OutboundDispatcher
+from app.core.clock import Clock
+from app.core.logging import get_logger
+from app.domain.enums import GamePhase, RoomStatus
+from app.domain.models import EpochTurn
+from app.protocol.outgoing import PhaseChangePayload
+from app.repositories.factory import Repositories
+
+logger = get_logger(__name__)
+
+
+class PhaseScheduler:
+    def __init__(
+        self,
+        *,
+        phase_service: Any,
+        settlement_service: Any,
+        repos: Repositories,
+        clock: Clock,
+        dispatcher: OutboundDispatcher,
+        tick_interval_s: float = 1.0,
+    ) -> None:
+        self._phase_service = phase_service
+        self._settlement_service = settlement_service
+        self._repos = repos
+        self._clock = clock
+        self._dispatcher = dispatcher
+        self.tick_interval_s = tick_interval_s
+        self._tasks: dict[str, asyncio.Task[None]] = {}
+        self._settlement_tasks: set[asyncio.Task[None]] = set()
+
+    async def start_room(self, room_id: str) -> None:
+        task = self._tasks.get(room_id)
+        if task is not None and not task.done():
+            return
+
+        self._tasks[room_id] = asyncio.create_task(
+            self._room_loop(room_id),
+            name=f"phase-scheduler:{room_id}",
+        )
+        logger.info("phase scheduler started room_id=%s", room_id)
+
+    async def stop_room(self, room_id: str) -> None:
+        task = self._tasks.pop(room_id, None)
+        if task is None:
+            return
+
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+        logger.info("phase scheduler stopped room_id=%s", room_id)
+
+    async def start_running_rooms(self) -> None:
+        for room in await self._repos.rooms.list_active():
+            if room.status == RoomStatus.running:
+                await self.start_room(room.id)
+
+    async def shutdown(self) -> None:
+        tasks = list(self._tasks.items())
+        self._tasks.clear()
+        for _, task in tasks:
+            task.cancel()
+        settlement_tasks = list(self._settlement_tasks)
+        self._settlement_tasks.clear()
+        for task in settlement_tasks:
+            task.cancel()
+        for room_id, task in tasks:
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+            logger.info("phase scheduler shutdown room_id=%s", room_id)
+        for task in settlement_tasks:
+            try:
+                await task
+            except asyncio.CancelledError:
+                pass
+
+    async def _room_loop(self, room_id: str) -> None:
+        try:
+            while True:
+                await asyncio.sleep(self.tick_interval_s)
+                room = await self._repos.rooms.get(room_id)
+                if room is None or room.status != RoomStatus.running:
+                    logger.debug(
+                        "phase scheduler exiting room_id=%s reason=not_running",
+                        room_id,
+                    )
+                    break
+
+                current = await self._repos.state.get_current_turn(room_id)
+                if current is None:
+                    logger.debug(
+                        "phase scheduler exiting room_id=%s reason=no_current_turn",
+                        room_id,
+                    )
+                    break
+
+                previous = _phase_key(current)
+                new_turn = await self._phase_service.maybe_advance_by_clock(room_id)
+                if _phase_key(new_turn) == previous:
+                    continue
+
+                logger.info(
+                    "phase scheduler advanced room_id=%s epoch=%s turn=%s "
+                    "phase=%s arbitrate_phase=%s",
+                    room_id,
+                    new_turn.epoch,
+                    new_turn.turn,
+                    new_turn.phase,
+                    new_turn.arbitrate_phase,
+                )
+                await self._dispatch_phase_change(room_id, new_turn)
+
+                if new_turn.phase == GamePhase.resolve:
+                    task = asyncio.create_task(
+                        self._run_settlement(room_id, new_turn.epoch, new_turn.turn),
+                        name=f"settlement:{room_id}:{new_turn.epoch}:{new_turn.turn}",
+                    )
+                    self._settlement_tasks.add(task)
+                    task.add_done_callback(self._settlement_tasks.discard)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            current_task = asyncio.current_task()
+            if self._tasks.get(room_id) is current_task:
+                self._tasks.pop(room_id, None)
+
+    async def _dispatch_phase_change(self, room_id: str, current: EpochTurn) -> None:
+        payload = PhaseChangePayload(
+            room_id=room_id,
+            epoch=current.epoch,
+            turn=current.turn,
+            phase=current.phase,
+            arbitrate_phase=current.arbitrate_phase,
+            phase_duration_ms=current.phase_duration_ms,
+            phase_started_at_ms=current.phase_started_at_ms,
+            server_time_ms=self._clock.now_ms(),
+        )
+        await self._dispatcher.dispatch_phase_change(room_id, payload.model_dump(mode="json"))
+
+    async def _run_settlement(self, room_id: str, epoch: int, turn: int) -> None:
+        try:
+            await self._dispatcher.dispatch_ai_thinking(room_id)
+            bundle = await self._settlement_service.run_turn_settlement(room_id, epoch, turn)
+            await self._dispatcher.dispatch_resolve_bundle(room_id, bundle)
+        except Exception as error:
+            logger.exception(
+                "scheduled settlement failed room_id=%s epoch=%s turn=%s error=%s",
+                room_id,
+                epoch,
+                turn,
+                error,
+            )
+
+
+def _phase_key(current: EpochTurn) -> tuple[int, int, GamePhase, object | None]:
+    return (current.epoch, current.turn, current.phase, current.arbitrate_phase)

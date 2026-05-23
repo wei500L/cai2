@@ -1,8 +1,11 @@
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import clsx from 'clsx'
+import { gameStoreApi } from '@/store/gameStore'
+import { getRemainingMs } from '@/utils/serverClock'
 
 type CountdownProps = {
-  remainingMs: number
+  remainingMs?: number
   className?: string
 }
 
@@ -14,9 +17,32 @@ function formatCountdown(milliseconds: number) {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
 }
 
-export function Countdown({ remainingMs, className }: CountdownProps) {
-  const totalSeconds = Math.max(0, Math.ceil(remainingMs / 1_000))
-  const critical = totalSeconds <= 10
+function readRemainingMs(fallback = 0) {
+  const { epoch } = gameStoreApi.getState()
+  if (!Number.isFinite(epoch.phaseStartedAt) || !Number.isFinite(epoch.phaseDurationMs)) {
+    return fallback
+  }
+
+  return Math.max(0, getRemainingMs(epoch.phaseStartedAt, epoch.phaseDurationMs))
+}
+
+export function Countdown({ remainingMs = 0, className }: CountdownProps) {
+  const [displayRemainingMs, setDisplayRemainingMs] = useState(() => readRemainingMs(remainingMs))
+
+  useEffect(() => {
+    let frameId = 0
+    const frame = () => {
+      setDisplayRemainingMs(readRemainingMs(remainingMs))
+      frameId = window.requestAnimationFrame(frame)
+    }
+
+    frameId = window.requestAnimationFrame(frame)
+    return () => window.cancelAnimationFrame(frameId)
+  }, [remainingMs])
+
+  const clampedRemainingMs = Math.max(0, displayRemainingMs)
+  const totalSeconds = Math.max(0, Math.ceil(clampedRemainingMs / 1_000))
+  const critical = totalSeconds > 0 && totalSeconds < 10
   const bars = Array.from({ length: 10 }, (_, index) => index < Math.max(0, Math.ceil(totalSeconds)))
 
   return (
@@ -71,7 +97,7 @@ export function Countdown({ remainingMs, className }: CountdownProps) {
         animate={critical ? { opacity: [1, 0.62, 1], filter: ['blur(0)', 'blur(0.8px)', 'blur(0)'] } : undefined}
         transition={critical ? { duration: 0.42, repeat: Infinity, ease: 'easeInOut' } : undefined}
       >
-        {formatCountdown(remainingMs)}
+        {formatCountdown(clampedRemainingMs)}
       </motion.span>
       {critical ? (
         <motion.div

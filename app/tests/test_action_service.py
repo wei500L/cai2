@@ -374,7 +374,7 @@ async def test_normal_call_appends_action_and_returns_complete_ack(
     assert ack.action_id is not None
     assert ack.reason is None
     assert ack.server_ts == 12_345
-    assert ack.seq == 1
+    assert ack.seq == 2
     assert len(actions) == 1
     assert actions[0].id == ack.action_id
     assert actions[0].visibility.scope == VisibilityScope.public

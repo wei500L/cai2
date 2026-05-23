@@ -7,8 +7,11 @@ type PerfMonitor = {
 export function startPerfMonitor(): PerfMonitor {
   let frameId = 0
   let lastTime = performance.now()
+  let lastQualityDowngradeAt = 0
   let lowFrames = 0
   let criticalFrames = 0
+  const criticalFrameThreshold = 90
+  const qualityDowngradeCooldownMs = 10_000
 
   const tick = (time: number) => {
     const delta = Math.max(1, time - lastTime)
@@ -34,8 +37,18 @@ export function startPerfMonitor(): PerfMonitor {
       lowFrames = 0
     }
 
-    if (criticalFrames >= 3) {
+    if (
+      criticalFrames >= criticalFrameThreshold &&
+      time - lastQualityDowngradeAt >= qualityDowngradeCooldownMs
+    ) {
+      const nextQuality =
+        ui.mapQuality === 'high' ? 'mid' : ui.mapQuality === 'mid' ? 'low' : ui.mapQuality
+      if (nextQuality !== ui.mapQuality) {
+        ui.setMapQuality(nextQuality)
+        lastQualityDowngradeAt = time
+      }
       ui.setEffectsDegraded(true)
+      criticalFrames = 0
     } else if (fps > 45 && ui.effectsDegraded) {
       ui.setEffectsDegraded(false)
     }

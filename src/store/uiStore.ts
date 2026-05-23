@@ -11,6 +11,11 @@ export type EventStreamScrollMode = 'auto' | 'manual'
 export type MapQuality = 'low' | 'mid' | 'high'
 export type GlobalParticleDensity = 'low' | 'mid' | 'high' | 'ultra'
 export type MapFocus = { regionId?: string; factionId?: FactionId } | null
+export type GameFinishedBanner = {
+  winner: FactionId | null
+  finalNarration: string
+  replayAvailable: boolean
+}
 export type CommandTerminalDraft = {
   id: number
   mode: CommandMode
@@ -44,6 +49,10 @@ type UIStoreState = {
   commandTerminalDraft: CommandTerminalDraft | null
   eventStreamScrollMode: EventStreamScrollMode
   connectionStatus: TransportStatus
+  lastSyncAt: number
+  connectionFailureReason: string | null
+  gameFinishedBanner: GameFinishedBanner | null
+  gameFinishedRedirectAtMs: number | null
   setLeftPanelOpen: (open: boolean) => void
   toggleLeftPanel: () => void
   setRightPanelOpen: (open: boolean) => void
@@ -77,6 +86,10 @@ type UIStoreState = {
   setCommandTerminalDraft: (draft: CommandTerminalDraft) => void
   setEventStreamScrollMode: (mode: EventStreamScrollMode) => void
   setConnectionStatus: (status: TransportStatus) => void
+  setLastSyncAt: (value: number) => void
+  setConnectionFailureReason: (reason: string | null) => void
+  setGameFinishedBanner: (banner: GameFinishedBanner) => void
+  clearGameFinishedBanner: () => void
 }
 
 const focusOrder: HudFocusTarget[] = ['left', 'center', 'right', 'bottom']
@@ -109,6 +122,10 @@ export const useUIStore = create<UIStoreState>((set) => ({
   commandTerminalDraft: null,
   eventStreamScrollMode: 'auto',
   connectionStatus: 'idle',
+  lastSyncAt: 0,
+  connectionFailureReason: null,
+  gameFinishedBanner: null,
+  gameFinishedRedirectAtMs: null,
   setLeftPanelOpen: (leftPanelOpen) => {
     set({ leftPanelOpen })
   },
@@ -228,5 +245,23 @@ export const useUIStore = create<UIStoreState>((set) => ({
   },
   setConnectionStatus: (connectionStatus) => {
     set({ connectionStatus })
+  },
+  setLastSyncAt: (lastSyncAt) => {
+    set({ lastSyncAt })
+  },
+  setConnectionFailureReason: (connectionFailureReason) => {
+    set({ connectionFailureReason })
+  },
+  setGameFinishedBanner: (gameFinishedBanner) => {
+    set({
+      gameFinishedBanner,
+      gameFinishedRedirectAtMs: Date.now() + 3_000,
+    })
+  },
+  clearGameFinishedBanner: () => {
+    set({
+      gameFinishedBanner: null,
+      gameFinishedRedirectAtMs: null,
+    })
   },
 }))

@@ -4,6 +4,7 @@ from random import Random
 
 from app.domain.enums import FactionId, TerrainKind
 from app.domain.models import MapRegion
+from app.game.map_neighbors import build_region_neighbors
 
 REGIONS_PER_FACTION = 8
 TOTAL_REGION_COUNT = 64
@@ -37,7 +38,11 @@ def build_initial_regions(faction_ids: list[FactionId], rng: Random) -> list[Map
                 )
             )
 
-    return regions
+    neighbor_map = build_region_neighbors(regions)
+    return [
+        region.model_copy(update={"neighbors": neighbor_map.get(region.id, [])}, deep=True)
+        for region in regions
+    ]
 
 
 def _terrains_for_faction(rng: Random) -> list[TerrainKind]:

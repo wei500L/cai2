@@ -74,11 +74,23 @@ const statusVisuals: Record<TransportStatus, StatusVisual> = {
 
 export function ConnectionBadge() {
   const status = useUIStore((state) => state.connectionStatus)
+  const lastSyncAt = useUIStore((state) => state.lastSyncAt)
+  const connectionFailureReason = useUIStore((state) => state.connectionFailureReason)
   const debug = useConnectionDebugSnapshot()
   const visual = statusVisuals[status]
-  const tooltip = import.meta.env.DEV
-    ? `lastInboundSeq: ${debug.lastInboundSeq}\nqueueDepth: ${debug.queueDepth}\nwsUrl: ${debug.wsUrl || ENV.wsUrl}`
-    : undefined
+  const tooltip = [
+    `lastSyncAt: ${lastSyncAt > 0 ? new Date(lastSyncAt).toLocaleTimeString() : 'n/a'}`,
+    `lastInboundSeq: ${debug.lastInboundSeq}`,
+    `queueDepth: ${debug.queueDepth}`,
+    `connectionFailureReason: ${connectionFailureReason ?? 'none'}`,
+    import.meta.env.DEV ? `wsUrl: ${debug.wsUrl || ENV.wsUrl}` : null,
+  ]
+    .filter((line): line is string => line !== null)
+    .join('\n')
+  const badgeText =
+    status === 'error' && connectionFailureReason
+      ? connectionFailureReason
+      : visual.text
 
   return (
     <GlowPanel
@@ -109,7 +121,7 @@ export function ConnectionBadge() {
             className={clsx('h-[0.28rem] w-[0.28rem] shrink-0 rounded-full', visual.pulse && 'animate-pulse')}
             style={{ backgroundColor: visual.dot, boxShadow: `0 0 8px ${visual.dot}` }}
           />
-          <span className="min-w-0 truncate">{visual.text}</span>
+          <span className="min-w-0 truncate">{badgeText}</span>
         </div>
       </motion.div>
     </GlowPanel>

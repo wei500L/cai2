@@ -17,6 +17,7 @@ class Settings(BaseModel):
     cors_extra_origins: str = ""
     ws_path: str = "/ws"
     rest_prefix: str = "/debug/v1"
+    reconnect_catchup_max: int = 50
 
     def allowed_cors_origins(self) -> list[str]:
         origins = [*_DEV_CORS_ORIGINS]
@@ -45,6 +46,17 @@ def _read_bool(name: str, default: bool) -> bool:
     return default
 
 
+def _read_int(name: str, default: int) -> int:
+    raw = getenv(name)
+    if raw is None:
+        return default
+
+    try:
+        return int(raw.strip())
+    except ValueError:
+        return default
+
+
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings(
@@ -55,4 +67,5 @@ def get_settings() -> Settings:
         cors_extra_origins=getenv("EXTRA_CORS_ORIGINS", ""),
         ws_path=getenv("WS_PATH", "/ws"),
         rest_prefix=getenv("REST_PREFIX", "/debug/v1"),
+        reconnect_catchup_max=max(10, _read_int("RECONNECT_CATCHUP_MAX", 50)),
     )

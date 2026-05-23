@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
+import { ErrorPanel } from '@/components/ErrorPanel'
+import { LoadingHologram } from '@/components/LoadingHologram'
 import { Scanlines } from '@/components/Scanlines'
 import { factionTokens } from '@/components/hudTheme'
+import { loadReplay } from '@/api/replayApi'
 import { AIInnerThoughtPanel } from '@/features/replay/AIInnerThoughtPanel'
 import { FactionCurves } from '@/features/replay/FactionCurves'
 import { KeyMoments } from '@/features/replay/KeyMoments'
@@ -10,7 +13,7 @@ import { ReplayControls } from '@/features/replay/ReplayControls'
 import { ReplayStage } from '@/features/replay/ReplayStage'
 import { ReplayTimeline } from '@/features/replay/ReplayTimeline'
 import { ShareBar } from '@/features/replay/ShareBar'
-import { getFactionName } from '@/features/replay/replayViewUtils'
+import { createEventLookup, getEventFaction, getFactionName } from '@/features/replay/replayViewUtils'
 import { buildReplay } from '@/mock/replay'
 import { replayFixture } from '@/mock/replayFixtures'
 import { useGameStore } from '@/store/gameStore'
@@ -24,32 +27,96 @@ function hasAccumulatedGameData(state: ReturnType<typeof useGameStore.getState>)
   )
 }
 
+function getReplayRoomId() {
+  if (typeof window === 'undefined') {
+    return null
+  }
+
+  return new URLSearchParams(window.location.search).get('room')
+}
+
+function formatDataSource(source: 'rest' | 'gameStore' | 'fixtures', roomId: string | null) {
+  if (source === 'rest') {
+    return roomId ? `REST 真实复盘 ${roomId}` : 'REST 真实复盘'
+  }
+  if (source === 'gameStore') {
+    return 'gameStore 累积事件'
+  }
+  return 'replayFixtures 完整样例'
+}
+
 export default function ReplayPage() {
   const gameState = useGameStore((state) => state)
+  const [roomId] = useState(getReplayRoomId)
+  const [remoteReplay, setRemoteReplay] = useState<ReturnType<typeof buildReplay> | null>(null)
+  const [loading, setLoading] = useState(() => roomId !== null)
+  const [loadError, setLoadError] = useState<string | null>(null)
+  const [reloadTick, setReloadTick] = useState(0)
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
   const [speed, setSpeed] = useState(1)
   const [toast, setToast] = useState<string | null>(null)
 
-  const { replay, dataSource } = useMemo(() => {
+  const localReplay = useMemo(() => {
     if (hasAccumulatedGameData(gameState)) {
       return { replay: buildReplay(gameState), dataSource: 'gameStore' as const }
     }
 
     return { replay: replayFixture, dataSource: 'fixtures' as const }
   }, [gameState])
+  const replay = roomId ? remoteReplay : localReplay.replay
+  const dataSource = roomId ? 'rest' : localReplay.dataSource
 
-  const safeCurrentIndex = Math.min(currentIndex, Math.max(0, replay.timeline.length - 1))
-  const replayTime = replay.timeline[safeCurrentIndex] ?? replay.timeline[0]
+  const events = useMemo(() => createEventLookup(replay?.events ?? []), [replay])
+  const timelineLength = replay?.timeline.length ?? 0
+  const safeCurrentIndex = replay ? Math.min(currentIndex, Math.max(0, timelineLength - 1)) : 0
+  const replayTime = replay ? replay.timeline[safeCurrentIndex] ?? replay.timeline[0] : undefined
+  const focusEvent = replayTime ? replayTime.keyEventIds.map((id) => events.get(id)).find(Boolean) : undefined
+  const currentFocusFaction = focusEvent ? getEventFaction(focusEvent) : undefined
 
   useEffect(() => {
-    if (!isPlaying || replay.timeline.length <= 1) {
+    if (!roomId) {
+      return undefined
+    }
+
+    let cancelled = false
+    setLoading(true)
+    setLoadError(null)
+    setRemoteReplay(null)
+    setCurrentIndex(0)
+
+    loadReplay(roomId)
+      .then((replayData) => {
+        if (cancelled) {
+          return
+        }
+
+        setRemoteReplay(replayData)
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setLoadError(error instanceof Error ? error.message : '真实复盘读取失败。')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [roomId, reloadTick])
+
+  useEffect(() => {
+    if (!isPlaying || timelineLength <= 1) {
       return undefined
     }
 
     const timer = window.setInterval(() => {
       setCurrentIndex((index) => {
-        if (index >= replay.timeline.length - 1) {
+        if (index >= timelineLength - 1) {
           setIsPlaying(false)
           return index
         }
@@ -59,7 +126,7 @@ export default function ReplayPage() {
     }, 1600 / speed)
 
     return () => window.clearInterval(timer)
-  }, [isPlaying, replay.timeline.length, speed])
+  }, [isPlaying, timelineLength, speed])
 
   useEffect(() => {
     if (!toast) {
@@ -72,6 +139,36 @@ export default function ReplayPage() {
 
   const showMockToast = () => {
     setToast('已复制 (mock)')
+  }
+
+  const retryLoad = () => {
+    setReloadTick((value) => value + 1)
+  }
+
+  if (roomId && loading && !remoteReplay && !loadError) {
+    return (
+      <main className="relative grid min-h-screen place-items-center overflow-hidden bg-[radial-gradient(circle_at_50%_-10%,rgba(128,78,32,0.32),transparent_36%),linear-gradient(180deg,#120b07_0%,#050406_54%,#030205_100%)] text-[color:var(--text-primary)]">
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,204,102,0.05)_1px,transparent_1px),linear-gradient(180deg,rgba(255,204,102,0.035)_1px,transparent_1px)] bg-[size:72px_72px]" />
+        <Scanlines />
+        <LoadingHologram label="读取真实复盘" className="relative z-10 min-h-56 w-[min(28rem,calc(100vw-2rem))]" />
+      </main>
+    )
+  }
+
+  if (roomId && loadError && !remoteReplay) {
+    return (
+      <main className="relative grid min-h-screen place-items-center overflow-hidden bg-[radial-gradient(circle_at_50%_-10%,rgba(128,78,32,0.32),transparent_36%),linear-gradient(180deg,#120b07_0%,#050406_54%,#030205_100%)] text-[color:var(--text-primary)]">
+        <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(90deg,rgba(255,204,102,0.05)_1px,transparent_1px),linear-gradient(180deg,rgba(255,204,102,0.035)_1px,transparent_1px)] bg-[size:72px_72px]" />
+        <Scanlines />
+        <div className="relative z-10 w-[min(32rem,calc(100vw-2rem))]">
+          <ErrorPanel code="REPLAY_FETCH_FAILED" message={loadError} onRetry={retryLoad} />
+        </div>
+      </main>
+    )
+  }
+
+  if (!replay) {
+    return null
   }
 
   return (
@@ -87,7 +184,7 @@ export default function ReplayPage() {
             </div>
             <h1 className="mt-1 text-xl font-bold text-[color:rgba(255,250,235,0.96)]">外交风云 · 赛后复盘</h1>
             <div className="mt-1 text-xs text-[color:rgba(212,227,235,0.58)]">
-              数据源：{dataSource === 'gameStore' ? 'gameStore 累积事件' : 'replayFixtures 完整样例'} / {replay.events.length} 条事件 / {replay.privateMessages.length} 条密谈
+              数据源：{formatDataSource(dataSource, roomId)} / {replay.events.length} 条事件 / {replay.privateMessages.length} 条密谈
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -104,7 +201,13 @@ export default function ReplayPage() {
         <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_22rem]">
           <div className="grid min-h-0 gap-3 lg:grid-rows-[minmax(26rem,1fr)_auto]">
             {replayTime ? <ReplayStage replay={replay} replayTime={replayTime} /> : null}
-            {replayTime ? <AIInnerThoughtPanel thoughts={replay.aiInnerThoughts} replayTime={replayTime} /> : null}
+            {replayTime ? (
+              <AIInnerThoughtPanel
+                thoughts={replay.aiInnerThoughts}
+                replayTime={replayTime}
+                currentFocusFaction={currentFocusFaction}
+              />
+            ) : null}
           </div>
           <PrivateMessageLog messages={replay.privateMessages} />
         </div>

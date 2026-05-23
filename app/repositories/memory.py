@@ -9,6 +9,7 @@ from typing import Any, Generic, TypeVar, cast
 from app.core.clock import Clock
 from app.domain.enums import FactionId, RoomStatus, VisibilityScope
 from app.domain.models import (
+    DiaryEntry,
     EpochTurn,
     FactionState,
     GameAction,
@@ -24,6 +25,7 @@ from app.game.visibility import build_outbound_events_for_player
 from app.repositories.base import (
     ActionLogRepository,
     AsyncRepository,
+    DiaryRepository,
     EventLogRepository,
     GameStateRepository,
     MessageLogRepository,
@@ -296,10 +298,13 @@ class MemoryMessageLogRepository(MessageLogRepository):
 
 class MemoryEventLogRepository(EventLogRepository):
     def __init__(self, clock: Clock | None = None) -> None:
-        self._events: list[GameEvent] = []
+        self._events_by_room: dict[str, list[GameEvent]] = defaultdict(list)
         self._seq_by_room: dict[str, int] = defaultdict(int)
         self._lock = asyncio.Lock()
         self._clock = clock
+
+    def current_seq(self, room_id: str) -> int:
+        return self._seq_by_room[room_id]
 
     def next_seq(self, room_id: str) -> int:
         self._seq_by_room[room_id] += 1
@@ -307,13 +312,18 @@ class MemoryEventLogRepository(EventLogRepository):
 
     async def append(self, event: GameEvent) -> None:
         async with self._lock:
-            self._events.append(event.model_copy(deep=True))
+            room_events = self._events_by_room[event.room_id]
+            if event.seq is None:
+                event.seq = self.next_seq(event.room_id)
+            else:
+                self._seq_by_room[event.room_id] = max(self._seq_by_room[event.room_id], event.seq)
+            room_events.append(event.model_copy(deep=True))
 
     async def list_by_turn(self, room_id: str, epoch: int, turn: int) -> list[GameEvent]:
         async with self._lock:
             return [
                 event.model_copy(deep=True)
-                for event in self._events
+                for event in self._events_by_room.get(room_id, [])
                 if event.room_id == room_id and event.epoch == epoch and event.turn == turn
             ]
 
@@ -321,14 +331,17 @@ class MemoryEventLogRepository(EventLogRepository):
         self,
         room_id: str,
         faction_id: FactionId,
-        since_ms: int = 0,
+        *,
+        since_seq: int = 0,
+        since_ms: int | None = None,
     ) -> list[GameEvent]:
         async with self._lock:
             return [
                 event.model_copy(deep=True)
-                for event in self._events
+                for event in self._events_by_room.get(room_id, [])
                 if event.room_id == room_id
-                and event.created_at_ms >= since_ms
+                and (since_seq <= 0 or (event.seq is not None and event.seq >= since_seq))
+                and (since_ms is None or event.created_at_ms >= since_ms)
                 and self._is_visible_to(event, faction_id)
             ]
 
@@ -336,7 +349,7 @@ class MemoryEventLogRepository(EventLogRepository):
         async with self._lock:
             return [
                 event.model_copy(deep=True)
-                for event in self._events
+                for event in self._events_by_room.get(room_id, [])
                 if event.room_id == room_id
             ]
 
@@ -384,3 +397,46 @@ class MemoryReplayRepository(ReplayRepository):
         async with self._lock:
             replay = self._replays.get(room_id)
             return deepcopy(replay) if replay is not None else None
+
+
+class MemoryDiaryRepository(DiaryRepository):
+    def __init__(self, clock: Clock | None = None) -> None:
+        self._entries: dict[tuple[str, FactionId], list[DiaryEntry]] = defaultdict(list)
+        self._lock = asyncio.Lock()
+        self._clock = clock
+
+    async def append(self, entry: DiaryEntry, *, room_id: str) -> None:
+        async with self._lock:
+            key = (room_id, entry.faction_id)
+            self._entries[key].append(entry.model_copy(deep=True))
+            self._entries[key].sort(key=_diary_sort_key)
+
+    async def list_recent(
+        self,
+        room_id: str,
+        faction_id: FactionId,
+        *,
+        max_entries: int,
+    ) -> list[DiaryEntry]:
+        if max_entries <= 0:
+            return []
+
+        async with self._lock:
+            entries = sorted(
+                self._entries.get((room_id, faction_id), []),
+                key=_diary_sort_key,
+            )
+            return _copy_list(entries[-max_entries:])
+
+    async def list_all_by_room(self, room_id: str) -> dict[FactionId, list[DiaryEntry]]:
+        async with self._lock:
+            result: dict[FactionId, list[DiaryEntry]] = {}
+            for (stored_room_id, faction_id), entries in self._entries.items():
+                if stored_room_id != room_id:
+                    continue
+                result[faction_id] = _copy_list(sorted(entries, key=_diary_sort_key))
+            return result
+
+
+def _diary_sort_key(entry: DiaryEntry) -> tuple[int, int, int, str]:
+    return (entry.created_at_ms, entry.epoch, entry.turn, str(entry.faction_id))

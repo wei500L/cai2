@@ -166,6 +166,7 @@ def test_build_settlement_prompt_contains_required_sections(
     assert "你只是建议方，后端规则会最终裁决" in prompt.system
 
     assert _faction_stats_summary_text() in prompt.user
+    assert "八势力近期内心独白" in prompt.user
     assert "秘密提议：共同牵制翡翠王庭" in prompt.user
     assert "铁冠帝国宣布边境演习" in prompt.user
     assert "开放北境商路" in prompt.user

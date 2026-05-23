@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { appRoutes } from '@/app/routes'
+import { RealtimeConnection } from '@/app/RealtimeConnection'
 
 const getPathname = () =>
   typeof window === 'undefined' ? '/' : window.location.pathname || '/'
@@ -20,5 +21,9 @@ export default function App() {
     return appRoutes.find((route) => route.path === pathname)?.element ?? appRoutes[0].element
   }, [pathname])
 
-  return <Page />
+  return (
+    <RealtimeConnection pathname={pathname}>
+      <Page />
+    </RealtimeConnection>
+  )
 }

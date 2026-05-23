@@ -9,6 +9,7 @@ export function DevPerfOverlay() {
   const effectsDegraded = useUIStore((state) => state.effectsDegraded)
   const phase = useGameStore((state) => state.epoch.phase)
   const arbitratePhase = useGameStore((state) => state.epoch.arbitratePhase)
+  const serverClockOffsetMs = useGameStore((state) => state.serverClockOffsetMs)
 
   if (!import.meta.env.DEV || !open) {
     return null
@@ -21,6 +22,8 @@ export function DevPerfOverlay() {
       <span className="text-[color:var(--border-glow)]">PHASE</span> {phase}
       {arbitratePhase ? `:${arbitratePhase}` : ''} / <span className="text-[color:var(--border-glow)]">DENSITY</span>{' '}
       {density}
+      {' / '}
+      <span className="text-[color:var(--border-glow)]">CLOCK</span> {Math.round(serverClockOffsetMs)}ms
       {effectsDegraded ? ' / FX LOW' : ''}
     </div>
   )

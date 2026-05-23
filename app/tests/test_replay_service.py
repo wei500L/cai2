@@ -3,7 +3,6 @@ from __future__ import annotations
 import pytest
 
 from app.core.clock import FrozenClock
-from app.core.errors import InvalidPhaseError
 from app.domain.enums import (
     EventKind,
     EventPriority,
@@ -18,6 +17,7 @@ from app.domain.enums import (
 )
 from app.domain.factions import all_faction_ids
 from app.domain.models import (
+    DiaryEntry,
     EpochTurn,
     FactionStatChange,
     FactionState,
@@ -334,6 +334,31 @@ async def _seed_finished_room(repos: Repositories) -> None:
                 )
             await repos.settlements.save(settlement)
 
+    await repos.diaries.append(
+        DiaryEntry(
+            faction_id=FactionId.ironCrown,
+            epoch=1,
+            turn=1,
+            internal_thought="先观察联邦的试探, 再决定是否亮出底牌。",
+            emotion="calm",
+            triggers=["event-1-1"],
+            created_at_ms=500_001,
+        ),
+        room_id=room.id,
+    )
+    await repos.diaries.append(
+        DiaryEntry(
+            faction_id=FactionId.starlight,
+            epoch=2,
+            turn=3,
+            internal_thought="铁冠的动作过于急躁, 可以借此分化对手。",
+            emotion="focused",
+            triggers=["betrayal-2-3"],
+            created_at_ms=500_002,
+        ),
+        room_id=room.id,
+    )
+
 
 @pytest.mark.asyncio
 async def test_build_replay_returns_complete_dto(
@@ -411,12 +436,28 @@ async def test_replay_is_deterministic_except_generated_at_and_saved(
 
 
 @pytest.mark.asyncio
-async def test_build_replay_requires_finished_room(
+async def test_build_replay_returns_safe_snapshot_for_running_room(
     repos: Repositories,
     clock: FrozenClock,
 ) -> None:
     room = _room(status=RoomStatus.running)
     await repos.rooms.create(room)
+    await repos.diaries.append(
+        DiaryEntry(
+            faction_id=FactionId.ironCrown,
+            epoch=1,
+            turn=1,
+            internal_thought="不应在未结束复盘里泄漏。",
+            emotion="tense",
+            triggers=[],
+            created_at_ms=100,
+        ),
+        room_id=room.id,
+    )
 
-    with pytest.raises(InvalidPhaseError):
-        await ReplayService(repos, clock).build_replay(room.id)
+    replay = await ReplayService(repos, clock).build_replay(room.id)
+
+    assert replay.room_id == room.id
+    assert replay.winner is None
+    assert replay.ai_internal_thoughts == []
+    assert "游戏尚未结束" in replay.final_narration

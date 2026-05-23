@@ -175,7 +175,7 @@ async def test_dispatcher_dispatch_to_room_honors_visibility_filter(
     await dispatcher.dispatch_to_room(
         "room-1",
         {"t": "test.message", "p": {"ok": True}},
-        visibility_filter=lambda session: session.player_id == "player-1",
+        visibility_filter=lambda _envelope, session: session.player_id == "player-1",
     )
 
     assert len(first.sent_texts) == 1
@@ -192,7 +192,7 @@ async def test_inbound_router_ping_returns_pong(inbound_router: InboundRouter) -
 
     assert response is not None
     assert response["t"] == "conn.pong"
-    assert response["p"]["server_ts"] == 10_000
+    assert response["p"]["server_time_ms"] == 10_000
 
 
 @pytest.mark.asyncio
@@ -285,6 +285,7 @@ async def test_action_lock_all_humans_advances_phase_to_resolve(
     assert response is not None
     assert response["t"] == "phase.change"
     assert response["p"]["phase"] == "resolve"
+    assert response["p"]["server_time_ms"] == 10_000
 
 
 @pytest.mark.asyncio
@@ -311,8 +312,10 @@ async def test_reconnect_request_returns_catchup_when_visible_events_at_most_50(
 
     assert response is not None
     assert response["t"] == "reconnect.catchup"
-    assert response["p"]["from_seq"] == 0
+    assert response["p"]["from_seq"] == 1
+    assert response["p"]["to_seq"] == 3
     assert len(response["p"]["messages"]) == 3
+    assert [message["seq"] for message in response["p"]["messages"]] == [1, 2, 3]
 
 
 @pytest.mark.asyncio

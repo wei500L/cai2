@@ -32,6 +32,18 @@ export type RelationshipStatus = 'hostile' | 'wary' | 'neutral' | 'friendly' | '
 
 export type TreatyKind = 'non_aggression' | 'trade' | 'alliance' | 'ceasefire'
 
+export type Treaty = {
+  id: string
+  kind: TreatyKind
+  parties: FactionId[]
+  started_epoch: number
+  started_turn: number
+  ends_epoch: number | null
+  ends_turn: number | null
+  active: boolean
+  metadata: Record<string, unknown>
+}
+
 export type Relationship = {
   from: FactionId
   to: FactionId
@@ -61,6 +73,7 @@ export type EventKind =
 
 export type GameEvent = {
   id: string
+  seq?: number
   createdAt: number
   epoch: number
   turn: number
@@ -133,12 +146,16 @@ export type MapRegion = {
   developmentLevel: number
   centerLatLng: [number, number]
   terrain: 'mountain' | 'plains' | 'river' | 'fortress' | 'desert'
+  minGarrison: number
+  supplyLines: number
+  neighbors: string[]
 }
 
 export type MockGameWorldState = {
   epoch: Epoch
   factions: FactionState[]
   relationships: Relationship[]
+  treaties: Treaty[]
   regions: MapRegion[]
   events: GameEvent[]
   privateMessages: PrivateMessage[]

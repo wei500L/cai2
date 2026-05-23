@@ -34,6 +34,8 @@ class Player(DomainModel):
     connected: bool
     joined_at_ms: int
     ready: bool = False
+    ai_takeover: bool = False
+    disconnected_at_ms: int | None = None
 
 
 class FactionState(DomainModel):
@@ -78,6 +80,7 @@ class MapRegion(DomainModel):
     center_lat_lng: tuple[float, float]
     min_garrison: int
     supply_lines: int
+    neighbors: list[str] = Field(default_factory=list, max_length=8)
 
 
 class ResourceState(DomainModel):
@@ -164,6 +167,7 @@ GameAction: TypeAlias = Annotated[
 class GameEvent(DomainModel):
     id: str
     room_id: str
+    seq: int | None = None
     epoch: int
     turn: int
     phase: GamePhase
@@ -175,6 +179,16 @@ class GameEvent(DomainModel):
     payload: dict[str, Any] = Field(default_factory=dict)
     narration: str
     visibility: MessageVisibility
+
+
+class DiaryEntry(DomainModel):
+    faction_id: FactionId
+    epoch: int
+    turn: int
+    internal_thought: str = Field(max_length=600)
+    emotion: str
+    triggers: list[str] = Field(default_factory=list)
+    created_at_ms: int
 
 
 class BattleEvent(GameEvent):

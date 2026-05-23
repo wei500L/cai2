@@ -108,7 +108,7 @@ def _postgres_method_cases() -> list[tuple[object, str, tuple[Any, ...]]]:
         (PostgresEventLogRepository(), "next_seq", ("room-1",)),
         (PostgresEventLogRepository(), "append", (None,)),
         (PostgresEventLogRepository(), "list_by_turn", ("room-1", 1, 1)),
-        (PostgresEventLogRepository(), "list_visible_to_faction", ("room-1", None, 0)),
+        (PostgresEventLogRepository(), "list_visible_to_faction", ("room-1", None)),
         (PostgresEventLogRepository(), "list_all", ("room-1",)),
         (PostgresSettlementRepository(), "save", (None,)),
         (PostgresSettlementRepository(), "get", ("room-1", 1, 1)),
@@ -128,7 +128,10 @@ async def test_postgres_repository_methods_raise_not_implemented(
     method = getattr(repository, method_name)
 
     with pytest.raises(NotImplementedError, match=re.escape(POSTGRES_PENDING)):
-        result = method(*args)
+        if method_name == "list_visible_to_faction":
+            result = method(*args, since_seq=0)
+        else:
+            result = method(*args)
         if inspect.isawaitable(result):
             await result
 

@@ -203,6 +203,19 @@ def test_duplicate_select_faction_returns_409(rest_client: TestClient) -> None:
     assert duplicate.json()["error_code"] == "FactionAlreadyTakenError"
 
 
+def test_replay_endpoint_returns_safe_snapshot_before_finished(rest_client: TestClient) -> None:
+    room_id, _host_id = _start_solo_room(rest_client)
+
+    response = rest_client.get(f"/debug/v1/rooms/{room_id}/replay")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["room_id"] == room_id
+    assert body["winner"] is None
+    assert body["ai_internal_thoughts"] == []
+    assert "游戏尚未结束" in body["final_narration"]
+
+
 def _advance_until_finished(rest_client: TestClient, room_id: str) -> None:
     for _ in range(100):
         state = rest_client.get(f"/debug/v1/rooms/{room_id}")

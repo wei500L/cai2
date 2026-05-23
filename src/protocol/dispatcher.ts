@@ -75,8 +75,14 @@ function getActor(): FactionId {
   return gameStoreApi.getState().selectedFactionId ?? 'starlight'
 }
 
+function getRoomId() {
+  const state = gameStoreApi.getState()
+  return state.currentRoomId ?? DEFAULT_ROOM_ID
+}
+
 function buildOutgoingMessage(submission: CommandSubmission): OutgoingMessage {
   const actor = getActor()
+  const roomId = getRoomId()
   const metadata = {
     player_faction: actor,
     tone: submission.tone,
@@ -85,7 +91,7 @@ function buildOutgoingMessage(submission: CommandSubmission): OutgoingMessage {
 
   if (submission.mode === 'private') {
     return envelope('action.private', {
-      room_id: DEFAULT_ROOM_ID,
+      room_id: roomId,
       target_faction: submission.targets[0],
       content: submission.content.trim(),
       metadata,
@@ -94,7 +100,7 @@ function buildOutgoingMessage(submission: CommandSubmission): OutgoingMessage {
 
   if (submission.mode === 'treaty') {
     return envelope('action.treaty', {
-      room_id: DEFAULT_ROOM_ID,
+      room_id: roomId,
       treaty_kind: submission.treatyKind ?? 'non_aggression',
       target_factions: submission.targets,
       proposal_text: submission.content.trim(),
@@ -104,7 +110,7 @@ function buildOutgoingMessage(submission: CommandSubmission): OutgoingMessage {
 
   if (submission.mode === 'military') {
     return envelope('action.military', {
-      room_id: DEFAULT_ROOM_ID,
+      room_id: roomId,
       source_region: submission.military?.sourceRegionId ?? '',
       target_region: submission.military?.targetRegionId ?? '',
       movement: submission.military?.action ?? 'move',
@@ -116,7 +122,7 @@ function buildOutgoingMessage(submission: CommandSubmission): OutgoingMessage {
 
   if (submission.mode === 'intel') {
     return envelope('action.intel', {
-      room_id: DEFAULT_ROOM_ID,
+      room_id: roomId,
       target_faction: submission.targets[0],
       intel_kind: 'spy',
       brief: submission.content.trim(),
@@ -125,7 +131,7 @@ function buildOutgoingMessage(submission: CommandSubmission): OutgoingMessage {
   }
 
   return envelope('action.speak', {
-    room_id: DEFAULT_ROOM_ID,
+    room_id: roomId,
     mode: 'speech',
     content: submission.content.trim(),
     targets: submission.targets,
@@ -160,6 +166,51 @@ export class ActionDispatcher {
     return result ?? { ok: true }
   }
 
+  static joinRoom(roomId: string, displayName: string): SubmitSpeechResult {
+    if (!ActionDispatcher.transport) {
+      return { ok: false, error: '协议通道尚未连接' }
+    }
+
+    const result = ActionDispatcher.transport.send(
+      envelope('room.join', {
+        room_id: roomId,
+        display_name: displayName,
+      }),
+    )
+
+    return result ?? { ok: true }
+  }
+
+  static selectFaction(factionId: FactionId): SubmitSpeechResult {
+    if (!ActionDispatcher.transport) {
+      return { ok: false, error: '协议通道尚未连接' }
+    }
+
+    const result = ActionDispatcher.transport.send(
+      envelope('room.select_faction', {
+        room_id: getRoomId(),
+        faction_id: factionId,
+      }),
+    )
+
+    return result ?? { ok: true }
+  }
+
+  static setReady(ready: boolean): SubmitSpeechResult {
+    if (!ActionDispatcher.transport) {
+      return { ok: false, error: '协议通道尚未连接' }
+    }
+
+    const result = ActionDispatcher.transport.send(
+      envelope('room.ready', {
+        room_id: getRoomId(),
+        ready,
+      }),
+    )
+
+    return result ?? { ok: true }
+  }
+
   static requestNextEpoch(): SubmitSpeechResult {
     if (!ActionDispatcher.transport) {
       return { ok: false, error: '协议通道尚未连接' }
@@ -167,7 +218,7 @@ export class ActionDispatcher {
 
     const result = ActionDispatcher.transport.send(
       envelope('room.ready', {
-        room_id: DEFAULT_ROOM_ID,
+        room_id: getRoomId(),
         ready: true,
       }),
     )

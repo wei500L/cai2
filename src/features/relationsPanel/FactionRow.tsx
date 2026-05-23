@@ -14,6 +14,7 @@ import {
   statusLabels,
 } from './relationVisuals'
 import { FactionRowDetail } from './FactionRowDetail'
+import { PlayerTakeoverIndicator } from './PlayerTakeoverIndicator'
 import type { ContextMenuState, RelationDelta, TreatyDisplay } from './types'
 
 type FactionRowProps = {
@@ -61,6 +62,11 @@ function FactionRowComponent({
       state.relationships.find((item) => item.from === actorId && item.to === factionId),
     ) ?? getSelfRelationship(actorId)
   const factionState = useGameStore((state) => state.factions.find((item) => item.id === factionId))
+  const takeoverActive = useGameStore((state) =>
+    state.roomPlayers.some(
+      (player) => player.faction_id === factionId && player.ai_takeover,
+    ),
+  )
   const turn = useGameStore((state) => state.epoch.turn)
   const [hovered, setHovered] = useState(false)
   const [pinned, setPinned] = useState(false)
@@ -146,7 +152,7 @@ function FactionRowComponent({
             ) : null}
           </div>
           <motion.div
-            className="mt-1 inline-flex"
+            className="mt-1 inline-flex items-center gap-2"
             animate={
               delta?.enteredHostile
                 ? {
@@ -168,6 +174,7 @@ function FactionRowComponent({
             >
               {statusLabels[status]}
             </StatusBadge>
+            <PlayerTakeoverIndicator visible={takeoverActive} />
           </motion.div>
         </div>
 

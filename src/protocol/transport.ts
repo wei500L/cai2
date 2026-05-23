@@ -14,11 +14,13 @@ import type {
 } from '@/mock/types'
 import { clearAIResponseTimers, triggerAIResponses } from '@/mock/aiResponder'
 import { gameStoreApi } from '@/store/gameStore'
+import { useUIStore } from '@/store/uiStore'
 import type { SubmitSpeechResult } from '@/features/commandTerminal/types'
 import type {
   FactionStatsPatch,
   IncomingMessage,
   MapRegionPatch,
+  BorderTensionEntry,
   OutgoingMessage,
   RelationshipPatch,
   StatsDiffPayload,
@@ -44,6 +46,7 @@ export type TransportConfig = {
     url: string
     token?: string
     clientVersion: string
+    playerId?: string
     reconnect?: Partial<ReconnectConfig>
     heartbeatIntervalMs?: number
     onStatusChange?: (status: TransportStatus) => void
@@ -59,6 +62,8 @@ export type Transport = {
   send: (msg: OutgoingMessage) => SubmitSpeechResult | void
   on: (handler: MessageHandler) => void
   off: (handler: MessageHandler) => void
+  requestReconnect?: () => void
+  setReconnectContext?: (context: ReconnectContext) => void
 }
 
 let transportSequence = 0
@@ -77,6 +82,10 @@ function nextEnvelope<T extends IncomingMessage['t']>(
     seq: transportSequence,
     p: payload,
   } as Extract<IncomingMessage, { t: T }>
+}
+
+function getRoomId() {
+  return gameStoreApi.getState().currentRoomId ?? DEFAULT_ROOM_ID
 }
 
 function createPhaseKey(epoch: Epoch) {
@@ -355,6 +364,13 @@ export class MockTransport implements Transport {
       return { ok: true }
     }
 
+    if (message.t === 'conn.ping') {
+      this.emit(nextEnvelope('conn.pong', {
+        server_time_ms: Date.now(),
+      }))
+      return { ok: true }
+    }
+
     const rejection = validateOutgoingAction(message)
     if (rejection) {
       this.emitRejected(message, rejection, 'ACTION_REJECTED')
@@ -392,13 +408,14 @@ export class MockTransport implements Transport {
 
   emitPhase(epoch: Epoch, isPaused?: boolean) {
     this.emit(nextEnvelope('phase.change', {
-      room_id: DEFAULT_ROOM_ID,
+      room_id: getRoomId(),
       epoch: epoch.id,
       turn: epoch.turn,
       phase: epoch.phase,
       arbitrate_phase: epoch.arbitratePhase,
       phase_started_at_ms: epoch.phaseStartedAt,
       phase_duration_ms: epoch.phaseDurationMs,
+      server_time_ms: Date.now(),
       is_paused: isPaused,
     }))
   }
@@ -406,9 +423,14 @@ export class MockTransport implements Transport {
   emitTurnBegin(epoch: Epoch) {
     const state = gameStoreApi.getState()
     this.emit(nextEnvelope('turn.begin', {
-      room_id: DEFAULT_ROOM_ID,
+      room_id: getRoomId(),
       epoch: epoch.id,
       turn: epoch.turn,
+      phase: epoch.phase,
+      arbitrate_phase: epoch.arbitratePhase,
+      phase_started_at_ms: epoch.phaseStartedAt,
+      phase_duration_ms: epoch.phaseDurationMs,
+      server_time_ms: Date.now(),
       visible_snapshot: {
         epoch,
         factions: state.factions,
@@ -425,7 +447,7 @@ export class MockTransport implements Transport {
 
     const { epoch } = gameStoreApi.getState()
     this.emit(nextEnvelope('resolve.events', {
-      room_id: DEFAULT_ROOM_ID,
+      room_id: getRoomId(),
       epoch: epoch.id,
       turn: epoch.turn,
       events,
@@ -436,7 +458,7 @@ export class MockTransport implements Transport {
   emitActionEvent(event: GameEvent, privateMessage?: PrivateMessage) {
     if (privateMessage) {
       this.emit(nextEnvelope('action.private', {
-        room_id: DEFAULT_ROOM_ID,
+        room_id: getRoomId(),
         event,
         private_message: privateMessage,
       }))
@@ -444,7 +466,7 @@ export class MockTransport implements Transport {
     }
 
     this.emit(nextEnvelope('action.broadcast', {
-      room_id: DEFAULT_ROOM_ID,
+      room_id: getRoomId(),
       event,
     }))
   }
@@ -452,7 +474,7 @@ export class MockTransport implements Transport {
   emitAIEvent(event: GameEvent) {
     if (event.kind === 'ai_reaction') {
       this.emit(nextEnvelope('ai.reaction', {
-        room_id: DEFAULT_ROOM_ID,
+        room_id: getRoomId(),
         event,
         faction_id: event.actor ?? 'starlight',
         reaction: typeof event.payload.label === 'string' ? event.payload.label : event.narration,
@@ -462,27 +484,27 @@ export class MockTransport implements Transport {
     }
 
     this.emit(nextEnvelope('ai.speak', {
-      room_id: DEFAULT_ROOM_ID,
+      room_id: getRoomId(),
       event,
     }))
   }
 
   emitAIPrivateMessage(event: GameEvent, privateMessage: PrivateMessage) {
     this.emit(nextEnvelope('ai.speak', {
-      room_id: DEFAULT_ROOM_ID,
+      room_id: getRoomId(),
       event,
       private_message: privateMessage,
     }))
   }
 
-  emitMapDiff(changes: MapRegionPatch[], borderUpdates: Record<string, unknown>[] = []) {
+  emitMapDiff(changes: MapRegionPatch[], borderUpdates: BorderTensionEntry[] = []) {
     if (changes.length === 0 && borderUpdates.length === 0) {
       return
     }
 
     const { epoch } = gameStoreApi.getState()
     this.emit(nextEnvelope('resolve.map_diff', {
-      room_id: DEFAULT_ROOM_ID,
+      room_id: getRoomId(),
       epoch: epoch.id,
       turn: epoch.turn,
       changes,
@@ -497,7 +519,7 @@ export class MockTransport implements Transport {
 
     const { epoch } = gameStoreApi.getState()
     this.emit(nextEnvelope('resolve.stats_diff', {
-      room_id: DEFAULT_ROOM_ID,
+      room_id: getRoomId(),
       epoch: epoch.id,
       turn: epoch.turn,
       faction_stats: diff.faction_stats,
@@ -505,20 +527,27 @@ export class MockTransport implements Transport {
     }))
   }
 
+  emitRoomFinished(finalNarration = '第八纪元裁决完成，复盘即将开启。') {
+    const factions = gameStoreApi.getState().factions
+    const winner = factions.reduce<FactionId | null>((currentWinner, faction) => {
+      if (currentWinner === null) {
+        return faction.id
+      }
+
+      const current = factions.find((item) => item.id === currentWinner)
+      return !current || faction.totalPower > current.totalPower ? faction.id : currentWinner
+    }, null)
+
+    this.emit(nextEnvelope('room.finished', {
+      room_id: getRoomId(),
+      winner,
+      final_narration: finalNarration,
+      replay_available: true,
+    }))
+  }
+
   tickPhase(deltaMs: number) {
-    if (deltaMs <= 0) {
-      return
-    }
-
-    const state = gameStoreApi.getState()
-    if (state.isPaused) {
-      return
-    }
-
-    this.emitPhase({
-      ...state.epoch,
-      phaseDurationMs: Math.max(0, state.epoch.phaseDurationMs - deltaMs),
-    })
+    void deltaMs
   }
 
   advancePhase() {
@@ -765,7 +794,7 @@ export class MockTransport implements Transport {
 
   private emitRejected(message: OutgoingMessage, reason: string, errorCode: string) {
     this.emit(nextEnvelope('action.rejected', {
-      room_id: 'room_id' in message.p ? message.p.room_id : DEFAULT_ROOM_ID,
+      room_id: 'room_id' in message.p ? message.p.room_id : getRoomId(),
       request_id: message.id,
       reason,
       error_code: errorCode,
@@ -839,6 +868,7 @@ export class WebSocketTransport implements Transport {
   private url: string
   private token?: string
   private clientVersion: string
+  private playerId?: string
   private reconnect: ReconnectConfig
   private heartbeatIntervalMs: number
   private onStatusChange?: (status: TransportStatus) => void
@@ -850,25 +880,49 @@ export class WebSocketTransport implements Transport {
   private outboundQueue: OutgoingMessage[] = []
   private reconnectAttempts = 0
   private reconnectTimer: ReturnType<typeof globalThis.setTimeout> | null = null
+  private reconnectRequestTimer: ReturnType<typeof globalThis.setTimeout> | null = null
+  private reconnectRequestAttempts = 0
   private heartbeatTimer: ReturnType<typeof globalThis.setInterval> | null = null
   private lastPongAt = 0
   private manuallyClosed = false
   private reconnectContext: ReconnectContext = {}
+  private reconnectNegotiationActive = false
+  private reconnectRetryRequested = false
+  private reconnectDisabled = false
 
   constructor(
     url: string,
     token?: string,
     clientVersion = 'unknown',
-    reconnect?: Partial<ReconnectConfig>,
-    heartbeatIntervalMs = DEFAULT_HEARTBEAT_INTERVAL_MS,
+    playerIdOrReconnect?: string | Partial<ReconnectConfig>,
+    reconnectOrHeartbeat?: Partial<ReconnectConfig> | number,
+    heartbeatOrStatus: number | ((status: TransportStatus) => void) = DEFAULT_HEARTBEAT_INTERVAL_MS,
     onStatusChange?: (status: TransportStatus) => void,
   ) {
+    const hasPlayerId = typeof playerIdOrReconnect === 'string'
+    const reconnect = hasPlayerId
+      ? (reconnectOrHeartbeat as Partial<ReconnectConfig> | undefined)
+      : (playerIdOrReconnect as Partial<ReconnectConfig> | undefined)
+    const heartbeatIntervalMs = hasPlayerId
+      ? typeof heartbeatOrStatus === 'number'
+        ? heartbeatOrStatus
+        : DEFAULT_HEARTBEAT_INTERVAL_MS
+      : typeof reconnectOrHeartbeat === 'number'
+        ? reconnectOrHeartbeat
+        : DEFAULT_HEARTBEAT_INTERVAL_MS
+    const statusChangeHandler = hasPlayerId
+      ? onStatusChange
+      : typeof heartbeatOrStatus === 'function'
+        ? heartbeatOrStatus
+        : onStatusChange
+
     this.url = url
     this.token = token
     this.clientVersion = clientVersion
+    this.playerId = hasPlayerId ? playerIdOrReconnect : undefined
     this.reconnect = { ...DEFAULT_RECONNECT, ...reconnect }
     this.heartbeatIntervalMs = heartbeatIntervalMs
-    this.onStatusChange = onStatusChange
+    this.onStatusChange = statusChangeHandler
   }
 
   connect() {
@@ -877,13 +931,16 @@ export class WebSocketTransport implements Transport {
     }
 
     this.manuallyClosed = false
+    this.reconnectDisabled = false
     this.clearReconnectTimer()
     this.openSocket(false)
   }
 
   disconnect() {
     this.manuallyClosed = true
+    this.reconnectDisabled = false
     this.clearReconnectTimer()
+    this.clearReconnectRequestTimer()
     this.stopHeartbeat()
     this.handlers.clear()
 
@@ -918,6 +975,25 @@ export class WebSocketTransport implements Transport {
     this.reconnectContext = context
   }
 
+  requestReconnect() {
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+      return
+    }
+
+    if (this.reconnectDisabled) {
+      return
+    }
+
+    if (!this.reconnectNegotiationActive) {
+      this.beginReconnectNegotiation()
+      return
+    }
+
+    this.reconnectRetryRequested = true
+    this.sendReconnectRequest()
+    this.scheduleReconnectRequestRetry()
+  }
+
   getStatus() {
     return this.status
   }
@@ -945,15 +1021,14 @@ export class WebSocketTransport implements Transport {
       this.reconnectAttempts = 0
       this.lastPongAt = Date.now()
 
-      if (isReconnect && this.lastInboundSeq > 0) {
-        this.sendReconnectRequest()
+      if (isReconnect) {
+        this.beginReconnectNegotiation()
       } else {
         this.sendAuth()
+        this.setStatus('open')
+        this.startHeartbeat()
+        this.flushQueue()
       }
-
-      this.setStatus('open')
-      this.startHeartbeat()
-      this.flushQueue()
     }
 
     socket.onmessage = (event: MessageEvent) => {
@@ -976,17 +1051,27 @@ export class WebSocketTransport implements Transport {
         return
       }
 
+      if (this.reconnectDisabled) {
+        this.setStatus('error')
+        return
+      }
+
       this.scheduleReconnect()
     }
   }
 
   private buildUrl() {
-    if (!this.token) {
-      return this.url
+    const baseUrl =
+      typeof globalThis.location === 'undefined' ? 'http://localhost' : globalThis.location.href
+    const url = new URL(this.url, baseUrl)
+    if (this.token) {
+      url.searchParams.set('token', this.token)
     }
-
-    const separator = this.url.includes('?') ? '&' : '?'
-    return `${this.url}${separator}token=${encodeURIComponent(this.token)}`
+    const playerId = this.reconnectContext.playerId ?? this.playerId
+    if (playerId) {
+      url.searchParams.set('player_id', playerId)
+    }
+    return url.toString()
   }
 
   private sendAuth() {
@@ -997,12 +1082,85 @@ export class WebSocketTransport implements Transport {
   }
 
   private sendReconnectRequest() {
+    if (!this.reconnectContext.roomId || !this.reconnectContext.playerId) {
+      console.warn('missing reconnect context; cannot request reconnect payload')
+      return
+    }
+
     this.sendRaw(this.createEnvelope('reconnect.request', {
       room_id: this.reconnectContext.roomId,
       player_id: this.reconnectContext.playerId,
       last_seq: this.lastInboundSeq,
       session_token: this.reconnectContext.sessionToken,
     }))
+  }
+
+  private beginReconnectNegotiation() {
+    if (this.reconnectDisabled) {
+      return
+    }
+
+    this.reconnectNegotiationActive = true
+    this.reconnectRetryRequested = false
+    this.reconnectRequestAttempts = 0
+    this.stopHeartbeat()
+    this.clearReconnectRequestTimer()
+    this.setStatus('reconnecting')
+    this.sendReconnectRequest()
+    this.scheduleReconnectRequestRetry()
+  }
+
+  private completeReconnectNegotiation() {
+    this.reconnectNegotiationActive = false
+    this.reconnectRetryRequested = false
+    this.reconnectRequestAttempts = 0
+    this.reconnectDisabled = false
+    this.clearReconnectRequestTimer()
+    this.setStatus('open')
+    this.startHeartbeat()
+    this.flushQueue()
+  }
+
+  private failReconnectNegotiation(reason: string) {
+    this.reconnectNegotiationActive = false
+    this.reconnectRetryRequested = false
+    this.reconnectDisabled = true
+    this.clearReconnectRequestTimer()
+    this.stopHeartbeat()
+    console.warn(reason)
+    useUIStore.getState().setConnectionFailureReason(reason)
+    this.setStatus('error')
+  }
+
+  private scheduleReconnectRequestRetry() {
+    this.clearReconnectRequestTimer()
+    this.reconnectRequestTimer = globalThis.setTimeout(() => {
+      this.reconnectRequestTimer = null
+
+      if (!this.reconnectNegotiationActive) {
+        return
+      }
+
+      if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+        return
+      }
+
+      if (this.reconnectRequestAttempts >= 3) {
+        this.failReconnectNegotiation('reconnect request timed out')
+        return
+      }
+
+      this.reconnectRequestAttempts += 1
+      this.sendReconnectRequest()
+      this.scheduleReconnectRequestRetry()
+    }, 1000)
+  }
+
+  private clearReconnectRequestTimer() {
+    if (this.reconnectRequestTimer !== null) {
+      globalThis.clearTimeout(this.reconnectRequestTimer)
+      this.reconnectRequestTimer = null
+    }
   }
 
   private handleMessage(data: unknown) {
@@ -1030,6 +1188,15 @@ export class WebSocketTransport implements Transport {
 
     for (const handler of this.handlers) {
       handler(parsed as IncomingMessage)
+    }
+
+    if (parsed.t === 'reconnect.catchup' || parsed.t === 'reconnect.snapshot') {
+      if (this.reconnectRetryRequested) {
+        this.reconnectRetryRequested = false
+        return
+      }
+
+      this.completeReconnectNegotiation()
     }
   }
 
@@ -1164,6 +1331,7 @@ export function createTransport(config: TransportConfig): Transport {
     config.ws.url,
     config.ws.token,
     config.ws.clientVersion,
+    config.ws.playerId ?? '',
     config.ws.reconnect,
     config.ws.heartbeatIntervalMs,
     config.ws.onStatusChange,

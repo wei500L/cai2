@@ -12,6 +12,7 @@ from app.protocol import (
     Envelope,
     PhaseChangePayload,
     ProtocolError,
+    ReplayAIDiaryRevealPayload,
     deserialize_json,
     make_envelope,
     parse_incoming,
@@ -154,6 +155,7 @@ def test_make_envelope_for_phase_change_has_complete_fields() -> None:
         arbitrate_phase=ArbitratePhase.battle,
         phase_duration_ms=30_000,
         phase_started_at_ms=1_000,
+        server_time_ms=2_000,
     )
 
     envelope = make_envelope(
@@ -183,6 +185,7 @@ def test_make_envelope_generates_id_and_seq_when_omitted() -> None:
             arbitrate_phase=None,
             phase_duration_ms=30_000,
             phase_started_at_ms=1_000,
+            server_time_ms=2_000,
         ),
         clock=FrozenClock(2_000),
     )
@@ -201,7 +204,11 @@ def test_outgoing_payload_route_table_covers_expected_types() -> None:
         "room.joined",
         "room.player_join",
         "room.player_leave",
+        "room.snapshot",
+        "room.player_takeover",
+        "room.player_resume",
         "room.start",
+        "room.finished",
         "phase.change",
         "turn.begin",
         "action.broadcast",
@@ -213,6 +220,7 @@ def test_outgoing_payload_route_table_covers_expected_types() -> None:
         "ai.thinking",
         "ai.speak",
         "ai.reaction",
+        "replay.ai_diary_reveal",
         "reconnect.catchup",
         "reconnect.snapshot",
         "error.message",
@@ -222,11 +230,24 @@ def test_outgoing_payload_route_table_covers_expected_types() -> None:
     )
 
 
+def test_replay_ai_diary_reveal_payload_validates_entries() -> None:
+    payload = ReplayAIDiaryRevealPayload(
+        room_id="room-1",
+        faction_id=FactionId.starlight,
+        entries=[],
+    )
+
+    assert payload.t == "replay.ai_diary_reveal"
+    assert payload.room_id == "room-1"
+
+
 def test_optional_protocol_fields_are_accepted() -> None:
     from app.protocol.outgoing import (
         ActionPrivateBroadcastPayload,
         AIReactionPayload,
         AISpeakPayload,
+        ReconnectCatchupPayload,
+        ReconnectSnapshotPayload,
         ResolveEventsPayload,
     )
 
@@ -266,8 +287,24 @@ def test_optional_protocol_fields_are_accepted() -> None:
         arbitrate_phase=None,
         phase_duration_ms=30_000,
         phase_started_at_ms=1_000,
+        server_time_ms=2_000,
         is_paused=True,
     ).is_paused is True
+
+    assert ReconnectCatchupPayload(
+        room_id="room-1",
+        from_seq=10,
+        to_seq=12,
+        server_time_ms=2_000,
+        messages=[],
+    ).to_seq == 12
+
+    assert ReconnectSnapshotPayload(
+        room_id="room-1",
+        server_time_ms=2_000,
+        full_state={"room": {"id": "room-1"}},
+        seq=12,
+    ).seq == 12
 
 
 def test_protocol_payloads_use_strict_validation() -> None:

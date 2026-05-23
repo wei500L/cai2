@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { WebSocketTransport } from '../transport'
 import type { OutgoingMessage } from '../types'
+import { useUIStore } from '@/store/uiStore'
 
 type SocketHandler<T> = ((event: T) => void) | null
 
@@ -109,6 +110,21 @@ describe('WebSocketTransport', () => {
       },
     })
     expect(statuses).toEqual(['connecting', 'open'])
+  })
+
+  it('appends player_id to the websocket url when provided', () => {
+    const transport = new WebSocketTransport(
+      'ws://localhost:8000/ws',
+      'test-token',
+      '1.0.0',
+      'player-42',
+      { enabled: false },
+    )
+
+    transport.connect()
+    const socket = FakeWebSocket.instances[0]
+
+    expect(socket.url).toBe('ws://localhost:8000/ws?token=test-token&player_id=player-42')
   })
 
   it('updates lastInboundSeq when a message has seq', () => {
@@ -250,5 +266,28 @@ describe('WebSocketTransport', () => {
         session_token: 'session_1',
       },
     })
+  })
+
+  it('fails reconnect negotiation after three unanswered retries', () => {
+    const transport = new WebSocketTransport(
+      'ws://localhost:8000/ws',
+      undefined,
+      '1.0.0',
+      { enabled: true, baseDelayMs: 1000, maxDelayMs: 30000, maxAttempts: 2 },
+    )
+
+    transport.connect()
+    const firstSocket = FakeWebSocket.instances[0]
+    firstSocket.open()
+    firstSocket.serverClose()
+    vi.advanceTimersByTime(1000)
+
+    const reconnectSocket = FakeWebSocket.instances[1]
+    reconnectSocket.open()
+
+    vi.advanceTimersByTime(4000)
+
+    expect(transport.getStatus()).toBe('error')
+    expect(useUIStore.getState().connectionFailureReason).toBe('reconnect request timed out')
   })
 })

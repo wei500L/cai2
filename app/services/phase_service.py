@@ -76,10 +76,12 @@ class PhaseService:
         clock: Clock,
         *,
         on_settlement_required: Callable[[str, int, int], Awaitable[None]] | None = None,
+        on_room_finished: Callable[[str], Awaitable[None]] | None = None,
     ) -> None:
         self._repos = repos
         self._clock = clock
         self._on_settlement_required = on_settlement_required
+        self._on_room_finished = on_room_finished
 
     async def begin_turn(self, room_id: str, epoch: int, turn: int) -> EpochTurn:
         room = await self._get_room_or_raise(room_id)
@@ -151,6 +153,8 @@ class PhaseService:
             room.current = current
             await self._repos.rooms.update(room)
             await self._append_phase_change_event(room_id, current, new_phase="finished")
+            if self._on_room_finished is not None:
+                await self._on_room_finished(room_id)
             return current
 
         next_phase, next_arbitrate_phase, duration_ms = self._next_transition(current)
@@ -245,6 +249,8 @@ class PhaseService:
             if player.kind == PlayerKind.human
         ]
         for player in human_players:
+            if getattr(player, "ai_takeover", False):
+                continue
             lock_count = await self._repos.actions.count_by_player_turn(
                 room.id,
                 player.id,
@@ -284,6 +290,7 @@ class PhaseService:
         new_phase: str | None = None,
         debug_forced: bool = False,
     ) -> None:
+        server_time_ms = self._clock.now_ms()
         payload: dict[str, object] = {
             "new_phase": new_phase or current.phase.value,
             "arbitrate_phase": (
@@ -293,6 +300,7 @@ class PhaseService:
             "turn": current.turn,
             "phase_duration_ms": current.phase_duration_ms,
             "phase_started_at_ms": current.phase_started_at_ms,
+            "server_time_ms": server_time_ms,
         }
         if include_turn_begin:
             payload["turn_begin"] = {
@@ -300,8 +308,12 @@ class PhaseService:
                 "epoch": current.epoch,
                 "turn": current.turn,
                 "phase": current.phase.value,
+                "arbitrate_phase": (
+                    current.arbitrate_phase.value if current.arbitrate_phase is not None else None
+                ),
                 "phase_duration_ms": current.phase_duration_ms,
                 "phase_started_at_ms": current.phase_started_at_ms,
+                "server_time_ms": server_time_ms,
             }
         if debug_forced:
             payload["debug_forced"] = True

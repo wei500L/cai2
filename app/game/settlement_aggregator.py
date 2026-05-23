@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from typing import Any, cast
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.clock import Clock
 from app.domain.enums import FactionId
 from app.domain.factions import FACTION_META
 from app.domain.models import (
+    DiaryEntry,
     FactionState,
     GameAction,
     GameEvent,
@@ -28,6 +29,7 @@ _PERSONALITY_KEYS = (
     "trust_base",
     "honor_code",
 )
+_MAX_DIARY_MEMORY_DEPTH = 80
 
 
 class SettlementInput(BaseModel):
@@ -48,6 +50,7 @@ class SettlementInput(BaseModel):
     military_orders: list[MilitaryAction]
     intel_actions: list[IntelAction]
     recent_events: list[GameEvent]
+    faction_recent_diaries: dict[FactionId, list[DiaryEntry]] = Field(default_factory=dict)
     faction_personality_summary: dict[FactionId, dict[str, Any]]
     relationship_summary_text: str
     faction_stats_summary_text: str
@@ -114,6 +117,7 @@ class SettlementAggregator:
             turn=turn,
             recent_event_window=recent_event_window,
         )
+        faction_recent_diaries = await self._load_recent_diaries(room_id)
 
         return SettlementInput(
             room_id=room_id,
@@ -131,6 +135,7 @@ class SettlementAggregator:
             military_orders=cast(list[MilitaryAction], action_buckets["military"]),
             intel_actions=cast(list[IntelAction], action_buckets["intel"]),
             recent_events=recent_events,
+            faction_recent_diaries=faction_recent_diaries,
             faction_personality_summary=_build_faction_personality_summary(),
             relationship_summary_text=self._build_relationship_summary_text(relationships),
             faction_stats_summary_text=self._build_faction_stats_summary_text(factions),
@@ -179,6 +184,18 @@ class SettlementAggregator:
 
         previous_epoch, previous_turn = previous_key
         return await self._repos.events.list_by_turn(room_id, previous_epoch, previous_turn)
+
+    async def _load_recent_diaries(self, room_id: str) -> dict[FactionId, list[DiaryEntry]]:
+        diaries: dict[FactionId, list[DiaryEntry]] = {}
+        for faction_id, meta in FACTION_META.items():
+            depth = int(meta.personality.get("memory_depth", 0))
+            max_entries = min(max(depth, 0), _MAX_DIARY_MEMORY_DEPTH)
+            diaries[faction_id] = await self._repos.diaries.list_recent(
+                room_id,
+                faction_id,
+                max_entries=max_entries,
+            )
+        return diaries
 
     def _build_relationship_summary_text(self, relationships: list[Relationship]) -> str:
         if not relationships:

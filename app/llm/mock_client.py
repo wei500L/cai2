@@ -82,6 +82,10 @@ def _default_settlement_output(user_prompt: str) -> dict[str, Any]:
                 "kind": "reaction",
                 "content": "我方将审慎评估局势, 并要求各方保持克制。",
                 "target_faction": primary,
+                "internal_thought": (
+                    "公开保持克制, 但我会把本回合的试探记录进账本, "
+                    "等局势更清楚时再决定是否反制。"
+                ),
             }
         )
 

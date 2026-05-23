@@ -4,7 +4,8 @@ from starlette.middleware.cors import CORSMiddleware
 
 from app.api.rest.debug import router as debug_router
 from app.api.rest.health import router as health_router
-from app.api.websocket import router as websocket_router
+from app.api.websocket.gateway import gateway
+from app.api.websocket.gateway import router as websocket_router
 from app.core.config import get_settings
 from app.core.errors import (
     DiplomacyError,
@@ -30,6 +31,16 @@ if settings.env == "dev":
 app.include_router(health_router)
 app.include_router(debug_router)
 app.include_router(websocket_router)
+
+
+@app.on_event("startup")
+async def startup() -> None:
+    await gateway.startup()
+
+
+@app.on_event("shutdown")
+async def shutdown() -> None:
+    await gateway.shutdown()
 
 
 @app.exception_handler(DiplomacyError)

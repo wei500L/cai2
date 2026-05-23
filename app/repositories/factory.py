@@ -6,6 +6,7 @@ from pydantic import BaseModel, ConfigDict
 
 from app.repositories.base import (
     ActionLogRepository,
+    DiaryRepository,
     EventLogRepository,
     GameStateRepository,
     MessageLogRepository,
@@ -16,6 +17,7 @@ from app.repositories.base import (
 )
 from app.repositories.memory import (
     MemoryActionLogRepository,
+    MemoryDiaryRepository,
     MemoryEventLogRepository,
     MemoryGameStateRepository,
     MemoryMessageLogRepository,
@@ -37,6 +39,7 @@ class Repositories(BaseModel):
     events: EventLogRepository
     settlements: SettlementRepository
     replays: ReplayRepository
+    diaries: DiaryRepository
 
 
 def make_repositories(env: Literal["memory", "postgres"]) -> Repositories:
@@ -50,6 +53,7 @@ def make_repositories(env: Literal["memory", "postgres"]) -> Repositories:
             events=MemoryEventLogRepository(),
             settlements=MemorySettlementRepository(),
             replays=MemoryReplayRepository(),
+            diaries=MemoryDiaryRepository(),
         )
 
     raise NotImplementedError("postgres backend not wired yet; use 'memory' in MVP")

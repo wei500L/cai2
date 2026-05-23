@@ -5,6 +5,7 @@ import { MAX_EPOCHS } from '@/mock/gameState'
 import type { EventKind, EventPriority, GameEvent, PrivateMessage, SpeechEvent } from '@/mock/types'
 import type { MockTransport } from '@/protocol/transport'
 import { gameStoreApi } from '@/store/gameStore'
+import { getRemainingMs } from '@/utils/serverClock'
 import { mulberry32, pickOne, randomInt, weightedPick } from '@/utils/random'
 
 const DEFAULT_LOOP_SEED = 9_197
@@ -78,7 +79,7 @@ function pushPhaseChangeEvent(transport: MockTransport, end = false) {
     payload: {
       phase: epoch.phase,
       arbitratePhase: epoch.arbitratePhase,
-      remainingMs: epoch.phaseDurationMs,
+      remainingMs: Math.max(0, getRemainingMs(epoch.phaseStartedAt, epoch.phaseDurationMs)),
       end,
     },
     narration: end ? '第八纪元裁决完成，模拟战局进入封存状态' : getPhaseChangeNarration(),
@@ -247,7 +248,7 @@ function isTerminalEpochReady() {
     epoch.id >= MAX_EPOCHS &&
     epoch.phase === 'arbitrate' &&
     epoch.arbitratePhase === 'summary' &&
-    epoch.phaseDurationMs <= 0
+    getRemainingMs(epoch.phaseStartedAt, epoch.phaseDurationMs) <= 0
   )
 }
 
@@ -295,13 +296,18 @@ export function startMockGameLoop(transport: MockTransport, seed = DEFAULT_LOOP_
       if (isTerminalEpochReady()) {
         transport.emitPhase(gameStoreApi.getState().epoch, true)
         pushPhaseChangeEvent(transport, true)
+        transport.emitRoomFinished('第八纪元裁决完成，模拟战局进入封存状态，复盘即将开启。')
         stop()
         return
       }
 
       const afterTick = gameStoreApi.getState()
+      const remainingMs = getRemainingMs(
+        afterTick.epoch.phaseStartedAt,
+        afterTick.epoch.phaseDurationMs,
+      )
 
-      if (afterTick.epoch.phaseDurationMs <= 0) {
+      if (remainingMs <= 0) {
         transport.advancePhase()
         pushPhaseChangeEvent(transport)
         nextRandomEventAt = getNextRandomEventAt(rng, now)

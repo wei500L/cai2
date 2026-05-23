@@ -2,21 +2,35 @@ import type { CSSProperties } from 'react'
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { factionTokens } from '@/components/hudTheme'
+import type { FactionId } from '@/mock/factions'
 import type { AIInnerThought, ReplayTimelineNode } from '@/mock/replay'
+import type { DiaryEntry } from '@/protocol/types'
+import { useGameStore } from '@/store/gameStore'
 import { formatReplayTime, getFactionName } from './replayViewUtils'
 
 type AIInnerThoughtPanelProps = {
   thoughts: AIInnerThought[]
   replayTime: ReplayTimelineNode
+  currentFocusFaction?: FactionId
 }
 
-export function AIInnerThoughtPanel({ thoughts, replayTime }: AIInnerThoughtPanelProps) {
+export function AIInnerThoughtPanel({
+  thoughts,
+  replayTime,
+  currentFocusFaction,
+}: AIInnerThoughtPanelProps) {
+  const aiDiaries = useGameStore((state) => state.aiDiaries)
+  const hasDiariesRevealed = useGameStore((state) => state.hasDiariesRevealed())
   const currentThoughts = useMemo(
     () =>
-      thoughts.filter(
-        (thought) => thought.epoch === replayTime.epoch && thought.turn === replayTime.turn,
-      ),
-    [replayTime.epoch, replayTime.turn, thoughts],
+      selectReplayThoughts({
+        thoughts,
+        aiDiaries,
+        hasDiariesRevealed,
+        replayTime,
+        currentFocusFaction,
+      }),
+    [aiDiaries, currentFocusFaction, hasDiariesRevealed, replayTime, thoughts],
   )
   const [activeIndex, setActiveIndex] = useState(0)
   const displayIndex = activeIndex % Math.max(1, currentThoughts.length)
@@ -110,4 +124,47 @@ function TypewriterText({ text }: { text: string }) {
       <span className="ml-1 text-[color:var(--thought-glow)]">_</span>
     </p>
   )
+}
+
+export function selectReplayThoughts({
+  thoughts,
+  aiDiaries,
+  hasDiariesRevealed,
+  replayTime,
+  currentFocusFaction,
+}: {
+  thoughts: AIInnerThought[]
+  aiDiaries: Record<FactionId, DiaryEntry[]>
+  hasDiariesRevealed: boolean
+  replayTime: ReplayTimelineNode
+  currentFocusFaction?: FactionId
+}): AIInnerThought[] {
+  const nodeMatches = (epoch: number, turn: number) =>
+    epoch === replayTime.epoch && turn === replayTime.turn
+
+  if (currentFocusFaction) {
+    if (hasDiariesRevealed && aiDiaries[currentFocusFaction]?.length) {
+      const diaryThoughts = aiDiaries[currentFocusFaction]
+        .filter((entry) => nodeMatches(entry.epoch, entry.turn))
+        .map((entry) => ({
+          factionId: currentFocusFaction,
+          epoch: entry.epoch,
+          turn: entry.turn,
+          text: entry.internal_thought,
+        }))
+
+      if (diaryThoughts.length > 0) {
+        return diaryThoughts
+      }
+    }
+
+    return thoughts.filter(
+      (thought) =>
+        thought.factionId === currentFocusFaction &&
+        thought.epoch === replayTime.epoch &&
+        thought.turn === replayTime.turn,
+    )
+  }
+
+  return thoughts.filter((thought) => nodeMatches(thought.epoch, thought.turn))
 }

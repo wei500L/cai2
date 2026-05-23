@@ -10,6 +10,8 @@ from app.core.logging import get_logger
 from app.domain.enums import EventKind, EventPriority, GamePhase, VisibilityScope
 from app.domain.models import (
     AISpeechItem,
+    BattleEvent,
+    DiaryEntry,
     FactionState,
     GameEvent,
     MapRegion,
@@ -18,11 +20,13 @@ from app.domain.models import (
     SettlementResult,
     Treaty,
 )
+from app.game.map_neighbors import build_region_neighbors
 from app.game.relationships_init import relationship_status_for_value
 from app.game.rule_resolver import RuleResolver
 from app.game.settlement_aggregator import SettlementAggregator, SettlementInput
 from app.llm.client import LLMClient, LLMRequest
 from app.llm.output_parser import ModelOutputParser
+from app.llm.output_schema import SettlementModelOutput
 from app.llm.prompt_builder import PromptBuilder
 from app.llm.retry import call_with_retry
 from app.repositories.factory import Repositories
@@ -109,6 +113,13 @@ class SettlementService:
 
         self._log_step(room_id, epoch, turn, "resolve_rules")
         settlement_result = self._rule_resolver.resolve(settlement_input, model_output)
+
+        self._log_step(room_id, epoch, turn, "write_diary")
+        try:
+            await self._write_diary_entries(room_id, epoch, turn, model_output)
+        except Exception as error:
+            self._log_repo_error(room_id, epoch, turn, "write_diary", error)
+            raise DiplomacyError("failed to write diary entries") from error
 
         self._log_step(room_id, epoch, turn, "save_settlement")
         try:
@@ -213,6 +224,28 @@ class SettlementService:
             _apply_treaty_changes(settlement_input.treaties_snapshot, result),
         )
 
+    async def _write_diary_entries(
+        self,
+        room_id: str,
+        epoch: int,
+        turn: int,
+        model_output: SettlementModelOutput,
+    ) -> None:
+        for item in model_output.ai_speeches:
+            thought = (item.internal_thought or "").strip() or "（无内心独白）"  # noqa: RUF001
+            await self._repos.diaries.append(
+                DiaryEntry(
+                    faction_id=item.faction_id,
+                    epoch=epoch,
+                    turn=turn,
+                    internal_thought=thought,
+                    emotion="（未知）",  # noqa: RUF001
+                    triggers=[],
+                    created_at_ms=self._clock.now_ms(),
+                ),
+                room_id=room_id,
+            )
+
     @staticmethod
     def _log_step(room_id: str, epoch: int, turn: int, step: str) -> None:
         logger.info(
@@ -253,6 +286,8 @@ def _build_map_diff(
     input: SettlementInput,
 ) -> dict[str, Any]:
     before_regions = {region.id: region for region in input.regions_snapshot}
+    projected_regions = _apply_region_changes(input.regions_snapshot, result)
+    projected_relationships = _apply_relationship_changes(input.relationships_snapshot, result)
     changes = []
     for change in result.region_changes:
         before = before_regions.get(change.region_id)
@@ -262,21 +297,121 @@ def _build_map_diff(
                 "prev_owner": _value(change.prev_owner),
                 "new_owner": _value(change.new_owner),
                 "transition": change.transition,
+                "animation_params": _animation_params_for_transition(change.transition),
                 "previous": _dump_model(before) if before is not None else None,
             }
         )
 
     return {
         "changes": changes,
-        "border_updates": [
+        "border_updates": _build_border_updates(
+            projected_regions,
+            projected_relationships,
+            result.battle_results,
+        ),
+    }
+
+
+def _build_border_updates(
+    regions: list[MapRegion],
+    relationships: list[Relationship],
+    battle_results: list[BattleEvent],
+) -> list[dict[str, Any]]:
+    adjacency_pairs = _adjacent_faction_pairs(regions)
+    relationship_by_pair = _best_relationship_by_pair(relationships)
+    battle_pairs = {
+        _sorted_faction_pair(battle.attacker, battle.defender)
+        for battle in battle_results
+        if getattr(battle, "attacker", None) is not None
+        and getattr(battle, "defender", None) is not None
+    }
+
+    updates: list[dict[str, Any]] = []
+    for between in sorted(adjacency_pairs):
+        relationship = relationship_by_pair.get(between)
+        tension = 0.0
+        visual_state = "calm"
+        if relationship is not None and relationship.status in {"hostile", "wary"}:
+            tension = round(_clamp(abs(relationship.value) / 100.0, 0.0, 1.0), 4)
+            visual_state = "hostile_sparking" if relationship.status == "hostile" else "tense"
+            if between in battle_pairs and relationship.status == "hostile":
+                visual_state = "war_frontline"
+
+        updates.append(
             {
-                "region_id": item["region_id"],
-                "prev_owner": item["prev_owner"],
-                "new_owner": item["new_owner"],
-                "transition": item["transition"],
+                "between": [between[0], between[1]],
+                "tension": tension,
+                "visual_state": visual_state,
             }
-            for item in changes
-        ],
+        )
+
+    return updates
+
+
+def _adjacent_faction_pairs(regions: list[MapRegion]) -> set[tuple[str, str]]:
+    regions_by_id = {region.id: region for region in regions}
+    pairs: set[tuple[str, str]] = set()
+
+    for region in regions:
+        if region.owner is None or not region.neighbors:
+            continue
+
+        for neighbor_id in region.neighbors:
+            neighbor = regions_by_id.get(neighbor_id)
+            if neighbor is None or neighbor.owner is None or neighbor.id == region.id:
+                continue
+            if neighbor.owner == region.owner:
+                continue
+
+            pairs.add(_sorted_faction_pair(region.owner, neighbor.owner))
+
+    return pairs
+
+
+def _best_relationship_by_pair(
+    relationships: list[Relationship],
+) -> dict[tuple[str, str], Relationship]:
+    relationship_by_pair: dict[tuple[str, str], Relationship] = {}
+
+    for relationship in relationships:
+        pair = _sorted_faction_pair(relationship.from_faction, relationship.to_faction)
+        existing = relationship_by_pair.get(pair)
+        if existing is None or (
+            _relationship_priority(relationship) > _relationship_priority(existing)
+        ):
+            relationship_by_pair[pair] = relationship
+
+    return relationship_by_pair
+
+
+def _relationship_priority(relationship: Relationship) -> tuple[float, int]:
+    status_rank = {
+        "hostile": 3,
+        "wary": 2,
+        "neutral": 1,
+        "friendly": 0,
+        "allied": 0,
+    }
+    return (-relationship.value, status_rank.get(relationship.status, 0))
+
+
+def _sorted_faction_pair(left: str, right: str) -> tuple[str, str]:
+    ordered = sorted((str(left), str(right)))
+    return ordered[0], ordered[1]
+
+
+def _animation_params_for_transition(transition: str) -> dict[str, Any]:
+    presets: dict[str, tuple[str, float, int]] = {
+        "conquest": ("inward", 1.2, 48),
+        "cede": ("outward", 0.95, 32),
+        "negotiated": ("drift", 0.7, 20),
+        "abandoned": ("fade", 0.55, 12),
+    }
+    direction, speed, particles = presets.get(transition, ("drift", 0.8, 16))
+    return {
+        "direction": direction,
+        "speed": speed,
+        "particles": particles,
     }
 
 
@@ -311,6 +446,65 @@ def _build_ai_output_events(ai_output: AIOutputBundle) -> list[dict[str, Any]]:
         *ai_output.private_message_events,
         *ai_output.ai_reaction_events,
     ]
+
+
+def compute_border_tension(
+    regions: list[MapRegion],
+    relationships: list[Relationship],
+) -> list[dict[str, Any]]:
+    if not regions:
+        return []
+
+    fallback_neighbors = build_region_neighbors(regions)
+    neighbor_map = {
+        region.id: list(getattr(region, "neighbors", None) or fallback_neighbors.get(region.id, []))
+        for region in regions
+    }
+
+    regions_by_id = {region.id: region for region in regions}
+    relationship_values: dict[tuple[str, str], list[float]] = {}
+    for relationship in relationships:
+        pair = _sorted_faction_pair(relationship.from_faction, relationship.to_faction)
+        relationship_values.setdefault(pair, []).append(float(relationship.value))
+
+    border_pairs: dict[tuple[str, str], float] = {}
+    for region in regions:
+        if region.owner is None:
+            continue
+
+        for neighbor_id in neighbor_map.get(region.id, []):
+            neighbor = regions_by_id.get(neighbor_id)
+            if neighbor is None or neighbor.owner is None or neighbor.owner == region.owner:
+                continue
+
+            pair = _sorted_faction_pair(region.owner, neighbor.owner)
+            values = relationship_values.get(pair)
+            if not values:
+                continue
+
+            border_pairs.setdefault(pair, sum(values) / len(values))
+
+    tensions: list[dict[str, Any]] = []
+    for pair, relationship_value in sorted(border_pairs.items()):
+        tension = round(_clamp((100.0 - relationship_value) / 2.0, 0.0, 100.0))
+        if tension < 35:
+            visual_state = "calm"
+        elif tension < 60:
+            visual_state = "watch"
+        elif tension < 80:
+            visual_state = "tense"
+        else:
+            visual_state = "critical"
+
+        tensions.append(
+            {
+                "between": [pair[0], pair[1]],
+                "tension": tension,
+                "visual_state": visual_state,
+            }
+        )
+
+    return tensions
 
 
 def _events_for_log(result: SettlementResult, input: SettlementInput) -> list[GameEvent]:
