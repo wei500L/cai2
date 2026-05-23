@@ -27,6 +27,7 @@ import { attachAdapter } from '@/protocol/adapter'
 import { ActionDispatcher } from '@/protocol/dispatcher'
 import { createTransport } from '@/protocol/transport'
 import type { MockTransport, Transport, TransportStatus } from '@/protocol/transport'
+import type { IncomingMessage } from '@/protocol/types'
 import { gameStoreApi, useGameStore } from '@/store/gameStore'
 import { useUIStore } from '@/store/uiStore'
 import { useGlobalHotkeys } from '@/hooks/useGlobalHotkeys'
@@ -38,6 +39,14 @@ const DENSE_BREAKPOINT = 1280
 type TransportDebugSource = Transport & {
   getLastInboundSeq?: () => number
   getQueueDepth?: () => number
+}
+
+type ReconnectableTransport = Transport & {
+  setReconnectContext?: (context: {
+    roomId?: string
+    playerId?: string
+    sessionToken?: string
+  }) => void
 }
 
 function publishConnectionDebugSnapshot(transport: Transport) {
@@ -142,12 +151,30 @@ export default function GamePage() {
   useEffect(() => {
     initGame()
     let transport: Transport | null = null
+    let roomId = 'mock-room'
+    let playerId = ''
     const handleStatusChange = (status: TransportStatus) => {
       setConnectionStatus(status)
 
       if (transport) {
         publishConnectionDebugSnapshot(transport)
       }
+    }
+    const handleReconnectContextMessage = (message: IncomingMessage) => {
+      if (message.t === 'conn.auth.ok') {
+        playerId = message.p.player_id
+      }
+
+      if ('room_id' in message.p && typeof message.p.room_id === 'string') {
+        roomId = message.p.room_id
+      }
+
+      const reconnectable = transport as ReconnectableTransport | null
+      reconnectable?.setReconnectContext?.({
+        roomId,
+        playerId,
+        sessionToken: ENV.wsToken,
+      })
     }
 
     transport = createTransport(
@@ -169,11 +196,12 @@ export default function GamePage() {
 
     setConnectionStatus('idle')
     publishConnectionDebugSnapshot(activeTransport)
-    activeTransport.connect()
     const detachAdapter = attachAdapter(activeTransport, gameStoreApi)
     ActionDispatcher.setTransport(activeTransport)
     const handleDebugMessage = () => publishConnectionDebugSnapshot(activeTransport)
     activeTransport.on(handleDebugMessage)
+    activeTransport.on(handleReconnectContextMessage)
+    activeTransport.connect()
     const stopMockGameLoop = ENV.useWs
       ? undefined
       : startMockGameLoop(activeTransport as MockTransport)
@@ -182,6 +210,7 @@ export default function GamePage() {
       stopMockGameLoop?.()
       ActionDispatcher.setTransport(null)
       activeTransport.off(handleDebugMessage)
+      activeTransport.off(handleReconnectContextMessage)
       detachAdapter()
       activeTransport.disconnect()
     }

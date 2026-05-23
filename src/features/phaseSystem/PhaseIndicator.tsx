@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react'
 import { motion } from 'framer-motion'
+import { ConnectionBadge } from '@/components/ConnectionBadge'
 import { PixelButton } from '@/components/PixelButton'
 import { GlowPanel } from '@/components/GlowPanel'
 import { factionTokens, resolveFactionId } from '@/components/hudTheme'
@@ -81,6 +82,7 @@ export function PhaseIndicator() {
           >
             {isPaused ? '继续' : '暂停'}
           </PixelButton>
+          <ConnectionBadge />
           <PixelButton
             tone="ghost"
             className="px-2 py-1 text-[0.72rem] tracking-0"
