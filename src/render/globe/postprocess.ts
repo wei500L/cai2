@@ -13,8 +13,8 @@ import { Vector2 } from 'three'
 export type MoonComposer = EffectComposer & {
   __moonEffects: {
     bloom: BloomEffect
-    vignette: VignetteEffect
-    noise: NoiseEffect
+    vignette?: VignetteEffect
+    noise?: NoiseEffect
     effectPass: EffectPass
   }
 }
@@ -23,6 +23,7 @@ export type MoonBloomOptions = {
   strength?: number
   radius?: number
   threshold?: number
+  mipmapBlur?: boolean
   vignetteDarkness?: number
   noiseOpacity?: number
   noiseEnabled?: boolean
@@ -52,18 +53,27 @@ export function setupBloom(
     intensity: options.strength ?? 1.4,
     radius: options.radius ?? 0.6,
     luminanceThreshold: options.threshold ?? 0.85,
-    mipmapBlur: true,
+    mipmapBlur: options.mipmapBlur ?? true,
   })
-  const vignette = new VignetteEffect({
-    darkness: options.vignetteDarkness ?? 0.6,
-  })
-  const noise = new NoiseEffect({
-    blendFunction: BlendFunction.SCREEN,
-    premultiply: true,
-  })
-  noise.blendMode.opacity.value = options.noiseEnabled === false ? 0 : options.noiseOpacity ?? 0.06
+  const effects: Array<BloomEffect | VignetteEffect | NoiseEffect> = [bloom]
+  const vignetteDarkness = options.vignetteDarkness ?? 0
+  const vignette = vignetteDarkness > 0 ? new VignetteEffect({ darkness: vignetteDarkness }) : undefined
+  if (vignette) {
+    effects.push(vignette)
+  }
+  const noiseOpacity = options.noiseEnabled === false ? 0 : options.noiseOpacity ?? 0
+  const noise = noiseOpacity > 0
+    ? new NoiseEffect({
+        blendFunction: BlendFunction.SCREEN,
+        premultiply: true,
+      })
+    : undefined
+  if (noise) {
+    noise.blendMode.opacity.value = noiseOpacity
+    effects.push(noise)
+  }
 
-  const effectPass = new EffectPass(camera, bloom, vignette, noise)
+  const effectPass = new EffectPass(camera, ...effects)
   composer.addPass(effectPass)
   composer.__moonEffects = { bloom, vignette, noise, effectPass }
 

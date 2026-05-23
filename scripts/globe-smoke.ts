@@ -18,6 +18,10 @@ type SmokeMetrics = {
   scorchedCount: number
   activeExplosionHandles: number
   activeSmokeColumns: number
+  drawCalls: number
+  triangles: number
+  geometries: number
+  textures: number
   heapUsed: number | null
 }
 
@@ -85,7 +89,8 @@ async function waitForHttp(url: string, timeoutMs = 30_000) {
 }
 
 async function startDevServer(port: number) {
-  const child = spawn('npm', ['run', 'dev', '--', '--host', '127.0.0.1', '--port', String(port)], {
+  const viteBin = path.join(process.cwd(), 'node_modules', '.bin', process.platform === 'win32' ? 'vite.cmd' : 'vite')
+  const child = spawn(viteBin, ['--host', '127.0.0.1', '--port', String(port)], {
     cwd: process.cwd(),
     env: {
       ...process.env,
@@ -166,7 +171,7 @@ async function settleFrames(page: Page, ms: number) {
 async function assertFpsFloor(page: Page, quality: MapQuality, durationMs: number) {
   await callHarness(page, 'setQuality', quality)
   await page.waitForFunction((expected) => window.__DIPLOMACY_SMOKE__.metrics().quality === expected, quality)
-  await settleFrames(page, 1_000)
+  await settleFrames(page, 3_000)
 
   const samples: number[] = []
   const startedAt = Date.now()
@@ -177,8 +182,9 @@ async function assertFpsFloor(page: Page, quality: MapQuality, durationMs: numbe
 
   const min = Math.min(...samples)
   const avg = samples.reduce((sum, value) => sum + value, 0) / samples.length
+  const snapshot = await metrics(page)
   reportRows.push(
-    `<tr><td>${quality}</td><td>${avg.toFixed(1)}</td><td>${min.toFixed(1)}</td><td>${FPS_FLOORS[quality]}</td></tr>`,
+    `<tr><td>${quality}</td><td>${avg.toFixed(1)}</td><td>${min.toFixed(1)}</td><td>${FPS_FLOORS[quality]}</td><td>${snapshot.drawCalls}</td><td>${snapshot.triangles}</td><td>${snapshot.heapUsed ?? 'n/a'}</td></tr>`,
   )
   assertSmoke(
     min >= FPS_FLOORS[quality],
@@ -246,7 +252,7 @@ async function runRendererRoundTrips(page: Page) {
 }
 
 async function runScenario(page: Page) {
-  await page.goto('/game', { waitUntil: 'domcontentloaded' })
+  await page.goto('/game', { waitUntil: 'domcontentloaded', timeout: 60_000 })
   await page.waitForFunction(() => Boolean(window.__DIPLOMACY_SMOKE__))
   await callHarness(page, 'reset')
   await callHarness(page, 'create4v4Room')
@@ -312,7 +318,7 @@ async function writeReport(status: 'passed' | 'failed', error?: unknown) {
     <p>Assertions: ${assertions.length}</p>
     ${error ? `<h2>Error</h2><code>${escapeHtml(String(error instanceof Error ? error.stack ?? error.message : error))}</code>` : ''}
     <h2>FPS Samples</h2>
-    <table><thead><tr><th>Quality</th><th>Avg FPS</th><th>Min FPS</th><th>Floor</th></tr></thead><tbody>${reportRows.filter((row) => row.startsWith('<tr>')).join('\n')}</tbody></table>
+    <table><thead><tr><th>Quality</th><th>Avg FPS</th><th>Min FPS</th><th>Floor</th><th>Drawcalls</th><th>Triangles</th><th>Heap Used</th></tr></thead><tbody>${reportRows.filter((row) => row.startsWith('<tr>')).join('\n')}</tbody></table>
     <h2>Assertions</h2>
     <table><thead><tr><th>Name</th><th>Status</th><th>Detail</th></tr></thead><tbody>${assertionRows}</tbody></table>
     ${reportRows.filter((row) => !row.startsWith('<tr>')).join('\n')}
@@ -331,7 +337,12 @@ async function main() {
     devServer = await startDevServer(port)
     browser = await chromium.launch({
       headless: true,
-      args: ['--js-flags=--expose-gc', '--disable-background-timer-throttling'],
+      args: [
+        '--js-flags=--expose-gc',
+        '--disable-background-timer-throttling',
+        '--disable-frame-rate-limit',
+        '--disable-gpu-vsync',
+      ],
     })
     const page = await browser.newPage({ baseURL: `http://127.0.0.1:${port}`, viewport: { width: 1920, height: 1080 } })
     page.on('pageerror', (error) => consoleErrors.push(error.stack ?? error.message))

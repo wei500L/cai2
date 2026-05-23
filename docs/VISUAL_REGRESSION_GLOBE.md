@@ -29,3 +29,7 @@
    - 400ms: ease-out to `{lat: speaker_capital.lat, lng: speaker_capital.lng, altitude: current.altitude - 0.3}`
    - 1200ms: hold
    - 2000ms: ease-in back to overview
+
+## Final Composite
+
+One full-function composite capture should show the globe renderer in high quality with faction-colored hex territory, starfield at full density, one conventional blast, one nuke flash, five public speech ripples/arcs, scorched terrain with smoke columns still active, the settings panel quality segment visible, and the HUD event stream confirming the same turn. The expected visual balance is readable faction borders first, explosion and smoke effects second, and starfield/bloom as background accents only.

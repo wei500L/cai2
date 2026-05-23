@@ -31,13 +31,17 @@ export type GlobeQualityPreset = {
   hexResolution: number
   hexAltitudeScale: number
   bloomEnabled: boolean
+  bloomPostprocessEnabled: boolean
   bloomStrength: number
+  bloomMipmapBlur: boolean
   bloomRadius: number
   bloomThreshold: number
   starfieldDensity: number
   particleMultiplier: number
   smokeColumnEnabled: boolean
   cinematicMode: GlobeCinematicMode
+  renderScale: number
+  renderCellBudget: number
   estimatedCells: number
 }
 
@@ -46,39 +50,51 @@ export const globeQualityPresets: Record<MapQuality, GlobeQualityPreset> = {
     hexResolution: 3,
     hexAltitudeScale: 0.5,
     bloomEnabled: false,
+    bloomPostprocessEnabled: false,
     bloomStrength: 0,
+    bloomMipmapBlur: false,
     bloomRadius: 0.45,
     bloomThreshold: 0.9,
     starfieldDensity: 0.3,
     particleMultiplier: 0.4,
     smokeColumnEnabled: false,
     cinematicMode: 'focus_short',
+    renderScale: 0.55,
+    renderCellBudget: 96,
     estimatedCells: 162,
   },
   mid: {
     hexResolution: 4,
     hexAltitudeScale: 1,
     bloomEnabled: true,
+    bloomPostprocessEnabled: false,
     bloomStrength: 1,
+    bloomMipmapBlur: false,
     bloomRadius: 0.55,
     bloomThreshold: 0.85,
     starfieldDensity: 0.7,
     particleMultiplier: 0.7,
     smokeColumnEnabled: true,
     cinematicMode: 'focus_short',
+    renderScale: 0.75,
+    renderCellBudget: 144,
     estimatedCells: 642,
   },
   high: {
     hexResolution: 4,
     hexAltitudeScale: 1,
     bloomEnabled: true,
+    bloomPostprocessEnabled: false,
     bloomStrength: 1.4,
+    bloomMipmapBlur: false,
     bloomRadius: 0.6,
     bloomThreshold: 0.85,
     starfieldDensity: 1,
     particleMultiplier: 1,
     smokeColumnEnabled: true,
     cinematicMode: 'full',
+    renderScale: 1,
+    renderCellBudget: 144,
     estimatedCells: 642,
   },
 }

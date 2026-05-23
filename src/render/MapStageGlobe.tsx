@@ -114,8 +114,8 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
   }, [worldGeometry])
   const qualityPreset = globeQualityPresets[mapQuality]
   const renderRegions = useMemo(
-    () => sampleRegionsForQuality(regions, qualityPreset.estimatedCells),
-    [regions, qualityPreset.estimatedCells],
+    () => sampleRegionsForQuality(regions, qualityPreset.renderCellBudget),
+    [regions, qualityPreset.renderCellBudget],
   )
   const fxLoop = useFxLoop(
     published?.globe ?? null,
@@ -140,12 +140,27 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
         activeExplosionHandles: () => number
         activeSmokeColumns: () => number
         quality: () => string
+        rendererInfo: () => {
+          drawCalls: number
+          triangles: number
+          geometries: number
+          textures: number
+        }
       }
     }
     target.__DIPLOMACY_GLOBE_METRICS__ = {
       activeExplosionHandles: () => fxLoop.activeCount(),
       activeSmokeColumns: () => smokeColumnRef.current?.activeCount() ?? 0,
       quality: () => useUIStore.getState().mapQuality,
+      rendererInfo: () => {
+        const renderer = globeRef.current?.renderer() as WebGLRenderer | undefined
+        return {
+          drawCalls: renderer?.info.render.calls ?? 0,
+          triangles: renderer?.info.render.triangles ?? 0,
+          geometries: renderer?.info.memory.geometries ?? 0,
+          textures: renderer?.info.memory.textures ?? 0,
+        }
+      },
     }
 
     return () => {
@@ -177,9 +192,11 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
     const globeApi = globe as GlobeInstance & {
       globeImageUrl(url: string | null): GlobeInstance
       showGraticules?: (enabled: boolean) => GlobeInstance
+      enablePointerInteraction?: (enabled: boolean) => GlobeInstance
     }
 
     globeApi.globeImageUrl(null)
+    globeApi.enablePointerInteraction?.(false)
     globe
       .backgroundColor('#000')
       .showAtmosphere(false)
@@ -200,17 +217,24 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
 
     const initialPreset = globeQualityPresets[useUIStore.getState().mapQuality]
     const initialLighting = useMapStore.getState().lighting
+    renderer.setPixelRatio(
+      Math.max(0.5, (typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1) * initialPreset.renderScale),
+    )
     const bloomRig = setupBloom(renderer, scene, camera, {
       strength: initialPreset.bloomEnabled ? initialPreset.bloomStrength : 0,
+      mipmapBlur: initialPreset.bloomMipmapBlur,
       radius: initialPreset.bloomRadius,
       threshold: initialPreset.bloomThreshold,
-      vignetteDarkness: 0.6,
-      noiseOpacity: 0.06,
+      vignetteDarkness: 0,
+      noiseOpacity: 0,
       noiseEnabled: initialLighting.noiseEnabled,
     })
+    ;(bloomRig.composer as MoonComposer & { setPixelRatio?: (value: number) => void }).setPixelRatio?.(
+      Math.max(0.5, (typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1) * initialPreset.renderScale),
+    )
     bloomComposerRef.current = bloomRig.composer
     composerTargetRef.current = globe.postProcessingComposer() as unknown as ComposerBridge
-    if (initialPreset.bloomEnabled) {
+    if (initialPreset.bloomPostprocessEnabled) {
       composerBridgeRef.current = bindComposerBridge(composerTargetRef.current, bloomRig.composer)
     }
 
@@ -345,6 +369,25 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
       starfieldDensity: qualityPreset.starfieldDensity,
     })
     useMapStore.getState().setCinematicEnabled(mapQuality === 'high')
+
+    const globe = globeRef.current
+    if (globe) {
+      const renderer = globe.renderer() as WebGLRenderer
+      const devicePixelRatio = typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1
+      const pixelRatio = Math.max(0.5, devicePixelRatio * qualityPreset.renderScale)
+      renderer.setPixelRatio(pixelRatio)
+      const composer = bloomComposerRef.current as (MoonComposer & { setPixelRatio?: (value: number) => void }) | null
+      if (composer?.setPixelRatio) {
+        composer.setPixelRatio(pixelRatio)
+      }
+      if (composer && containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect()
+        composer.setSize(
+          Math.max(1, Math.round(rect.width * qualityPreset.renderScale)),
+          Math.max(1, Math.round(rect.height * qualityPreset.renderScale)),
+        )
+      }
+    }
   }, [mapQuality, qualityPreset])
 
   useEffect(() => {
@@ -433,9 +476,9 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
       return
     }
 
-    if (qualityPreset.bloomEnabled && composerTarget && !composerBridgeRef.current) {
+    if (qualityPreset.bloomPostprocessEnabled && composerTarget && !composerBridgeRef.current) {
       composerBridgeRef.current = bindComposerBridge(composerTarget, composer)
-    } else if (!qualityPreset.bloomEnabled && composerBridgeRef.current) {
+    } else if (!qualityPreset.bloomPostprocessEnabled && composerBridgeRef.current) {
       composerBridgeRef.current.restore()
       composerBridgeRef.current = null
     }
@@ -444,9 +487,12 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
     effects.bloom.intensity = qualityPreset.bloomEnabled ? qualityPreset.bloomStrength : 0
     effects.bloom.mipmapBlurPass.radius = qualityPreset.bloomRadius
     effects.bloom.luminanceMaterial.threshold = qualityPreset.bloomThreshold
-    effects.noise.blendMode.opacity.value = lighting.noiseEnabled ? 0.06 : 0
+    if (effects.noise) {
+      effects.noise.blendMode.opacity.value = lighting.noiseEnabled ? 0.06 : 0
+    }
   }, [
     qualityPreset.bloomEnabled,
+    qualityPreset.bloomPostprocessEnabled,
     qualityPreset.bloomStrength,
     qualityPreset.bloomRadius,
     qualityPreset.bloomThreshold,

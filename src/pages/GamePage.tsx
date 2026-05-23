@@ -71,6 +71,12 @@ type SmokeHarnessWindow = typeof window & {
   __DIPLOMACY_GLOBE_METRICS__?: {
     activeExplosionHandles: () => number
     activeSmokeColumns: () => number
+    rendererInfo?: () => {
+      drawCalls: number
+      triangles: number
+      geometries: number
+      textures: number
+    }
   }
 }
 
@@ -227,6 +233,12 @@ function installSmokeHarness() {
         scorchedCount: map.scorchedRegions.size,
         activeExplosionHandles: target.__DIPLOMACY_GLOBE_METRICS__?.activeExplosionHandles() ?? 0,
         activeSmokeColumns: target.__DIPLOMACY_GLOBE_METRICS__?.activeSmokeColumns() ?? 0,
+        ...(target.__DIPLOMACY_GLOBE_METRICS__?.rendererInfo?.() ?? {
+          drawCalls: 0,
+          triangles: 0,
+          geometries: 0,
+          textures: 0,
+        }),
         heapUsed: 'memory' in performance
           ? (performance as Performance & { memory?: { usedJSHeapSize?: number } }).memory?.usedJSHeapSize ?? null
           : null,
