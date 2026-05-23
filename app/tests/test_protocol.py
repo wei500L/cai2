@@ -131,9 +131,7 @@ def test_envelope_json_round_trip_is_stable() -> None:
 
 
 def test_parse_incoming_action_speak_routes_to_payload_model() -> None:
-    envelope = parse_incoming(
-        _raw_envelope("action.speak", _incoming_payloads()["action.speak"])
-    )
+    envelope = parse_incoming(_raw_envelope("action.speak", _incoming_payloads()["action.speak"]))
 
     assert isinstance(envelope.p, ActionSpeakPayload)
     assert envelope.p.targets == [FactionId.starlight]
@@ -234,6 +232,7 @@ def test_outgoing_payload_route_table_covers_expected_types() -> None:
         "resolve.stats_diff",
         "resolve.diplomatic_arcs",
         "resolve.event.explosion",
+        "resolve.scorched_diff",
         "resolve.ripple",
         "resolve.world_lighting",
         "ai.thinking",
@@ -355,18 +354,19 @@ def test_explosion_event_round_trip_is_stable() -> None:
         ts=458,
         seq=18,
         p=ExplosionPayload(
-            id="battle-1",
+            room_id="room-1",
+            epoch=1,
             turn=2,
-            attacker_faction=FactionId.ironCrown,
-            defender_faction=FactionId.starlight,
-            center_lat=12.5,
-            center_lng=34.5,
-            radius_km_estimate=120,
+            event_id="battle-1",
+            source_region_id="region-1",
             kind="conventional",
+            primary_hex_id="hex-1",
+            affected_hex_ids=["hex-1"],
+            scorched_turns=2,
+            fallout_severity=0.5,
+            economic_loss_pct=0.25,
+            narrative_hint="battle exploded",
             intensity=0.5,
-            ttl_ms=4_000,
-            casualties_estimate=5_000,
-            affected_hex_ids=[],
         ),
     )
 
@@ -460,32 +460,41 @@ def test_optional_protocol_fields_are_accepted() -> None:
         reaction="concerned",
     ).private_message == {"id": "pm-2"}
 
-    assert PhaseChangePayload(
-        room_id="room-1",
-        epoch=1,
-        turn=2,
-        phase=GamePhase.action,
-        arbitrate_phase=None,
-        phase_duration_ms=30_000,
-        phase_started_at_ms=1_000,
-        server_time_ms=2_000,
-        is_paused=True,
-    ).is_paused is True
+    assert (
+        PhaseChangePayload(
+            room_id="room-1",
+            epoch=1,
+            turn=2,
+            phase=GamePhase.action,
+            arbitrate_phase=None,
+            phase_duration_ms=30_000,
+            phase_started_at_ms=1_000,
+            server_time_ms=2_000,
+            is_paused=True,
+        ).is_paused
+        is True
+    )
 
-    assert ReconnectCatchupPayload(
-        room_id="room-1",
-        from_seq=10,
-        to_seq=12,
-        server_time_ms=2_000,
-        messages=[],
-    ).to_seq == 12
+    assert (
+        ReconnectCatchupPayload(
+            room_id="room-1",
+            from_seq=10,
+            to_seq=12,
+            server_time_ms=2_000,
+            messages=[],
+        ).to_seq
+        == 12
+    )
 
-    assert ReconnectSnapshotPayload(
-        room_id="room-1",
-        server_time_ms=2_000,
-        full_state={"room": {"id": "room-1"}},
-        seq=12,
-    ).seq == 12
+    assert (
+        ReconnectSnapshotPayload(
+            room_id="room-1",
+            server_time_ms=2_000,
+            full_state={"room": {"id": "room-1"}},
+            seq=12,
+        ).seq
+        == 12
+    )
 
 
 def test_world_geometry_event_round_trip_is_stable() -> None:

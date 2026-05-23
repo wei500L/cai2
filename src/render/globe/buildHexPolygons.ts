@@ -91,14 +91,17 @@ function buildGeometry(lat: number, lng: number) {
   }
 }
 
-function isScorched(region: HexPolygonRegion, scorchedRegions: ReadonlySet<string>) {
+function isScorched(
+  region: HexPolygonRegion,
+  scorchedRegions: ReadonlySet<string> | ReadonlyMap<string, unknown>,
+) {
   const hexId = getHexId(region)
   return scorchedRegions.has(region.id) || scorchedRegions.has(hexId)
 }
 
 export function buildHexPolygons(
   regions: HexPolygonRegion[],
-  scorchedRegions: ReadonlySet<string> = new Set<string>(),
+  scorchedRegions: ReadonlySet<string> | ReadonlyMap<string, unknown> = new Set<string>(),
 ): HexPolygonInput[] {
   return regions.map((region) => ({
     lat: getLat(region),
@@ -118,7 +121,7 @@ export function hexPolygonColor(region: HexPolygonInput) {
   return resolveHexPolygonColor(region)
 }
 
-export function hexPolygonAltitude(region: HexPolygonInput) {
+export function hexPolygonAltitude(region: HexPolygonInput, scorchedRegions?: ReadonlySet<string> | ReadonlyMap<string, unknown>) {
   const terrainBoost: Record<MapRegion['terrain'], number> = {
     mountain: 0.005,
     fortress: 0.004,
@@ -128,7 +131,14 @@ export function hexPolygonAltitude(region: HexPolygonInput) {
   }
 
   const value = 0.005 + region.elevation * 0.012 + terrainBoost[region.terrain]
-  return Number(clamp(value, 0.005, 0.02).toFixed(4))
+  const altitude = Number(clamp(value, 0.005, 0.02).toFixed(4))
+  if (!scorchedRegions) {
+    return altitude
+  }
+
+  return scorchedRegions.has(region.hexId) || scorchedRegions.has(region.regionId)
+    ? Number((altitude * 0.5).toFixed(4))
+    : altitude
 }
 
 export function hexPolygonMargin() {

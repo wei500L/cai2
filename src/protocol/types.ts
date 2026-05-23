@@ -387,6 +387,23 @@ export interface ExplosionEvent {
   kind: ExplosionKind
   ttl_ms: number
   created_at_ms?: number
+  affected_hex_ids: string[]
+  primary_hex_id: string
+  economic_loss_pct: number
+  narrative_hint: string
+}
+export type ScorchedChange = {
+  hex_id: string
+  scorched_turns_remaining: number
+  fallout: number
+  scorched_since_turn: number
+  severity?: number
+}
+export type ScorchedDiffPayload = {
+  room_id: string
+  epoch: number
+  turn: number
+  changes: ScorchedChange[]
 }
 export type ResolveDiplomaticArcsMessage = Envelope<'resolve.diplomatic_arcs', {
   room_id: string
@@ -401,6 +418,7 @@ export type ResolveRippleMessage = Envelope<'resolve.ripple', {
   ripples: Ripple[]
 }>
 export type ResolveExplosionMessage = Envelope<'resolve.event.explosion', ExplosionEvent>
+export type ResolveScorchedDiffMessage = Envelope<'resolve.scorched_diff', ScorchedDiffPayload>
 export type RoomFinishedPayload = {
   room_id: string
   winner: FactionId | null
@@ -558,6 +576,7 @@ export type IncomingMessage =
   | ResolveDiplomaticArcsMessage
   | ResolveRippleMessage
   | ResolveExplosionMessage
+  | ResolveScorchedDiffMessage
   | ResolveEventsMessage
   | ResolveMapDiffMessage
   | ResolveStatsDiffMessage

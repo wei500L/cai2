@@ -9,9 +9,10 @@ from fastapi import Depends
 from app.api.websocket.connection import ConnectionManager
 from app.api.websocket.dispatcher import OutboundDispatcher
 from app.core.clock import Clock, SystemClock
+from app.core.config import get_settings
 from app.game.rule_resolver import RuleResolver
 from app.game.settlement_aggregator import SettlementAggregator
-from app.llm.mock_client import MockLLMClient
+from app.llm.factory import make_llm_client
 from app.llm.output_parser import ModelOutputParser
 from app.llm.prompt_builder import PromptBuilder
 from app.repositories.factory import Repositories, make_repositories
@@ -92,12 +93,24 @@ def get_settlement_service(
     repos: Annotated[Repositories, Depends(get_repositories)],
     clock: Annotated[Clock, Depends(get_clock)],
 ) -> SettlementService:
+    if repos is get_repositories() and clock is get_clock():
+        return _get_cached_settlement_service()
+    return _build_settlement_service(repos, clock)
+
+
+@lru_cache(maxsize=1)
+def _get_cached_settlement_service() -> SettlementService:
+    return _build_settlement_service(get_repositories(), get_clock())
+
+
+def _build_settlement_service(repos: Repositories, clock: Clock) -> SettlementService:
+    settings = get_settings()
     return SettlementService(
         repos=repos,
         clock=clock,
         aggregator=SettlementAggregator(repos, clock),
         prompt_builder=PromptBuilder(),
-        llm_client=MockLLMClient(),
+        llm_client=make_llm_client(settings.llm_provider, settings=settings),
         parser=ModelOutputParser(),
         rule_resolver=RuleResolver(deterministic_rng_seed=0),
     )

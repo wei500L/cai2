@@ -11,6 +11,7 @@ import {
 } from '@/render/globe/buildHexPolygons'
 import { bindComposerBridge, setupBloom, type ComposerBridge, type MoonComposer } from '@/render/globe/postprocess'
 import { createStarfield, disposeStarfield } from '@/render/globe/starfield'
+import { CameraDirector, type SpeechCameraEvent } from '@/render/globe/cameraDirector'
 import { spawnExplosion } from '@/render/globe/explosionFx'
 import { useFxLoop } from '@/render/globe/fxLoop'
 import { hexPolygonColor } from '@/render/globe/stylePresets'
@@ -57,19 +58,44 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
   const starfieldRef = useRef<ReturnType<typeof createStarfield> | null>(null)
   const bloomComposerRef = useRef<MoonComposer | null>(null)
   const composerBridgeRef = useRef<ReturnType<typeof bindComposerBridge> | null>(null)
+  const directorRef = useRef<CameraDirector | null>(null)
+  const seenExplosionIdsRef = useRef<Set<string>>(new Set())
+  const seenResolveEventIdsRef = useRef<Set<string>>(new Set())
+  const seenExplosionRoomIdRef = useRef<string | null>(null)
+  const seenResolveRoomIdRef = useRef<string | null>(null)
   const [published, setPublished] = useState<GlobeInstanceSnapshot | null>(null)
   const cameraPreset = useMapStore((state) => state.cameraPreset)
   const focusRegionId = useMapStore((state) => state.focusRegionId)
+  const cinematicEnabled = useMapStore((state) => state.cinematicEnabled)
+  const reducedMotion = useMapStore((state) => state.reducedMotion)
   const scorchedRegions = useMapStore((state) => state.scorchedRegions)
   const lighting = useMapStore((state) => state.lighting)
   const explosionQueue = useMapStore((state) => state.explosionQueue)
   const consumeExplosion = useMapStore((state) => state.consumeExplosion)
   const regions = useGameStore((state) => state.regions)
+  const events = useGameStore((state) => state.events)
+  const currentRoomId = useGameStore((state) => state.currentRoomId)
   const worldGeometry = useGameStore((state) => state.worldGeometry)
+  const speakerCapitalByFaction = useMemo(() => {
+    const capitalMap = new Map<string, { lat: number; lng: number }>()
+    if (!worldGeometry) {
+      return capitalMap
+    }
+
+    for (const capital of worldGeometry.factions) {
+      capitalMap.set(capital.id, {
+        lat: capital.capital_lat,
+        lng: capital.capital_lng,
+      })
+    }
+
+    return capitalMap
+  }, [worldGeometry])
   const fxLoop = useFxLoop(
     published?.globe ?? null,
     {
       onFrame: useCallback((dtMs: number) => {
+        directorRef.current?.tick(dtMs)
         if (starfieldRef.current) {
           starfieldRef.current.rotation.y += dtMs * 0.000006
         }
@@ -183,16 +209,45 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
 
   useEffect(() => {
     const globe = globeRef.current
-    if (!globe || focusRegion) {
+    if (!globe) {
+      return undefined
+    }
+
+    const state = useMapStore.getState()
+    const director = new CameraDirector(globe, {
+      cinematicEnabled: state.cinematicEnabled,
+      reducedMotion: state.reducedMotion,
+    })
+    directorRef.current = director
+
+    return () => {
+      if (directorRef.current === director) {
+        directorRef.current = null
+      }
+      director.dispose()
+    }
+  }, [published?.globe])
+
+  useEffect(() => {
+    directorRef.current?.setEnabled(cinematicEnabled)
+  }, [cinematicEnabled])
+
+  useEffect(() => {
+    directorRef.current?.setReducedMotion(reducedMotion)
+  }, [reducedMotion])
+
+  useEffect(() => {
+    const globe = globeRef.current
+    if (!globe || !directorRef.current || directorRef.current.isActive() || focusRegion) {
       return
     }
 
     globe.pointOfView(PRESET_POINTS[cameraPreset], 0)
-  }, [cameraPreset, focusRegion])
+  }, [cameraPreset, focusRegion, published?.globe])
 
   useEffect(() => {
     const globe = globeRef.current
-    if (!globe || !focusRegion) {
+    if (!globe || !directorRef.current || directorRef.current.isActive() || !focusRegion) {
       return
     }
 
@@ -202,9 +257,9 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
         ...resolveRegionPoint(focusRegion),
         altitude: FOCUS_ALTITUDE[preset],
       },
-      650,
+      0,
     )
-  }, [focusRegion])
+  }, [focusRegion, published?.globe])
 
   useEffect(() => {
     const globe = globeRef.current
@@ -225,15 +280,65 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
   }, [lighting.starfieldDensity])
 
   useEffect(() => {
-    if (!published?.scene || explosionQueue.length === 0) {
+    const director = directorRef.current
+    if (!published?.scene || explosionQueue.length === 0 || !director) {
       return
     }
 
+    if (seenExplosionRoomIdRef.current !== currentRoomId) {
+      seenExplosionRoomIdRef.current = currentRoomId
+      seenExplosionIdsRef.current.clear()
+    }
+
     for (const event of explosionQueue) {
+      if (!seenExplosionIdsRef.current.has(event.id)) {
+        director.onResolveEvent(event)
+        seenExplosionIdsRef.current.add(event.id)
+      }
       fxLoop.add(spawnExplosion(published.scene, event))
       consumeExplosion(event.id)
     }
-  }, [consumeExplosion, explosionQueue, fxLoop, published?.scene])
+  }, [consumeExplosion, explosionQueue, fxLoop, published?.scene, currentRoomId])
+
+  useEffect(() => {
+    const director = directorRef.current
+    if (!director || events.length === 0) {
+      return
+    }
+
+    if (seenResolveRoomIdRef.current !== currentRoomId) {
+      seenResolveRoomIdRef.current = currentRoomId
+      seenResolveEventIdsRef.current.clear()
+    }
+
+    if (seenResolveEventIdsRef.current.size === 0) {
+      for (const event of events) {
+        seenResolveEventIdsRef.current.add(event.id)
+      }
+      return
+    }
+
+    for (const event of events) {
+      if (seenResolveEventIdsRef.current.has(event.id)) {
+        continue
+      }
+
+      seenResolveEventIdsRef.current.add(event.id)
+      if (event.kind !== 'speech' || event.priority !== 'P0' || !event.actor) {
+        continue
+      }
+
+      const speakerCapital = speakerCapitalByFaction.get(event.actor)
+      if (!speakerCapital) {
+        continue
+      }
+
+      director.onResolveEvent({
+        ...event,
+        speakerCapital,
+      } as SpeechCameraEvent)
+    }
+  }, [events, speakerCapitalByFaction, currentRoomId, published?.globe])
 
   useEffect(() => {
     const composer = bloomComposerRef.current
@@ -254,18 +359,26 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
       return
     }
 
+    const scorchedLookup = scorchedRegions
+
     globe
       .hexPolygonsData(buildHexPolygons(regions, scorchedRegions))
       .hexPolygonGeoJsonGeometry('geometry')
       .hexPolygonResolution(worldGeometry.hex_resolution)
-      .hexPolygonColor((hexPolygon) =>
-        hexPolygonColor(unwrapHexPolygonData<HexPolygonInput>(hexPolygon), {
+      .hexPolygonColor((hexPolygon) => {
+        const region = unwrapHexPolygonData<HexPolygonInput>(hexPolygon)
+        const scorchedEntry = scorchedLookup.get(region.hexId) ?? scorchedLookup.get(region.regionId)
+        return hexPolygonColor(region, {
           sunLat: 10,
           sunLng: 0,
           nightMaskAlpha: lighting.dayNightMaskAlpha,
-        }),
-      )
-      .hexPolygonAltitude((hexPolygon) => hexPolygonAltitude(unwrapHexPolygonData<HexPolygonInput>(hexPolygon)))
+          scorchedEntry: scorchedEntry ?? null,
+        })
+      })
+      .hexPolygonAltitude((hexPolygon) => {
+        const region = unwrapHexPolygonData<HexPolygonInput>(hexPolygon)
+        return hexPolygonAltitude(region, scorchedLookup)
+      })
       .hexPolygonMargin(hexPolygonMargin())
       .hexPolygonUseDots(false)
   }, [regions, scorchedRegions, worldGeometry, lighting.dayNightMaskAlpha])

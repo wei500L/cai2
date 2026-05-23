@@ -9,6 +9,7 @@ import type {
   EventPriority,
   FactionState,
   GameEvent,
+  MapRegion,
   PrivateMessage,
   Relationship,
 } from '@/mock/types'
@@ -25,6 +26,7 @@ import type {
   OutgoingMessage,
   RelationshipPatch,
   RegionChange,
+  ScorchedDiffPayload,
   StatsDiffPayload,
 } from './types'
 
@@ -264,6 +266,98 @@ function makeEvent(
     turn: epoch.turn,
     phase: epoch.phase,
     ...event,
+  }
+}
+
+function regionKey(region: MapRegion) {
+  return region.hex_id ?? region.id
+}
+
+function collectNeighborHexIds(
+  startRegion: MapRegion,
+  regions: MapRegion[],
+  maxTotal: number,
+  hopDepth: number,
+) {
+  const lookup = new Map(regions.map((region) => [region.id, region]))
+  const seen = new Set<string>()
+  const queue: Array<{ region: MapRegion; depth: number }> = [{ region: startRegion, depth: 0 }]
+
+  while (queue.length > 0 && seen.size < maxTotal) {
+    const current = queue.shift()
+    if (!current) {
+      continue
+    }
+
+    const key = regionKey(current.region)
+    if (seen.has(key)) {
+      continue
+    }
+
+    seen.add(key)
+    if (current.depth >= hopDepth) {
+      continue
+    }
+
+    const neighbors = [...current.region.neighbors].sort()
+    for (const neighborId of neighbors) {
+      const neighbor = lookup.get(neighborId)
+      if (!neighbor) {
+        continue
+      }
+
+      queue.push({ region: neighbor, depth: current.depth + 1 })
+    }
+  }
+
+  return [...seen].slice(0, maxTotal)
+}
+
+function buildScorchedPlan(kind: string) {
+  if (kind === 'nuke') {
+    return { ttlTurns: 5, fallout: 0.6, severity: 0.9, maxTotal: 8, hopDepth: 2, scorch: true }
+  }
+
+  if (kind === 'aerial') {
+    return { ttlTurns: 1, fallout: 0, severity: 0.54, maxTotal: 3, hopDepth: 1, scorch: true }
+  }
+
+  if (kind === 'naval') {
+    return { ttlTurns: 0, fallout: 0, severity: 0.22, maxTotal: 5, hopDepth: 1, scorch: false }
+  }
+
+  if (kind === 'siege') {
+    return { ttlTurns: 3, fallout: 0.12, severity: 0.68, maxTotal: 6, hopDepth: 1, scorch: true }
+  }
+
+  if (kind === 'uprising') {
+    return { ttlTurns: 2, fallout: 0.04, severity: 0.58, maxTotal: 4, hopDepth: 1, scorch: true }
+  }
+
+  return { ttlTurns: 2, fallout: 0, severity: 0.66, maxTotal: 4, hopDepth: 1, scorch: true }
+}
+
+function buildScorchedDiffPayload(
+  region: MapRegion,
+  kind: string,
+  turn: number,
+): ScorchedDiffPayload {
+  const plan = buildScorchedPlan(kind)
+  const affectedHexIds = collectNeighborHexIds(region, gameStoreApi.getState().regions, plan.maxTotal, plan.hopDepth)
+
+  return {
+    room_id: getRoomId(),
+    epoch: gameStoreApi.getState().epoch.id,
+    turn,
+    changes: plan.scorch
+      ? affectedHexIds.map((hexId, index) => ({
+          hex_id: hexId,
+          scorched_turns_remaining: plan.ttlTurns,
+          fallout: hexId === regionKey(region) ? plan.fallout : clamp(plan.fallout * 0.5, 0, 1),
+          scorched_since_turn: turn,
+          severity: hexId === regionKey(region) ? plan.severity : clamp(plan.severity - index * 0.04, 0.4, 1),
+        }))
+      : [],
   }
 }
 
@@ -727,6 +821,14 @@ export class MockTransport implements Transport {
     }
 
     this.emitEvents([event])
+    const explosionKind = region.terrain === 'river' ? 'naval' : 'conventional'
+    const scorchedPlan = buildScorchedPlan(explosionKind)
+    const affectedHexIds = collectNeighborHexIds(
+      region,
+      gameStoreApi.getState().regions,
+      scorchedPlan.maxTotal,
+      scorchedPlan.hopDepth,
+    )
     this.emitExplosion({
       id: `${event.id}_explosion`,
       room_id: getRoomId(),
@@ -736,14 +838,27 @@ export class MockTransport implements Transport {
       centerLat: region.lat ?? region.centerLatLng[0],
       centerLng: region.lng ?? region.centerLatLng[1],
       intensity: regionOwnerChanged ? 1.35 : 1,
-      kind: region.terrain === 'river' ? 'naval' : 'conventional',
+      kind: explosionKind,
       ttl_ms: 4000,
       created_at_ms: event.createdAt,
+      affected_hex_ids: affectedHexIds,
+      primary_hex_id: regionKey(region),
+      economic_loss_pct: regionOwnerChanged ? 0.18 : 0.08,
+      narrative_hint: `${factionById[attackerId].name}的冲击波沿着${regionKey(region)}扩散，焦土将持续发酵。`,
     })
+
+    const scorchedDiff = buildScorchedDiffPayload(region, explosionKind, state.epoch.turn)
+    if (scorchedDiff.changes.length > 0) {
+      this.emitScorchedDiff(scorchedDiff)
+    }
   }
 
   private emitExplosion(payload: Extract<IncomingMessage, { t: 'resolve.event.explosion' }>['p']) {
     this.emit(nextEnvelope('resolve.event.explosion', payload))
+  }
+
+  private emitScorchedDiff(payload: ScorchedDiffPayload) {
+    this.emit(nextEnvelope('resolve.scorched_diff', payload))
   }
 
   private acceptPlayerAction(

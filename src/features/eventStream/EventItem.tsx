@@ -89,6 +89,8 @@ export function EventItem({ event, selected, relativeTime, onFocus }: EventItemP
   const faction = factionTokens[factionId]
   const actorName = getFactionLabel(event.actor)
   const targetName = getFactionLabel(event.target)
+  const narrativeHint =
+    typeof event.payload.narrative_hint === 'string' ? event.payload.narrative_hint.trim() : ''
   const frame = getPriorityFrame(event, faction.glow, faction.shadow)
   const actorLabel = actorName ?? '系统'
   const targetLabel = targetName ?? '全域'
@@ -181,6 +183,11 @@ export function EventItem({ event, selected, relativeTime, onFocus }: EventItemP
           <p className="line-clamp-3 break-words text-[0.72rem] leading-5 text-[color:rgba(232,243,250,0.88)]">
             {event.narration}
           </p>
+          {narrativeHint && narrativeHint !== event.narration ? (
+            <p className="mt-1 break-words text-[0.66rem] italic leading-5 text-[color:rgba(196,228,255,0.68)]">
+              {narrativeHint}
+            </p>
+          ) : null}
         </div>
       </div>
     </motion.button>

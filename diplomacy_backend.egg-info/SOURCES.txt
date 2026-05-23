@@ -24,7 +24,9 @@ app/domain/enums.py
 app/domain/factions.py
 app/domain/models.py
 app/domain/world_geometry.py
+app/domain/world_lighting.py
 app/game/__init__.py
+app/game/explosion_resolver.py
 app/game/factions_init.py
 app/game/globe_geometry.py
 app/game/initializer.py
@@ -37,17 +39,20 @@ app/game/visibility.py
 app/llm/__init__.py
 app/llm/claude_client.py
 app/llm/client.py
+app/llm/explosion_prompt.py
 app/llm/factory.py
 app/llm/mock_client.py
 app/llm/openai_client.py
 app/llm/output_parser.py
 app/llm/output_schema.py
 app/llm/prompt_builder.py
+app/llm/real_client.py
 app/llm/retry.py
 app/protocol/__init__.py
 app/protocol/audit_helpers.py
 app/protocol/envelope.py
 app/protocol/errors.py
+app/protocol/explosion_events.py
 app/protocol/incoming.py
 app/protocol/outgoing.py
 app/protocol/routing.py
@@ -62,10 +67,12 @@ app/services/__init__.py
 app/services/action_service.py
 app/services/ai_output_service.py
 app/services/ai_templates.py
+app/services/arc_builder.py
 app/services/phase_scheduler.py
 app/services/phase_service.py
 app/services/replay_service.py
 app/services/room_service.py
+app/services/scorched_service.py
 app/services/settlement_service.py
 app/services/takeover_service.py
 app/tests/__init__.py
@@ -74,6 +81,7 @@ app/tests/test_action_service.py
 app/tests/test_aggregator_with_diary.py
 app/tests/test_ai_output_service.py
 app/tests/test_animation_params.py
+app/tests/test_arc_builder.py
 app/tests/test_border_tension_helper.py
 app/tests/test_diary_repository.py
 app/tests/test_diary_reveal_on_finish.py
@@ -81,6 +89,7 @@ app/tests/test_dispatcher_strips_internal.py
 app/tests/test_dispatcher_visibility.py
 app/tests/test_domain_models.py
 app/tests/test_gateway_router.py
+app/tests/test_globe_geometry.py
 app/tests/test_health.py
 app/tests/test_initializer.py
 app/tests/test_llm_mock_client.py
@@ -112,6 +121,7 @@ app/tests/test_settlement_writes_diary.py
 app/tests/test_takeover_service.py
 app/tests/test_visibility.py
 app/tests/test_visibility_with_neighbors.py
+app/tests/test_world_lighting.py
 diplomacy_backend.egg-info/PKG-INFO
 diplomacy_backend.egg-info/SOURCES.txt
 diplomacy_backend.egg-info/dependency_links.txt

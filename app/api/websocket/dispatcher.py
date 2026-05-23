@@ -304,11 +304,25 @@ class OutboundDispatcher:
                     room_id,
                     _envelope(
                         "resolve.event.explosion",
-                        explosion.model_dump(mode="json"),
+                        _dump_any(explosion),
                         seq=bundle.seq_base + seq_offset + index,
                     ),
                 )
             seq_offset += len(bundle.resolve_explosions)
+
+        if bundle.resolve_scorched_diff:
+            await self.emit(
+                room_id,
+                "resolve.scorched_diff",
+                {
+                    "room_id": room_id,
+                    "epoch": bundle.epoch,
+                    "turn": bundle.turn,
+                    "changes": [_dump_any(change) for change in bundle.resolve_scorched_diff],
+                },
+                seq=bundle.seq_base + seq_offset,
+            )
+            seq_offset += 1
 
         if bundle.resolve_ripples:
             await self.emit(
@@ -526,6 +540,12 @@ def _event_visible_to_faction(
     if scope == VisibilityScope.faction_set:
         return str(faction_id) in _event_factions(event, "set")
     return False
+
+
+def _dump_any(value: Any) -> Any:
+    if hasattr(value, "model_dump"):
+        return value.model_dump(mode="json")
+    return value
 
 
 def _event_factions(event: dict[str, Any], payload_key: str) -> set[str]:

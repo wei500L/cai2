@@ -59,8 +59,10 @@ describe('MapSwitcher', () => {
       renderer: 'globe',
       cameraPreset: 'overview',
       focusRegionId: null,
+      cinematicEnabled: true,
+      reducedMotion: false,
       explosionQueue: [],
-      scorchedRegions: new Set(),
+      scorchedRegions: new Map(),
       lighting: {
         bloomStrength: 1.4,
         bloomRadius: 0.6,

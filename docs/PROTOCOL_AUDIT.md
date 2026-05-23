@@ -137,6 +137,25 @@
 | `intensity` | `number` | `float` | 是 | 0.2..1.0。 |
 | `ttl_ms` | `number` | `int` | 是 | 动画生命周期。 |
 | `casualties_estimate` | `number` | `int` | 是 | 伤亡估计。 |
-| `affected_hex_ids` | `string[]` | `list[str]` | 是 | 本任务保持空数组。 |
+| `affected_hex_ids` | `string[]` | `list[str]` | 是 | 受影响 hex 列表，由协议提供。 |
+| `primary_hex_id` | `string` | `str` | 是 | 主焦点 hex。 |
+| `economic_loss_pct` | `number` | `float` | 是 | 经济损失百分比。 |
+| `narrative_hint` | `string` | `str` | 是 | 斜体补充叙事提示。 |
 
-说明：任务 5 只负责规则分流与视觉参数骨架，不做 LLM 范围判定，也不下发焦土染色。
+说明：任务 6 负责 LLM 范围判定与焦土 diff，任务 5/6 共享爆炸 VFX 通道。
+
+## 10. 焦土增量扩展
+
+| 字段 | 前端类型 | 后端类型 | 是否必填 | 备注 |
+| --- | --- | --- | --- | --- |
+| `resolve.scorched_diff` | `ScorchedDiffPayload` | `ScorchedDiffPayload` | 是 | 焦土状态机增量。 |
+| `room_id` | `string` | `str` | 是 | 房间 ID。 |
+| `turn` | `number` | `int` | 是 | 当前回合。 |
+| `changes` | `ScorchedChange[]` | `list[ScorchedChange]` | 是 | 焦土变更集合。 |
+| `hex_id` | `string` | `str` | 是 | 受影响 hex。 |
+| `scorched_turns_remaining` | `number` | `int` | 是 | 剩余持续回合数。 |
+| `fallout` | `number` | `float` | 是 | 放射污染强度。 |
+| `scorched_since_turn` | `number` | `int` | 是 | 焦土起始回合。 |
+| `severity` | `number` | `float` | 否 | 视觉强度，可由后端补充。 |
+
+说明：前端 `mapStore.scorchedRegions` 以 `Map<hex_id, ScorchedEntry>` 形式消费该增量，并在 `turn.begin` 通过 `advanceScorched(turn)` 清理到期条目。

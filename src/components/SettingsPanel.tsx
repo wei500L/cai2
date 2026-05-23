@@ -32,6 +32,7 @@ function createDebugExplosionEvent(kind: ExplosionKind) {
   const now = Date.now()
   const centerLat = -42 + Math.random() * 84
   const centerLng = -60 + Math.random() * 120
+  const primaryHexId = `debug-${kind}-${Math.floor(Math.random() * 1000)}`
 
   return {
     id: `debug_explosion_${kind}_${now}_${Math.floor(Math.random() * 10000)}`,
@@ -41,6 +42,10 @@ function createDebugExplosionEvent(kind: ExplosionKind) {
     kind,
     ttl_ms: 4000,
     created_at_ms: now,
+    affected_hex_ids: [primaryHexId],
+    primary_hex_id: primaryHexId,
+    economic_loss_pct: kind === 'nuke' ? 0.24 : kind === 'siege' ? 0.18 : 0.12,
+    narrative_hint: `debug:${kind}`,
   }
 }
 
@@ -57,8 +62,12 @@ export function SettingsPanel() {
   const setPhaseDurationScale = useUIStore((state) => state.setPhaseDurationScale)
   const setFocusToast = useUIStore((state) => state.setFocusToast)
   const renderer = useMapStore((state) => state.renderer)
+  const cinematicEnabled = useMapStore((state) => state.cinematicEnabled)
+  const reducedMotion = useMapStore((state) => state.reducedMotion)
   const lighting = useMapStore((state) => state.lighting)
   const setRenderer = useMapStore((state) => state.setRenderer)
+  const setCinematicEnabled = useMapStore((state) => state.setCinematicEnabled)
+  const setReducedMotion = useMapStore((state) => state.setReducedMotion)
   const setLighting = useMapStore((state) => state.setLighting)
   const enqueueExplosion = useMapStore((state) => state.enqueueExplosion)
   const initGame = useGameStore((state) => state.initGame)
@@ -220,6 +229,26 @@ export function SettingsPanel() {
                             onChange={(event) =>
                               setLighting({ noiseEnabled: event.target.checked })
                             }
+                            className="h-4 w-4 accent-[var(--border-glow)]"
+                          />
+                        </label>
+
+                        <label className="flex items-center justify-between border border-[color:rgba(255,255,255,0.08)] px-3 py-2 text-[0.56rem] uppercase tracking-[0.14em] text-[color:var(--text-muted)]">
+                          <span>自动镜头</span>
+                          <input
+                            type="checkbox"
+                            checked={cinematicEnabled}
+                            onChange={(event) => setCinematicEnabled(event.target.checked)}
+                            className="h-4 w-4 accent-[var(--border-glow)]"
+                          />
+                        </label>
+
+                        <label className="flex items-center justify-between border border-[color:rgba(255,255,255,0.08)] px-3 py-2 text-[0.56rem] uppercase tracking-[0.14em] text-[color:var(--text-muted)]">
+                          <span>减少运动</span>
+                          <input
+                            type="checkbox"
+                            checked={reducedMotion}
+                            onChange={(event) => setReducedMotion(event.target.checked)}
                             className="h-4 w-4 accent-[var(--border-glow)]"
                           />
                         </label>

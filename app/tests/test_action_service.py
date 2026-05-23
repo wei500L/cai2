@@ -9,6 +9,8 @@ import pytest
 from app.core.clock import FrozenClock
 from app.core.errors import InvalidActionError, InvalidPhaseError, RateLimitedError
 from app.domain.enums import (
+    EventKind,
+    EventPriority,
     FactionId,
     GamePhase,
     PlayerKind,
@@ -17,7 +19,7 @@ from app.domain.enums import (
     TreatyKind,
     VisibilityScope,
 )
-from app.domain.models import EpochTurn, GameRoom, MapRegion, Player
+from app.domain.models import EpochTurn, GameEvent, GameRoom, MapRegion, MessageVisibility, Player
 from app.repositories.factory import Repositories, make_repositories
 from app.services.action_service import ActionAck, ActionService
 
@@ -380,6 +382,66 @@ async def test_normal_call_appends_action_and_returns_complete_ack(
     assert actions[0].visibility.scope == VisibilityScope.public
     assert actions[0].content == "hello world"
     assert FactionId.ironCrown not in actions[0].targets
+
+
+@pytest.mark.asyncio
+async def test_p0_speech_events_get_cinematic_hint_while_p1_does_not(
+    repos: Repositories,
+    service: ActionService,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    room, player = await _seed_room(repos)
+
+    def _fake_derive(action: object, regions: object | None = None) -> list[GameEvent]:
+        del action, regions
+        return [
+            GameEvent(
+                id="event-p0",
+                room_id=room.id,
+                epoch=room.current.epoch,
+                turn=room.current.turn,
+                phase=GamePhase.resolve,
+                created_at_ms=10_000,
+                priority=EventPriority.P0,
+                kind=EventKind.speech,
+                actor_faction=player.faction_id,
+                target_faction=None,
+                payload={"action_id": "action-p0", "content": "speech p0"},
+                narration="speech p0",
+                visibility=MessageVisibility(scope=VisibilityScope.public, faction_ids=[]),
+            ),
+            GameEvent(
+                id="event-p1",
+                room_id=room.id,
+                epoch=room.current.epoch,
+                turn=room.current.turn,
+                phase=GamePhase.resolve,
+                created_at_ms=10_001,
+                priority=EventPriority.P1,
+                kind=EventKind.speech,
+                actor_faction=player.faction_id,
+                target_faction=None,
+                payload={"action_id": "action-p1", "content": "speech p1"},
+                narration="speech p1",
+                visibility=MessageVisibility(scope=VisibilityScope.public, faction_ids=[]),
+            ),
+        ]
+
+    monkeypatch.setattr("app.services.action_service.derive_events_from_action", _fake_derive)
+
+    await service.record_speech(
+        room_id=room.id,
+        player_id=player.id,
+        content="hello",
+        targets=[FactionId.starlight],
+        request_id="req-speech",
+    )
+
+    events = await repos.events.list_by_turn(room.id, room.current.epoch, room.current.turn)
+
+    assert [event.payload.get("cinematic_hint") for event in events] == ["speech", None]
+    assert events[0].priority == EventPriority.P0
+    assert events[1].priority == EventPriority.P1
 
 
 @pytest.mark.asyncio

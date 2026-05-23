@@ -14,9 +14,18 @@ from app.core.errors import (
     RoomNotFoundError,
 )
 from app.core.ids import new_message_id
-from app.domain.enums import FactionId, GamePhase, RoomStatus, TreatyKind, VisibilityScope
+from app.domain.enums import (
+    EventKind,
+    EventPriority,
+    FactionId,
+    GamePhase,
+    RoomStatus,
+    TreatyKind,
+    VisibilityScope,
+)
 from app.domain.models import (
     GameAction,
+    GameEvent,
     GameRoom,
     IntelAction,
     LockAction,
@@ -339,7 +348,7 @@ class ActionService:
             regions = await self._repos.state.get_regions(action.room_id)
 
         for event in derive_events_from_action(action, regions=regions):
-            await self._repos.events.append(event)
+            await self._repos.events.append(_event_with_cinematic_hint(event))
 
     async def _record_message(
         self,
@@ -474,3 +483,14 @@ def _require_no_self_target(
 ) -> None:
     if actor_faction in targets:
         raise InvalidActionError(f"{field_name} must not contain actor faction")
+
+
+def _event_with_cinematic_hint(event: GameEvent) -> GameEvent:
+    if event.kind != EventKind.speech or event.priority != EventPriority.P0:
+        return event
+
+    payload = dict(event.payload)
+    if payload.get("cinematic_hint") == "speech":
+        return event
+    payload["cinematic_hint"] = "speech"
+    return event.model_copy(update={"payload": payload})

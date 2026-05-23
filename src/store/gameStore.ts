@@ -42,6 +42,7 @@ import type {
   RelationshipPatch,
   StatsDiffPayload,
   RoomMode,
+  ScorchedDiffPayload,
   TurnBeginPayload,
   WorldGeometryPayload,
 } from '@/protocol/types'
@@ -81,6 +82,7 @@ type GameStoreActions = {
   _applyTurnBegin: (payload: TurnBeginPayload) => void
   _applyEvents: (payload: GameEvent[] | EventBundlePayload) => void
   handleExplosion: (payload: ExplosionEvent | Record<string, unknown>) => void
+  applyScorchedDiff: (payload: ScorchedDiffPayload | { turn: number; changes: ScorchedDiffPayload['changes'] }) => void
   _applyDiplomaticArcs: (payload: { room_id: string; arcs: DiplomaticArc[] } | DiplomaticArc[]) => void
   _applyRipples: (payload: { room_id: string; ripples: Ripple[] } | Ripple[]) => void
   _applyMapDiff: (
@@ -777,6 +779,14 @@ function normalizeExplosionEvent(payload: unknown, regions: MapRegion[]): Explos
   const raw = isRecord(rawPayload.event) ? rawPayload.event : rawPayload
   const regionId = toStringValue(raw.region_id ?? raw.regionId)
   const region = regionId ? regions.find((item) => item.id === regionId) : undefined
+  const primaryHexId = toStringValue(raw.primary_hex_id ?? raw.primaryHexId, region?.hex_id ?? regionId)
+  const affectedHexIds = Array.isArray(raw.affected_hex_ids)
+    ? raw.affected_hex_ids.filter((hexId): hexId is string => typeof hexId === 'string')
+    : Array.isArray(raw.affectedHexIds)
+      ? raw.affectedHexIds.filter((hexId): hexId is string => typeof hexId === 'string')
+      : primaryHexId
+        ? [primaryHexId]
+        : []
   const centerLat = toNumberValue(
     raw.centerLat ?? raw.center_lat ?? raw.lat ?? raw.latitude ?? region?.lat ?? region?.centerLatLng[0],
     0,
@@ -802,6 +812,10 @@ function normalizeExplosionEvent(payload: unknown, regions: MapRegion[]): Explos
     kind: normalizeExplosionKind(raw.kind),
     ttl_ms: ttlMs,
     created_at_ms: toNullableNumberValue(raw.created_at_ms ?? raw.createdAtMs) ?? Date.now(),
+    affected_hex_ids: affectedHexIds,
+    primary_hex_id: primaryHexId || regionId,
+    economic_loss_pct: clamp(toNumberValue(raw.economic_loss_pct ?? raw.economicLossPct, 0), 0, 1),
+    narrative_hint: toStringValue(raw.narrative_hint ?? raw.narrativeHint, ''),
   }
 }
 
@@ -1055,6 +1069,10 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   initGame: (seed) => {
     const nextState = createInitialState(seed)
     resetExpiringVisuals()
+    useMapStore.setState({
+      scorchedRegions: new Map(),
+      explosionQueue: [],
+    })
     set((state) => ({
       ...nextState,
       selectedFactionId: state.selectedFactionId,
@@ -1433,6 +1451,8 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       regions: snapshot.regions.length > 0 ? snapshot.regions : state.regions,
       relationships: snapshot.relationships.length > 0 ? snapshot.relationships : state.relationships,
     }))
+
+    useMapStore.getState().advanceScorched(payload.turn)
   },
 
   _applyEvents: (payload) => {
@@ -1455,6 +1475,44 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   handleExplosion: (payload) => {
     const event = normalizeExplosionEvent(payload, get().regions)
     useMapStore.getState().enqueueExplosion(event)
+
+    if (!event.narrative_hint) {
+      return
+    }
+
+    const state = get()
+    const region = state.regions.find(
+      (item) => item.id === event.region_id || item.hex_id === event.primary_hex_id,
+    )
+    const explosionNarration: GameEvent = {
+      id: `${event.id}_narration`,
+      createdAt: event.created_at_ms ?? Date.now(),
+      epoch: event.epoch ?? state.epoch.id,
+      turn: event.turn ?? state.epoch.turn,
+      phase: state.epoch.phase,
+      priority: event.economic_loss_pct >= 0.12 ? 'P1' : 'P2',
+      kind: 'narration',
+      actor: region?.owner ?? undefined,
+      target: undefined,
+      payload: {
+        source_event_id: event.id,
+        region_id: event.region_id ?? null,
+        primary_hex_id: event.primary_hex_id,
+        affected_hex_ids: event.affected_hex_ids,
+        economic_loss_pct: event.economic_loss_pct,
+        narrative_hint: event.narrative_hint,
+        kind: event.kind,
+      },
+      narration: `爆炸冲击 ${event.primary_hex_id ?? event.region_id ?? '未知区域'}`,
+    }
+
+    set((state) => ({
+      events: pushEventToList(state.events, explosionNarration),
+    }))
+  },
+
+  applyScorchedDiff: (payload) => {
+    useMapStore.getState().applyScorchedDiff(payload)
   },
 
   _applyDiplomaticArcs: (payload) => {
@@ -1690,6 +1748,10 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     const nextRoomId = room && typeof room.id === 'string' ? room.id : null
     if (nextRoomId !== null && nextRoomId !== get().currentRoomId) {
       resetExpiringVisuals()
+      useMapStore.setState({
+        scorchedRegions: new Map(),
+        explosionQueue: [],
+      })
     }
 
     set((state) => {
@@ -1839,6 +1901,10 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     const shouldResetVisuals = roomId !== null && roomId !== currentRoomId
     if (shouldResetVisuals) {
       resetExpiringVisuals()
+      useMapStore.setState({
+        scorchedRegions: new Map(),
+        explosionQueue: [],
+      })
     }
 
     if (!room) {

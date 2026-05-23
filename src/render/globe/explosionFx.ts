@@ -230,6 +230,7 @@ export function createExplosionEmitter(scene: Scene, config: ExplosionEmitterCon
   geometry.setAttribute('aDir', new InstancedBufferAttribute(dirs, 3))
   geometry.setAttribute('aSpeed', new InstancedBufferAttribute(speeds, 1))
   mesh.instanceMatrix.setUsage(DynamicDrawUsage)
+  mesh.instanceMatrix.needsUpdate = true
   mesh.frustumCulled = false
   mesh.renderOrder = 40
   scene.add(mesh)
@@ -312,6 +313,8 @@ export function createShockwaveRing(scene: Scene, config: ExplosionEmitterConfig
   const material = makeRingMaterial(palette, ttl * 0.72, maxRadius)
   const ring = new InstancedMesh(geometry, material, 1)
 
+  ring.setMatrixAt(0, new Matrix4())
+  ring.instanceMatrix.needsUpdate = true
   ring.position.copy(origin.add(normal.clone().multiplyScalar(0.2)))
   ring.quaternion.setFromUnitVectors(new Vector3(0, 0, 1), normal)
   ring.frustumCulled = false

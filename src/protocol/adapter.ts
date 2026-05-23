@@ -59,6 +59,9 @@ export function attachAdapter(transport: Transport, gameStore: GameStoreApiLike)
       case 'resolve.event.explosion':
         store.handleExplosion(message.p)
         break
+      case 'resolve.scorched_diff':
+        store.applyScorchedDiff(message.p)
+        break
       case 'resolve.events':
         store._applyEvents(message.p)
         break

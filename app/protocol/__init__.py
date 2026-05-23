@@ -2,7 +2,13 @@
 
 from app.protocol.envelope import Envelope, make_envelope, parse_envelope
 from app.protocol.errors import ProtocolError, UnknownMessageTypeError
-from app.protocol.explosion_events import ExplosionEvent, ExplosionPayload
+from app.protocol.explosion_events import (
+    ExplosionEvent,
+    ExplosionPayload,
+    ScorchedChange,
+    ScorchedDiffEvent,
+    ScorchedDiffPayload,
+)
 from app.protocol.incoming import (
     ActionIntelPayload,
     ActionLockPayload,
@@ -131,6 +137,9 @@ __all__ = [
     "RoomSelectFactionPayload",
     "RoomSnapshotPayload",
     "RoomStartPayload",
+    "ScorchedChange",
+    "ScorchedDiffEvent",
+    "ScorchedDiffPayload",
     "TurnBeginPayload",
     "UnknownMessageTypeError",
     "WorldGeometryCellPayload",

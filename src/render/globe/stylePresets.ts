@@ -1,5 +1,6 @@
 import { factionById, type FactionId } from '@/mock/factions'
 import type { MapRegion } from '@/mock/types'
+import type { ScorchedRegionEntry } from '@/store/mapStore'
 
 type Rgb = {
   r: number
@@ -20,6 +21,7 @@ export type HexPolygonColorContext = {
   sunLat?: number
   sunLng?: number
   nightMaskAlpha?: number
+  scorchedEntry?: ScorchedRegionEntry | null
 }
 
 export const terrainColors = {
@@ -115,6 +117,23 @@ function resolveFactionColors(factionId: FactionId) {
   }
 }
 
+function resolveScorchedEntry(region: HexPolygonLike, ctx: HexPolygonColorContext) {
+  if (ctx.scorchedEntry) {
+    return ctx.scorchedEntry
+  }
+
+  if (!region.scorched) {
+    return null
+  }
+
+  return {
+    since_turn: 0,
+    ttl_turns: 1,
+    severity: 0.6,
+    fallout: 0,
+  }
+}
+
 function terrainBaseColor(terrain: MapRegion['terrain']) {
   switch (terrain) {
     case 'mountain':
@@ -189,6 +208,31 @@ export function hexPolygonColor(region: HexPolygonLike, ctx: HexPolygonColorCont
 
   color = mixRgb(color, { r: 0, g: 0, b: 0 }, 1 - brightness)
 
-  const alpha = region.scorched ? 0.84 : factionId === null ? 0.72 : 0.95
-  return toRgba(color, alpha)
+  const scorchedEntry = resolveScorchedEntry(region, ctx)
+  const baseAlpha = scorchedEntry ? 0.84 : factionId === null ? 0.72 : 0.95
+
+  if (scorchedEntry) {
+    const scorchBase = parseCssColor('#2a3220', { r: 42, g: 50, b: 32 })
+    const severityMix = clamp(0.3 + scorchedEntry.severity * 0.45, 0.3, 0.85)
+    color = mixRgb(scorchBase, color, severityMix)
+
+    if (scorchedEntry.fallout > 0) {
+      const falloutBlend = clamp(0.28 + scorchedEntry.fallout * 0.28, 0.28, 0.56)
+      color = mixRgb(color, { r: 20, g: 150, b: 16 }, falloutBlend)
+      const pulse =
+        0.88 +
+        0.12 *
+          Math.sin(
+            Date.now() / 220 +
+              (region.lat ?? 0) * 0.33 +
+              (region.lng ?? 0) * 0.21 +
+              scorchedEntry.since_turn * 0.8,
+          )
+      return toRgba(color, clamp(baseAlpha * pulse, 0.58, 0.95))
+    }
+
+    return toRgba(color, clamp(baseAlpha * (0.92 + scorchedEntry.severity * 0.06), 0.58, 0.92))
+  }
+
+  return toRgba(color, baseAlpha)
 }

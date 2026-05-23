@@ -85,23 +85,21 @@ async def test_call_with_retry_raises_original_after_limit(llm_request: LLMReque
 
 
 @pytest.mark.asyncio
-async def test_openai_and_claude_placeholders_raise(llm_request: LLMRequest) -> None:
-    openai = OpenAICompatibleClient(api_key="test", base_url="https://example.invalid", model="m")
-    claude = ClaudeCompatibleClient(api_key="test", base_url="https://example.invalid", model="m")
+async def test_openai_and_claude_clients_fallback_to_mock(llm_request: LLMRequest) -> None:
+    openai = OpenAICompatibleClient(api_key="", base_url="https://example.invalid", model="m")
+    claude = ClaudeCompatibleClient(api_key="", base_url="https://example.invalid", model="m")
 
-    with pytest.raises(NotImplementedError):
-        await openai.call_settlement_model(llm_request)
-    with pytest.raises(NotImplementedError):
-        await claude.call_settlement_model(llm_request)
+    assert (await openai.call_settlement_model(llm_request)).model == "mock"
+    assert (await claude.call_settlement_model(llm_request)).model == "mock"
 
 
 def test_make_llm_client_mock_returns_mock() -> None:
     assert isinstance(make_llm_client("mock"), MockLLMClient)
 
 
-def test_make_llm_client_openai_not_wired() -> None:
-    with pytest.raises(NotImplementedError):
-        make_llm_client("openai")
+def test_make_llm_client_openai_and_claude_are_wired() -> None:
+    assert isinstance(make_llm_client("openai"), OpenAICompatibleClient)
+    assert isinstance(make_llm_client("claude"), ClaudeCompatibleClient)
 
 
 class FailOnceClient:

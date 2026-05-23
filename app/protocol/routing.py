@@ -6,7 +6,7 @@ from pydantic import BaseModel
 
 from app.protocol.envelope import Envelope, parse_envelope
 from app.protocol.errors import UnknownMessageTypeError
-from app.protocol.explosion_events import ExplosionEvent
+from app.protocol.explosion_events import ExplosionEvent, ScorchedDiffEvent
 from app.protocol.incoming import (
     ActionIntelPayload,
     ActionLockPayload,
@@ -101,6 +101,7 @@ OUTGOING_PAYLOAD_TYPES: dict[str, type[BaseModel]] = {
     "resolve.stats_diff": ResolveStatsDiffPayload,
     "resolve.diplomatic_arcs": DiplomaticArcsEvent,
     "resolve.event.explosion": ExplosionEvent,
+    "resolve.scorched_diff": ScorchedDiffEvent,
     "resolve.ripple": RippleEvent,
     "resolve.world_lighting": WorldLightingEvent,
     "ai.thinking": AIThinkingPayload,

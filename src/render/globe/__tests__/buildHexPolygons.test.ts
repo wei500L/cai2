@@ -48,6 +48,10 @@ describe('buildHexPolygons', () => {
     expect(hexPolygonAltitude(cells[1])).toBeGreaterThan(hexPolygonAltitude(cells[0]))
     expect(hexPolygonAltitude(cells[0])).toBeGreaterThanOrEqual(0.005)
     expect(hexPolygonAltitude(cells[1])).toBeLessThanOrEqual(0.02)
+    expect(hexPolygonAltitude(cells[1], new Map([['hex_b', { any: 'value' }]]))).toBeCloseTo(
+      hexPolygonAltitude(cells[1]) * 0.5,
+      4,
+    )
     expect(hexPolygonMargin()).toBe(0.2)
   })
 

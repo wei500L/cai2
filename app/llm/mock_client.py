@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+from hashlib import sha256
 from typing import Any
 
 from app.llm.client import LLMRequest, LLMResponse
+from app.llm.explosion_prompt import parse_explosion_prompt
+from app.llm.output_schema import ExplosionJudgeOutput
 
 
 class MockLLMClient:
@@ -35,6 +38,20 @@ class MockLLMClient:
     def name(self) -> str:
         return "mock"
 
+    async def call_explosion_judge(self, prompt: str) -> LLMResponse:
+        if self._latency_ms > 0:
+            await asyncio.sleep(self._latency_ms / 1000)
+
+        output = self._consume_explosion_output(prompt)
+        return LLMResponse(
+            content=json.dumps(output, ensure_ascii=False, separators=(",", ":"), sort_keys=True),
+            model=self.name(),
+            prompt_tokens=None,
+            completion_tokens=None,
+            latency_ms=self._latency_ms,
+            raw=output,
+        )
+
     def set_next_output(self, output: dict[str, Any]) -> None:
         self._next_output = output
 
@@ -46,6 +63,36 @@ class MockLLMClient:
         if self._deterministic_output is not None:
             return self._deterministic_output
         return _default_settlement_output(request.user)
+
+    def _consume_explosion_output(self, prompt: str) -> dict[str, Any]:
+        if self._next_output is not None and _looks_like_explosion_output(self._next_output):
+            output = self._next_output
+            self._next_output = None
+            return output
+        if self._deterministic_output is not None and _looks_like_explosion_output(
+            self._deterministic_output
+        ):
+            return self._deterministic_output
+
+        context = parse_explosion_prompt(prompt)
+        center_hex_id = str(context.get("center_hex_id") or "")
+        kind = str(context.get("kind") or "conventional")
+        nodes = context.get("subgraph", {}).get("nodes", [])
+        candidates = [
+            str(node.get("hex_id"))
+            for node in nodes
+            if isinstance(node, dict) and node.get("hex_id")
+        ]
+        output = {
+            "affected_hex_ids": _select_affected(center_hex_id, kind, candidates),
+            "primary_hex_id": center_hex_id,
+            "scorched_turns": _mock_turns(kind),
+            "fallout_severity": _mock_fallout(kind),
+            "economic_loss_pct": _mock_loss(kind),
+            "narrative_hint": _mock_hint(center_hex_id, kind),
+        }
+        ExplosionJudgeOutput.model_validate(output)
+        return output
 
 
 def _default_settlement_output(user_prompt: str) -> dict[str, Any]:
@@ -168,3 +215,75 @@ _FACTION_IDS = (
     "magma",
     "darkTide",
 )
+
+
+def _looks_like_explosion_output(payload: dict[str, Any]) -> bool:
+    return {"affected_hex_ids", "primary_hex_id", "scorched_turns"} <= set(payload)
+
+
+def _select_affected(center_hex_id: str, kind: str, candidates: list[str]) -> list[str]:
+    limit = {
+        "nuke": 8,
+        "conventional": 4,
+        "aerial": 3,
+        "naval": 5,
+        "artillery": 4,
+        "missile": 6,
+        "other": 2,
+    }.get(kind, 4)
+    seed = f"{center_hex_id}:{kind}"
+    ordered = sorted(
+        {candidate for candidate in candidates if candidate},
+        key=lambda candidate: (
+            int(sha256(f"{seed}:{candidate}".encode()).hexdigest()[:12], 16),
+            candidate,
+        ),
+    )
+    selected = [center_hex_id]
+    for candidate in ordered:
+        if candidate == center_hex_id or candidate in selected:
+            continue
+        selected.append(candidate)
+        if len(selected) >= limit:
+            break
+    return selected[:limit]
+
+
+def _mock_turns(kind: str) -> int:
+    return {
+        "nuke": 5,
+        "conventional": 2,
+        "aerial": 1,
+        "naval": 0,
+        "artillery": 1,
+        "missile": 3,
+        "other": 1,
+    }.get(kind, 2)
+
+
+def _mock_fallout(kind: str) -> float:
+    return {
+        "nuke": 0.6,
+        "conventional": 0.0,
+        "aerial": 0.12,
+        "naval": 0.0,
+        "artillery": 0.05,
+        "missile": 0.2,
+        "other": 0.02,
+    }.get(kind, 0.0)
+
+
+def _mock_loss(kind: str) -> float:
+    return {
+        "nuke": 0.35,
+        "conventional": 0.12,
+        "aerial": 0.08,
+        "naval": 0.04,
+        "artillery": 0.1,
+        "missile": 0.2,
+        "other": 0.05,
+    }.get(kind, 0.1)
+
+
+def _mock_hint(center_hex_id: str, kind: str) -> str:
+    return f"{kind} strike centered on {center_hex_id}"

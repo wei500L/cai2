@@ -1,7 +1,11 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { hexPolygonColor, terrainColors } from '../stylePresets'
 
 describe('stylePresets', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
   it('keeps the terrain palette anchored at the expected boundary colors', () => {
     expect(terrainColors.ocean).toBe('#0a1a2a')
     expect(terrainColors.plain).toBe('#3a3a3a')
@@ -49,5 +53,72 @@ describe('stylePresets', () => {
     expect(nightPlains).toMatch(/^rgba\(/)
     expect(dayRiver).not.toBe(dayPlains)
     expect(nightPlains).not.toBe(dayPlains)
+  })
+
+  it('shifts scorched hexes toward ash tones and green fallout flicker', () => {
+    vi.spyOn(Date, 'now').mockReturnValue(1_000_000)
+
+    const calmScorch = hexPolygonColor(
+      {
+        factionId: 'starlight',
+        terrain: 'plains',
+        elevation: 0.42,
+        lat: 12,
+        lng: 34,
+      },
+      {
+        sunLat: 10,
+        sunLng: 0,
+        nightMaskAlpha: 0,
+        scorchedEntry: {
+          since_turn: 5,
+          ttl_turns: 3,
+          severity: 0,
+          fallout: 0,
+        },
+      },
+    )
+    const falloutScorch = hexPolygonColor(
+      {
+        factionId: 'starlight',
+        terrain: 'plains',
+        elevation: 0.42,
+        lat: 12,
+        lng: 34,
+      },
+      {
+        sunLat: 10,
+        sunLng: 0,
+        nightMaskAlpha: 0,
+        scorchedEntry: {
+          since_turn: 5,
+          ttl_turns: 3,
+          severity: 1,
+          fallout: 0.6,
+        },
+      },
+    )
+
+    const calmMatch = calmScorch.match(/^rgba\((\d+), (\d+), (\d+), ([0-9.]+)\)$/)
+    const falloutMatch = falloutScorch.match(/^rgba\((\d+), (\d+), (\d+), ([0-9.]+)\)$/)
+
+    expect(calmMatch).not.toBeNull()
+    expect(falloutMatch).not.toBeNull()
+
+    const calmGreen = Number(calmMatch?.[2])
+    const calmBlue = Number(calmMatch?.[3])
+    const calmAlpha = Number(calmMatch?.[4])
+    const falloutRed = Number(falloutMatch?.[1])
+    const falloutGreen = Number(falloutMatch?.[2])
+    const falloutBlue = Number(falloutMatch?.[3])
+    const falloutAlpha = Number(falloutMatch?.[4])
+
+    expect(calmAlpha).toBeGreaterThan(0.58)
+    expect(calmAlpha).toBeLessThanOrEqual(0.92)
+    expect(falloutGreen).toBeGreaterThanOrEqual(falloutRed)
+    expect(falloutBlue).toBeLessThanOrEqual(falloutGreen)
+    expect(falloutAlpha).toBeGreaterThan(0.58)
+    expect(falloutScorch).not.toBe(calmScorch)
+    expect(calmGreen).toBeGreaterThanOrEqual(calmBlue)
   })
 })

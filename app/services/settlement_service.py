@@ -13,6 +13,7 @@ from app.domain.models import (
     AISpeechItem,
     BattleEvent,
     DiaryEntry,
+    FactionStatChange,
     FactionState,
     GameEvent,
     MapRegion,
@@ -23,6 +24,7 @@ from app.domain.models import (
 )
 from app.domain.world_geometry import WorldGeometry
 from app.domain.world_lighting import WorldLightingPolicy
+from app.game.explosion_resolver import ExplosionResolution, resolve_explosion
 from app.game.map_neighbors import build_region_neighbors
 from app.game.relationships_init import relationship_status_for_value
 from app.game.rule_resolver import RuleResolver
@@ -41,7 +43,7 @@ from app.services.arc_builder import (
     build_arcs_from_events,
     build_ripples_from_events,
 )
-from app.services.explosion_dispatcher import dispatch_explosions
+from app.services.scorched_service import ScorchedService
 
 logger = get_logger(__name__)
 
@@ -66,6 +68,7 @@ class SettlementOutboundBundle(BaseModel):
     resolve_stats_diff: dict[str, Any]
     resolve_diplomatic_arcs: list[ArcSpec] = Field(default_factory=list)
     resolve_explosions: list[Any] = Field(default_factory=list)
+    resolve_scorched_diff: list[Any] = Field(default_factory=list)
     resolve_ripples: list[RippleSpec] = Field(default_factory=list)
     ai_speech_events: list[dict[str, Any]]
     resolve_world_lighting: dict[str, Any] | None = None
@@ -83,6 +86,7 @@ class SettlementService:
         parser: ModelOutputParser,
         rule_resolver: RuleResolver,
         ai_output_service: AIOutputService | None = None,
+        scorched_service: ScorchedService | None = None,
         lighting_policy: WorldLightingPolicy | None = None,
         lighting_dynamic: bool | None = None,
     ) -> None:
@@ -98,6 +102,7 @@ class SettlementService:
             clock=clock,
             rng_seed=0,
         )
+        self._scorched_service = scorched_service or ScorchedService()
         self._lighting_policy = lighting_policy or WorldLightingPolicy()
         self._lighting_dynamic = (
             _read_bool_env("LIGHTING_DYNAMIC", False)
@@ -136,6 +141,23 @@ class SettlementService:
 
         self._log_step(room_id, epoch, turn, "resolve_rules")
         settlement_result = self._rule_resolver.resolve(settlement_input, model_output)
+
+        self._log_step(room_id, epoch, turn, "resolve_explosions")
+        try:
+            explosion_resolutions = await self._resolve_explosions(
+                settlement_result,
+                settlement_input,
+            )
+            scorched_diff = self._scorched_service.advance(turn)
+            scorched_diff.extend(self._scorched_service.apply(explosion_resolutions, turn))
+            settlement_result = self._apply_scorched_economic_loss(
+                settlement_input,
+                settlement_result,
+                turn,
+            )
+        except Exception as error:
+            self._log_repo_error(room_id, epoch, turn, "resolve_explosions", error)
+            raise DiplomacyError("failed to resolve explosion effects") from error
 
         self._log_step(room_id, epoch, turn, "write_diary")
         try:
@@ -176,11 +198,6 @@ class SettlementService:
         seq_base = self._repos.events.next_seq(room_id)
         visual_events = _visual_source_events(settlement_result, settlement_input)
         capitals = _capital_map(settlement_input.world_geometry)
-        explosions = dispatch_explosions(
-            settlement_result.battle_results,
-            settlement_input.world_geometry,
-            None,
-        )
         bundle = SettlementOutboundBundle(
             room_id=room_id,
             epoch=epoch,
@@ -194,7 +211,12 @@ class SettlementService:
             resolve_map_diff=_build_map_diff(settlement_result, settlement_input),
             resolve_stats_diff=_build_stats_diff(settlement_result, settlement_input),
             resolve_diplomatic_arcs=build_arcs_from_events(visual_events, capitals),
-            resolve_explosions=explosions,
+            resolve_explosions=[
+                resolution.payload.model_dump(mode="json") for resolution in explosion_resolutions
+            ],
+            resolve_scorched_diff=[
+                change.model_dump(mode="json") for change in scorched_diff
+            ],
             resolve_ripples=build_ripples_from_events(visual_events, capitals),
             ai_speech_events=_build_ai_output_events(ai_output),
             resolve_world_lighting=_build_world_lighting(
@@ -239,6 +261,68 @@ class SettlementService:
                 error,
             )
             return ""
+
+    async def _resolve_explosions(
+        self,
+        result: SettlementResult,
+        settlement_input: SettlementInput,
+    ) -> list[ExplosionResolution]:
+        resolutions: list[ExplosionResolution] = []
+        if not result.battle_results:
+            return resolutions
+
+        scorched_state = self._scorched_service.state
+        for event in result.battle_results:
+            resolution = await resolve_explosion(
+                event,
+                settlement_input.world_geometry,
+                scorched_state,
+                self._llm_client,
+            )
+            resolutions.append(resolution)
+        return resolutions
+
+    def _apply_scorched_economic_loss(
+        self,
+        settlement_input: SettlementInput,
+        result: SettlementResult,
+        turn: int,
+    ) -> SettlementResult:
+        changes = list(result.faction_stat_changes)
+        factions_by_id = {faction.id: faction for faction in settlement_input.factions_snapshot}
+        impacted: set[FactionId] = set()
+
+        for entry in self._scorched_service.state.values():
+            if entry.owner_faction_id is None or entry.ttl_turns <= 0:
+                continue
+            try:
+                impacted.add(FactionId(entry.owner_faction_id))
+            except Exception:
+                continue
+
+        for faction_id in sorted(impacted, key=str):
+            faction = factions_by_id.get(faction_id)
+            if faction is None:
+                continue
+            impact = self._scorched_service.economic_impact(faction_id, turn)
+            if impact <= 0:
+                continue
+            changes.append(
+                FactionStatChange(
+                    faction_id=faction_id,
+                    military_delta=0.0,
+                    economy_delta=round(-faction.economy * impact, 4),
+                    diplomacy_delta=0.0,
+                    culture_delta=0.0,
+                    morale_delta=0.0,
+                    reason=f"scorched:{turn}:{impact:.4f}",
+                )
+            )
+
+        if len(changes) == len(result.faction_stat_changes):
+            return result
+
+        return result.model_copy(update={"faction_stat_changes": changes})
 
     async def _apply_settlement_to_state(
         self,

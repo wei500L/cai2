@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.domain.enums import FactionId
 
@@ -97,3 +97,40 @@ class SettlementModelOutput(BaseModel):
     narrative_events: list[NarrativeEvent] = Field(default_factory=list)
     map_change_suggestions: list[MapChangeSuggestion] = Field(default_factory=list)
     stat_change_suggestions: list[StatChangeSuggestion] = Field(default_factory=list)
+
+
+class ExplosionJudgeOutput(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid", validate_assignment=True)
+
+    affected_hex_ids: list[str] = Field(default_factory=list, min_length=1, max_length=16)
+    primary_hex_id: str = Field(max_length=32)
+    scorched_turns: int = Field(ge=0, le=6)
+    fallout_severity: float = Field(ge=0.0, le=1.0)
+    economic_loss_pct: float = Field(ge=0.0, le=1.0)
+    narrative_hint: str = Field(min_length=1, max_length=240)
+
+    @field_validator("affected_hex_ids")
+    @classmethod
+    def _dedupe_affected_hex_ids(cls, value: list[str]) -> list[str]:
+        ordered: list[str] = []
+        seen: set[str] = set()
+        for hex_id in value:
+            if hex_id in seen:
+                continue
+            seen.add(hex_id)
+            ordered.append(hex_id)
+        return ordered
+
+    @model_validator(mode="after")
+    def _validate_primary_hex(self) -> ExplosionJudgeOutput:
+        if self.primary_hex_id not in self.affected_hex_ids:
+            raise ValueError("primary_hex_id must be included in affected_hex_ids")
+        if len(self.affected_hex_ids) > 16:
+            raise ValueError("affected_hex_ids must contain at most 16 items")
+        if self.affected_hex_ids and self.affected_hex_ids[0] != self.primary_hex_id:
+            ordered = [
+                self.primary_hex_id,
+                *[hex_id for hex_id in self.affected_hex_ids if hex_id != self.primary_hex_id],
+            ]
+            object.__setattr__(self, "affected_hex_ids", ordered[:16])
+        return self
