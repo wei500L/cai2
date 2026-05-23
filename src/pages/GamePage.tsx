@@ -391,15 +391,6 @@ export default function GamePage() {
     return () => window.clearTimeout(timer)
   }, [focusToast, setFocusToast])
 
-  const rootStyle = useMemo(
-    () =>
-      ({
-        '--hud-faction-glow': faction.glow,
-        '--hud-faction-shadow': faction.shadow,
-      }) as CSSProperties,
-    [faction.glow, faction.shadow],
-  )
-
   const leftWidth = phaseConfig.eventStreamMode === 'compact' ? 104 : isDense ? 240 : 280
   const rightWidth = phaseConfig.relationsMode === 'compact' ? 116 : isDense ? 280 : 320
   const bottomHeight =
@@ -418,6 +409,26 @@ export default function GamePage() {
     outline: active ? '1px solid var(--border-glow)' : '1px solid transparent',
     outlineOffset: '-1px',
   })
+  const rootStyle = useMemo(
+    () =>
+      ({
+        '--hud-faction-glow': faction.glow,
+        '--hud-faction-shadow': faction.shadow,
+        '--hud-safe-left': !isCompact && leftPanelOpen && phaseConfig.eventStreamVisible ? `${leftWidth + 12}px` : '0px',
+        '--hud-safe-right': !isCompact && rightPanelOpen && phaseConfig.relationsVisible ? `${rightWidth + 12}px` : '0px',
+      }) as CSSProperties,
+    [
+      faction.glow,
+      faction.shadow,
+      isCompact,
+      leftPanelOpen,
+      leftWidth,
+      phaseConfig.eventStreamVisible,
+      phaseConfig.relationsVisible,
+      rightPanelOpen,
+      rightWidth,
+    ],
+  )
 
   return (
     <main

@@ -73,7 +73,9 @@ function wrapLongitude(lng: number) {
 }
 
 function buildGeometry(lat: number, lng: number) {
-  const delta = 0.08
+  // Delta was a typo (0.08 instead of 8.0), which resulted in 17km squares instead of 1700km squares,
+  // causing h3.polyfill to drop them or render sparse dots instead of a continuous mosaic.
+  const delta = 8.0
   const north = clamp(lat + delta, -89.9, 89.9)
   const south = clamp(lat - delta, -89.9, 89.9)
   const east = wrapLongitude(lng + delta)

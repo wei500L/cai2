@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react'
 import type { CSSProperties } from 'react'
+import clsx from 'clsx'
 import { AnimatePresence, motion } from 'framer-motion'
 import { factionTokens } from '@/components/hudTheme'
 import { factionById } from '@/mock/factions'
@@ -17,6 +18,7 @@ function formatTime(createdAt: number) {
 export function PrivateMessageDrawer() {
   const selectedFactionId = useGameStore((state) => state.selectedFactionId)
   const privateMessages = useGameStore((state) => state.privateMessages)
+  const rightPanelOpen = useUIStore((state) => state.rightPanelOpen)
   const open = useUIStore((state) => state.privateDrawerOpen)
   const unreadCount = useUIStore((state) => state.unreadPrivateCount)
   const toggleDrawer = useUIStore((state) => state.togglePrivateDrawer)
@@ -63,7 +65,14 @@ export function PrivateMessageDrawer() {
   }, [clearUnread, open])
 
   return (
-    <div className="fixed bottom-[12.25rem] right-4 z-50 font-hud">
+    <div
+      className={clsx(
+        'fixed bottom-[12.25rem] z-50 font-hud transition-all duration-300',
+        rightPanelOpen
+          ? 'right-[calc(min(86vw,320px)+1rem)] max-xl:right-4'
+          : 'right-4',
+      )}
+    >
       <button
         type="button"
         onClick={toggleDrawer}

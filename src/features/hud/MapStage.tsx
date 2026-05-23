@@ -74,11 +74,11 @@ export function MapStage() {
           <div className="absolute left-1/2 top-0 h-full w-[1px] -translate-x-1/2 bg-[color:rgba(196,228,255,0.04)]" />
           <div className="absolute left-0 top-1/2 h-[1px] w-full -translate-y-1/2 bg-[color:rgba(196,228,255,0.04)]" />
           <div
-            className="absolute inset-[7%] border border-[color:rgba(51,170,255,0.08)]"
+            className="absolute inset-[16px] md:inset-[24px] border border-[color:rgba(51,170,255,0.08)]"
             style={{ boxShadow: 'inset 0 0 38px rgba(51,170,255,0.06)' }}
           />
           <div
-            className="absolute inset-[15%] border border-[color:rgba(255,255,255,0.05)]"
+            className="absolute inset-[32px] md:inset-[48px] border border-[color:rgba(255,255,255,0.05)]"
             style={{ boxShadow: '0 0 44px rgba(255,204,102,0.035)' }}
           />
         </div>

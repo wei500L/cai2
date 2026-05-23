@@ -381,11 +381,9 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
         composer.setPixelRatio(pixelRatio)
       }
       if (composer && containerRef.current) {
-        const rect = containerRef.current.getBoundingClientRect()
-        composer.setSize(
-          Math.max(1, Math.round(rect.width * qualityPreset.renderScale)),
-          Math.max(1, Math.round(rect.height * qualityPreset.renderScale)),
-        )
+        const width = containerRef.current.clientWidth || 1
+        const height = containerRef.current.clientHeight || 1
+        composer.setSize(Math.max(1, width), Math.max(1, height))
       }
     }
   }, [mapQuality, qualityPreset])

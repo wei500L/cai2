@@ -39,7 +39,13 @@ function NarrationBannerItem({ event }: { event: GameEvent }) {
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -18, scale: 0.98 }}
           transition={{ duration: 0.26 }}
-          className="pointer-events-none fixed left-1/2 top-1/2 z-[60] w-[min(44rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 border border-[color:rgba(255,204,102,0.48)] bg-[color:rgba(8,6,12,0.94)] px-6 py-4 text-center shadow-[0_0_42px_rgba(255,204,102,0.18)]"
+          className="pointer-events-none fixed z-[60] border border-[color:rgba(255,204,102,0.48)] bg-[color:rgba(8,6,12,0.94)] px-6 py-4 text-center shadow-[0_0_42px_rgba(255,204,102,0.18)]"
+          style={{
+            left: 'calc(50vw + (var(--hud-safe-left, 0px) - var(--hud-safe-right, 0px)) / 2)',
+            top: 'calc(56px + 1.25rem)',
+            width: 'min(44rem, calc(100vw - var(--hud-safe-left, 0px) - var(--hud-safe-right, 0px) - 2rem))',
+            transform: 'translateX(-50%)',
+          }}
         >
           <div className="mb-2 font-hud text-[0.58rem] uppercase tracking-[0.28em] text-[color:var(--text-warn)]">
             系统旁白

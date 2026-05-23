@@ -93,7 +93,7 @@ export function GlowPanel({
             'radial-gradient(circle at 50% 0%, rgba(255,255,255,0.12), transparent 42%)',
         }}
       />
-      <div className="relative">{children}</div>
+      <div className="relative h-full w-full min-h-0">{children}</div>
     </motion.div>
   )
 }

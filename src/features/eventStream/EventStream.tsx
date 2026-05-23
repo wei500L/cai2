@@ -271,7 +271,7 @@ export function EventStream({
       className={clsx(
         'event-stream-root flex h-full min-h-0 flex-col overflow-hidden border bg-[color:rgba(0,0,0,0.76)] text-[color:var(--text-primary)]',
         isFullscreen
-          ? 'fixed left-0 top-0 z-[70] h-screen w-[min(60vw,58rem)] max-w-[calc(100vw-1rem)] max-sm:w-screen max-sm:max-w-none'
+          ? 'fixed left-0 top-14 z-[70] h-[calc(100vh-3.5rem)] w-[min(60vw,58rem)] max-w-[calc(100vw-1rem)] max-sm:w-screen max-sm:max-w-none'
           : 'relative w-full',
       )}
       style={{
