@@ -17,6 +17,9 @@ describe('gameStore region change application', () => {
           prev_owner: target.owner,
           new_owner: 'starlight',
           transition: 'conquest',
+          lat: 12.1,
+          lng: 34.2,
+          hex_id: 'hex-1',
           animation_params: {
             direction: 'west_to_east',
             speed: 1.2,
@@ -34,6 +37,9 @@ describe('gameStore region change application', () => {
     expect(updated?.developmentLevel).toBe(0.3)
     expect(updated?.resistance).toBe(0.5)
     expect(updated?.capturedAtTurn).toBe(next.epoch.turn)
+    expect(updated?.lat).toBe(12.1)
+    expect(updated?.lng).toBe(34.2)
+    expect(updated?.hex_id).toBe('hex-1')
     expect(next.regionTransitionLog).toHaveLength(1)
     expect(next.regionTransitionLog[0]).toMatchObject({
       region_id: target.id,

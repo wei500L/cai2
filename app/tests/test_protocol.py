@@ -243,6 +243,43 @@ def test_replay_ai_diary_reveal_payload_validates_entries() -> None:
     assert payload.room_id == "room-1"
 
 
+def test_region_entry_out_omits_null_globe_fields() -> None:
+    payload = RegionEntryOut(
+        id="region-1",
+        owner=FactionId.ironCrown,
+        resource_value=18.0,
+        development_level=1.0,
+        terrain=TerrainKind.plains,
+        center_lat_lng=(12.0, 34.0),
+        min_garrison=10,
+        supply_lines=2,
+    ).model_dump(mode="json", exclude_none=True)
+
+    assert "lat" not in payload
+    assert "lng" not in payload
+    assert "hex_id" not in payload
+
+
+def test_region_entry_out_serializes_globe_fields_when_present() -> None:
+    payload = RegionEntryOut(
+        id="region-1",
+        owner=FactionId.ironCrown,
+        resource_value=18.0,
+        development_level=1.0,
+        terrain=TerrainKind.plains,
+        center_lat_lng=(12.0, 34.0),
+        lat=12.5,
+        lng=34.5,
+        hex_id="hex-1",
+        min_garrison=10,
+        supply_lines=2,
+    ).model_dump(mode="json", exclude_none=True)
+
+    assert payload["lat"] == 12.5
+    assert payload["lng"] == 34.5
+    assert payload["hex_id"] == "hex-1"
+
+
 def test_optional_protocol_fields_are_accepted() -> None:
     from app.protocol.outgoing import (
         ActionPrivateBroadcastPayload,

@@ -3,9 +3,15 @@ import Globe from 'globe.gl'
 import type { GlobeInstance } from 'globe.gl'
 import type { Camera, Scene, WebGLRenderer } from 'three'
 import type { MapRegion } from '@/mock/types'
+import {
+  buildHexPolygons,
+  hexPolygonAltitude,
+  hexPolygonColor,
+  hexPolygonMargin,
+} from '@/render/globe/buildHexPolygons'
 import { useGameStore } from '@/store/gameStore'
 import { useMapStore } from '@/store/mapStore'
-import { GlobeInstanceProvider } from '@/render/globe/useGlobeInstance'
+import { GlobeInstanceProvider } from '@/render/globe/GlobeInstanceProvider'
 import type { GlobeInstanceSnapshot } from '@/render/globe/globeTypes'
 
 const PRESET_POINTS: Record<'overview' | 'focus' | 'cinematic', { lat: number; lng: number; altitude: number }> = {
@@ -42,7 +48,9 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
   const [published, setPublished] = useState<GlobeInstanceSnapshot | null>(null)
   const cameraPreset = useMapStore((state) => state.cameraPreset)
   const focusRegionId = useMapStore((state) => state.focusRegionId)
+  const scorchedRegions = useMapStore((state) => state.scorchedRegions)
   const regions = useGameStore((state) => state.regions)
+  const worldGeometry = useGameStore((state) => state.worldGeometry)
 
   const focusRegion = useMemo(() => {
     if (!focusRegionId) {
@@ -129,6 +137,21 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
       650,
     )
   }, [focusRegion])
+
+  useEffect(() => {
+    const globe = globeRef.current
+    if (!globe || !worldGeometry) {
+      return
+    }
+
+    globe
+      .hexPolygonsData(buildHexPolygons(regions, scorchedRegions))
+      .hexPolygonResolution(worldGeometry.hex_resolution)
+      .hexPolygonColor((hexPolygon) => hexPolygonColor(hexPolygon.__data))
+      .hexPolygonAltitude((hexPolygon) => hexPolygonAltitude(hexPolygon.__data))
+      .hexPolygonMargin(hexPolygonMargin())
+      .hexPolygonUseDots(false)
+  }, [regions, scorchedRegions, worldGeometry])
 
   return (
     <GlobeInstanceProvider value={published}>

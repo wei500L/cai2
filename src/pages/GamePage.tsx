@@ -141,6 +141,7 @@ export default function GamePage() {
       return undefined
     }
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFinishNowMs(Date.now())
     const timer = window.setInterval(() => setFinishNowMs(Date.now()), 250)
     return () => window.clearInterval(timer)

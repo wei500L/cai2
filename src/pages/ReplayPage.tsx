@@ -80,10 +80,12 @@ export default function ReplayPage() {
     }
 
     let cancelled = false
+    /* eslint-disable react-hooks/set-state-in-effect */
     setLoading(true)
     setLoadError(null)
     setRemoteReplay(null)
     setCurrentIndex(0)
+    /* eslint-enable react-hooks/set-state-in-effect */
 
     loadReplay(roomId)
       .then((replayData) => {

@@ -38,6 +38,7 @@ import type {
   StatsDiffPayload,
   RoomMode,
   TurnBeginPayload,
+  WorldGeometryPayload,
 } from '@/protocol/types'
 
 const MAX_EVENTS = 200
@@ -46,6 +47,8 @@ type BorderTension = {
   tension: number
   visual_state: BorderTensionEntry['visual_state']
 }
+
+type WorldGeometryCapital = WorldGeometryPayload['factions'][number]
 
 type GameStoreActions = {
   initGame: (seed?: number) => void
@@ -70,6 +73,7 @@ type GameStoreActions = {
   _applyMapDiff: (
     payload: MapRegionPatch[] | { changes: MapRegionPatch[]; border_updates?: BorderTensionEntry[] },
   ) => void
+  applyWorldGeometry: (payload: WorldGeometryPayload) => void
   _applyStatsDiff: (payload: StatsDiffPayload | {
     faction_stats?: FactionStatsPatch[]
     relationship_changes?: RelationshipPatch[]
@@ -121,6 +125,12 @@ export type GameStoreState = MockGameWorldState & {
   aiThinkingState: (ReconnectAIThinkingState & { fallback: boolean }) | null
   borderTensionMap: Record<string, BorderTension>
   regionTransitionLog: RegionTransitionLogEntry[]
+  worldGeometry: {
+    seed: number
+    hex_resolution: number
+    total_cells: number
+    capitals: WorldGeometryCapital[]
+  } | null
   winner: FactionId | null
   finalNarration: string | null
   serverClockOffsetMs: number
@@ -363,6 +373,7 @@ function normalizeRegion(region: unknown): MapRegion {
     owner: toFactionIdValue(raw.owner ?? raw.owner_id),
     resourceValue: toNumberValue(raw.resourceValue ?? raw.resource_value),
     developmentLevel: toNumberValue(raw.developmentLevel ?? raw.development_level),
+    elevation: toNullableNumberValue(raw.elevation ?? raw.altitude),
     resistance: toNumberValue(raw.resistance, 0),
     capturedAtTurn:
       typeof raw.capturedAtTurn === 'number'
@@ -537,6 +548,9 @@ function normalizeRegionPatch(patch: unknown): MapRegionPatch | null {
   if (typeof raw.developmentLevel === 'number' || typeof raw.development_level === 'number') {
     normalized.developmentLevel = toNumberValue(raw.developmentLevel ?? raw.development_level)
   }
+  if (typeof raw.elevation === 'number' || typeof raw.altitude === 'number') {
+    normalized.elevation = toNullableNumberValue(raw.elevation ?? raw.altitude)
+  }
   if (typeof raw.resistance === 'number') {
     normalized.resistance = toNumberValue(raw.resistance)
   }
@@ -557,6 +571,9 @@ function normalizeRegionPatch(patch: unknown): MapRegionPatch | null {
   }
   if ('hex_id' in raw || 'hexId' in raw) {
     normalized.hex_id = toNullableStringValue(raw.hex_id ?? raw.hexId)
+  }
+  if ('elevation' in raw || 'altitude' in raw) {
+    normalized.elevation = toNullableNumberValue(raw.elevation ?? raw.altitude)
   }
   if (typeof raw.minGarrison === 'number' || typeof raw.min_garrison === 'number') {
     normalized.minGarrison = Math.round(toNumberValue(raw.minGarrison ?? raw.min_garrison))
@@ -884,6 +901,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   aiThinkingState: null,
   borderTensionMap: {},
   regionTransitionLog: [],
+  worldGeometry: null,
   winner: null,
   finalNarration: null,
   serverClockOffsetMs: 0,
@@ -905,6 +923,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       aiThinkingState: state.aiThinkingState,
       borderTensionMap: state.borderTensionMap,
       regionTransitionLog: [],
+      worldGeometry: null,
       winner: state.winner,
       finalNarration: state.finalNarration,
       serverClockOffsetMs: state.serverClockOffsetMs,
@@ -1324,6 +1343,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
                 lat: patch.lat !== undefined ? patch.lat : region.lat,
                 lng: patch.lng !== undefined ? patch.lng : region.lng,
                 hex_id: patch.hex_id !== undefined ? patch.hex_id : region.hex_id,
+                elevation: patch.elevation !== undefined ? patch.elevation : region.elevation,
                 terrain: patch.terrain ?? region.terrain,
                 minGarrison: patch.minGarrison ?? region.minGarrison,
                 supplyLines: patch.supplyLines ?? region.supplyLines,
@@ -1353,6 +1373,39 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
               ...borderTensionMap,
             }
           : state.borderTensionMap,
+    }))
+  },
+
+  applyWorldGeometry: (payload) => {
+    set(() => ({
+      worldGeometry: {
+        seed: payload.seed,
+        hex_resolution: payload.hex_resolution,
+        total_cells: payload.total_cells,
+        capitals: payload.factions.map((capital) => ({
+          id: capital.id,
+          capital_hex_id: capital.capital_hex_id,
+          capital_lat: capital.capital_lat,
+          capital_lng: capital.capital_lng,
+        })),
+      },
+      regions: payload.cells.map((cell) => ({
+        id: cell.id,
+        owner: cell.owner,
+        resourceValue: cell.resourceValue,
+        developmentLevel: cell.developmentLevel,
+        elevation: cell.elevation,
+        resistance: cell.resistance,
+        capturedAtTurn: cell.capturedAtTurn,
+        centerLatLng: cell.centerLatLng,
+        lat: cell.lat,
+        lng: cell.lng,
+        hex_id: cell.hex_id,
+        terrain: cell.terrain,
+        minGarrison: cell.minGarrison,
+        supplyLines: cell.supplyLines,
+        neighbors: cell.neighbors,
+      })),
     }))
   },
 

@@ -751,6 +751,7 @@ function ParticleLayer({
   const frameCounter = useRef(0)
   const stride = qualityConfig[quality].particleStride
 
+  /* eslint-disable react-hooks/immutability */
   useFrame(({ clock }) => {
     frameCounter.current += 1
     if (frameCounter.current % stride !== 0) {
@@ -760,6 +761,7 @@ function ParticleLayer({
     material.uniforms.uTime.value = clock.getElapsedTime()
     material.uniforms.uColor.value = new Color('#9adfff')
   })
+  /* eslint-enable react-hooks/immutability */
 
   return (
     <instancedMesh

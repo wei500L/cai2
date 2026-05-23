@@ -134,6 +134,7 @@ export type MapRegion = {
   owner: FactionId | null
   resourceValue: number
   developmentLevel: number
+  elevation?: number | null
   resistance: number
   capturedAtTurn: number | null
   centerLatLng: [number, number]

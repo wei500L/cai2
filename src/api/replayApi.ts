@@ -77,7 +77,7 @@ export async function loadReplay(roomId: string): Promise<ReplayData> {
   try {
     return normalizeReplayDto(await fetchReplay(roomId))
   } catch (error) {
-    throw new Error(`真实复盘读取失败。${formatFetchError(error)}`)
+    throw new Error(`真实复盘读取失败。${formatFetchError(error)}`, { cause: error })
   }
 }
 

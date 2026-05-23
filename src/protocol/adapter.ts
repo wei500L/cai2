@@ -145,6 +145,9 @@ export function attachAdapter(transport: Transport, gameStore: GameStoreApiLike)
           final_narration: store.finalNarration,
         })
         break
+      case 'room.world_geometry':
+        store.applyWorldGeometry(message.p)
+        break
       case 'reconnect.snapshot':
         if (message.t === 'reconnect.snapshot') {
           store._applySnapshot(message.p)

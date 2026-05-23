@@ -18,14 +18,38 @@ type MapStoreState = {
   clearScorched: (regionId: string) => void
 }
 
-const storage =
-  typeof window === 'undefined'
-    ? createJSONStorage<MapStoreState>(() => ({
-        getItem: () => null,
-        setItem: () => undefined,
-        removeItem: () => undefined,
-      }))
-    : createJSONStorage<MapStoreState>(() => window.localStorage)
+const memoryStorage = (() => {
+  const values = new Map<string, string>()
+  return {
+    getItem: (name: string) => values.get(name) ?? null,
+    setItem: (name: string, value: string) => {
+      values.set(name, value)
+    },
+    removeItem: (name: string) => {
+      values.delete(name)
+    },
+  }
+})()
+
+function getMapRendererStorage() {
+  try {
+    const candidate = typeof window === 'undefined' ? null : window.localStorage
+    if (
+      candidate &&
+      typeof candidate.getItem === 'function' &&
+      typeof candidate.setItem === 'function' &&
+      typeof candidate.removeItem === 'function'
+    ) {
+      return candidate
+    }
+  } catch {
+    return memoryStorage
+  }
+
+  return memoryStorage
+}
+
+const storage = createJSONStorage<MapStoreState>(getMapRendererStorage)
 
 export const useMapStore = create<MapStoreState>()(
   persist(
@@ -79,4 +103,3 @@ export const useMapStore = create<MapStoreState>()(
     },
   ),
 )
-

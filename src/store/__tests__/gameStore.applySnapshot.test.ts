@@ -78,6 +78,9 @@ describe('gameStore reconnect snapshot', () => {
           resistance: 0.5,
           capturedAtTurn: 2,
           centerLatLng: [12, 34],
+          lat: 12.1,
+          lng: 34.2,
+          hex_id: 'hex-1',
           terrain: 'plains',
           minGarrison: 10,
           supplyLines: 2,
@@ -209,6 +212,11 @@ describe('gameStore reconnect snapshot', () => {
       phase: 'resolve',
     })
     expect(state.factions).toEqual(snapshot.factions)
+    expect(state.regions[0]).toMatchObject({
+      lat: 12.1,
+      lng: 34.2,
+      hex_id: 'hex-1',
+    })
     expect(state.regions[0].neighbors).toEqual(['region-2'])
     expect(state.relationships).toEqual(snapshot.relationships)
     expect(state.treaties).toEqual(snapshot.treaties)

@@ -143,6 +143,7 @@ export function FactionRowDetail({
   )
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function formatDiaryPreview(entry: DiaryEntry) {
   return {
     meta: `E${entry.epoch}.T${entry.turn} · ${entry.emotion}`,

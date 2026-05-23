@@ -1,7 +1,6 @@
-import { createContext, useContext, type ReactNode } from 'react'
+import type { ReactNode } from 'react'
+import { GlobeInstanceContext } from './useGlobeInstance'
 import type { GlobeInstanceSnapshot } from './globeTypes'
-
-const GlobeInstanceContext = createContext<GlobeInstanceSnapshot | null>(null)
 
 export function GlobeInstanceProvider({
   value,
@@ -11,9 +10,5 @@ export function GlobeInstanceProvider({
   children: ReactNode
 }) {
   return <GlobeInstanceContext.Provider value={value}>{children}</GlobeInstanceContext.Provider>
-}
-
-export function useGlobeInstance() {
-  return useContext(GlobeInstanceContext)
 }
 

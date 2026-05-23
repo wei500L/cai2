@@ -126,16 +126,30 @@ export type RegionEntry = {
   owner: FactionId | null
   resourceValue: number
   developmentLevel: number
+  elevation: number
   resistance: number
   capturedAtTurn: number | null
   centerLatLng: MapRegion['centerLatLng']
-  lat?: number | null
-  lng?: number | null
-  hex_id?: string | null
+  lat: number
+  lng: number
+  hex_id: string
   terrain: MapRegion['terrain']
   minGarrison: number
   supplyLines: number
   neighbors: string[]
+}
+
+export interface WorldGeometryPayload {
+  seed: number
+  hex_resolution: number
+  total_cells: number
+  factions: Array<{
+    id: FactionId
+    capital_hex_id: string
+    capital_lat: number
+    capital_lng: number
+  }>
+  cells: RegionEntry[]
 }
 
 export type RegionTransition = 'conquest' | 'cede' | 'negotiated' | 'abandoned'
@@ -176,6 +190,7 @@ export type MapRegionPatch = Partial<RegionChange> & {
   lat?: number | null
   lng?: number | null
   hex_id?: string | null
+  elevation?: number | null
   terrain?: MapRegion['terrain']
   minGarrison?: MapRegion['minGarrison']
   supplyLines?: MapRegion['supplyLines']
@@ -326,6 +341,7 @@ export type RoomStartMessage = Envelope<'room.start', {
     current_turn?: ReconnectEpochTurn | null
   }
 }>
+export type RoomWorldGeometryMessage = Envelope<'room.world_geometry', WorldGeometryPayload>
 export type RoomFinishedPayload = {
   room_id: string
   winner: FactionId | null
@@ -473,6 +489,7 @@ export type IncomingMessage =
   | RoomPlayerTakeoverMessage
   | RoomPlayerResumeMessage
   | RoomStartMessage
+  | RoomWorldGeometryMessage
   | RoomFinishedMessage
   | PhaseChangeMessage
   | TurnBeginMessage

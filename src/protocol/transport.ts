@@ -13,6 +13,7 @@ import type {
   Relationship,
 } from '@/mock/types'
 import { clearAIResponseTimers, triggerAIResponses } from '@/mock/aiResponder'
+import { createMockWorldGeometry } from '@/mock/worldGeometry'
 import { gameStoreApi } from '@/store/gameStore'
 import { useUIStore } from '@/store/uiStore'
 import type { SubmitSpeechResult } from '@/features/commandTerminal/types'
@@ -338,6 +339,7 @@ export class MockTransport implements Transport {
       display_name: 'Mock Player',
       server_time_ms: Date.now(),
     }))
+    this.emit(nextEnvelope('room.world_geometry', createMockWorldGeometry()))
   }
 
   disconnect() {

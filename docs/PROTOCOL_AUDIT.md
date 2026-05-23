@@ -91,6 +91,16 @@
 
 ## 7. 球体地图扩展
 
+| 字段 | 后端位置 | 前端类型 | 是否必填 | 版本 |
+| --- | --- | --- | --- | --- |
+| `lat` | `MapRegion.lat` / `RegionEntryOut.lat` | `RegionEntry.lat?` / `MapRegion.lat?` | 否 | v1.0-globe |
+| `lng` | `MapRegion.lng` / `RegionEntryOut.lng` | `RegionEntry.lng?` / `MapRegion.lng?` | 否 | v1.0-globe |
+| `hex_id` | `MapRegion.hex_id` / `RegionEntryOut.hex_id` | `RegionEntry.hex_id?` / `MapRegion.hex_id?` | 否 | v1.0-globe |
+
+说明：`resolve.map_diff` 的 `previous` 区域 payload 透传上述字段；当值为 `null` 时，`RegionEntryOut.model_dump(..., exclude_none=True)` 不会写入对应键。
+
+## 7. 球体地图扩展
+
 | 字段 | 前端类型 | 后端类型 | 是否必填 | 引入版本 |
 | --- | --- | --- | --- | --- |
 | `region.lat` | `number \| null` | `float \| None` | 否 | `v1.0-globe` |
