@@ -1,6 +1,7 @@
 import { createJSONStorage, persist } from 'zustand/middleware'
 import { create } from 'zustand'
 import type { CameraPreset, ExplosionEvent, GlobeRenderer } from '@/render/globe/globeTypes'
+import { globeQualityPresets } from '@/render/globe/stylePresets'
 import type { ScorchedDiffPayload } from '@/protocol/types'
 
 export const MAX_EXPLOSION_QUEUE = 30
@@ -133,10 +134,10 @@ export const useMapStore = create<MapStoreState>()(
       explosionQueue: [],
       scorchedRegions: new Map<string, ScorchedRegionEntry>(),
       lighting: {
-        bloomStrength: 1.4,
-        bloomRadius: 0.6,
-        bloomThreshold: 0.85,
-        starfieldDensity: 0.7,
+        bloomStrength: globeQualityPresets.mid.bloomStrength,
+        bloomRadius: globeQualityPresets.mid.bloomRadius,
+        bloomThreshold: globeQualityPresets.mid.bloomThreshold,
+        starfieldDensity: globeQualityPresets.mid.starfieldDensity,
         dayNightMaskAlpha: 0.6,
         noiseEnabled: true,
       },

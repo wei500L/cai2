@@ -35,6 +35,7 @@ export type ExplosionEmitterConfig = {
   intensity: number
   kind: ExplosionKind
   ttl_ms?: number
+  particleMultiplier?: number
 }
 
 type Palette = {
@@ -197,7 +198,11 @@ function makeParticleMaterial(palette: Palette, ttl: number, origin: Vector3, no
 
 export function createExplosionEmitter(scene: Scene, config: ExplosionEmitterConfig): ExplosionFxHandle {
   const intensity = normalizedIntensity(config.intensity)
-  const count = Math.min(MAX_PARTICLES, Math.max(1, Math.round(intensity * PARTICLES_PER_INTENSITY)))
+  const particleMultiplier = clamp(config.particleMultiplier ?? 1, 0.1, 1)
+  const count = Math.min(
+    MAX_PARTICLES,
+    Math.max(1, Math.round(intensity * PARTICLES_PER_INTENSITY * particleMultiplier)),
+  )
   const ttl = ttlSeconds(config.ttl_ms)
   const origin = latLngToVec3(config.centerLat, config.centerLng, 0.012)
   const normal = origin.clone().normalize()
@@ -390,13 +395,18 @@ export function createMuzzleFlash(scene: Scene, config: ExplosionEmitterConfig):
   }
 }
 
-export function spawnExplosion(scene: Scene, event: ExplosionEvent): ExplosionFxHandle {
+export function spawnExplosion(
+  scene: Scene,
+  event: ExplosionEvent,
+  options: { particleMultiplier?: number } = {},
+): ExplosionFxHandle {
   const config: ExplosionEmitterConfig = {
     centerLat: event.centerLat,
     centerLng: event.centerLng,
     intensity: event.intensity,
     kind: event.kind,
     ttl_ms: event.ttl_ms,
+    particleMultiplier: options.particleMultiplier,
   }
   const handles = [
     createExplosionEmitter(scene, config),

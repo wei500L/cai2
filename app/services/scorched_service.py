@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.domain.enums import FactionId
 from app.game.explosion_resolver import ExplosionResolution
 from app.protocol.explosion_events import ScorchedChange
 
@@ -35,15 +36,14 @@ class ScorchedService:
                 owner_faction_id = analysis.hex_owner_ids.get(hex_id)
                 existing = self.state.get(hex_id)
                 if existing is None:
-                    owner_id = (
-                        str(owner_faction_id) if owner_faction_id is not None else None
-                    )
                     entry = ScorchedEntry(
                         since_turn=turn,
                         ttl_turns=payload.scorched_turns,
                         severity=payload.fallout_severity,
                         fallout=payload.fallout_severity,
-                        owner_faction_id=owner_id,
+                        owner_faction_id=(
+                            owner_faction_id.value if owner_faction_id is not None else None
+                        ),
                         resource_value=resource_value,
                         source_event_id=payload.event_id,
                     )
@@ -62,7 +62,7 @@ class ScorchedService:
                 existing.severity = max(existing.severity, payload.fallout_severity)
                 existing.fallout = max(existing.fallout, payload.fallout_severity)
                 if owner_faction_id is not None:
-                    existing.owner_faction_id = str(owner_faction_id)
+                    existing.owner_faction_id = owner_faction_id.value
                 existing.resource_value = max(existing.resource_value, resource_value)
                 existing.source_event_id = payload.event_id
                 changes.append(
@@ -91,7 +91,7 @@ class ScorchedService:
                         severity=entry.severity,
                         fallout=entry.fallout,
                         resource_value=entry.resource_value,
-                        owner_faction_id=entry.owner_faction_id,
+                        owner_faction_id=_owner_faction(entry.owner_faction_id),
                         source_event_id=entry.source_event_id,
                     )
                 )
@@ -108,7 +108,7 @@ class ScorchedService:
                     severity=entry.severity,
                     fallout=entry.fallout,
                     resource_value=entry.resource_value,
-                    owner_faction_id=entry.owner_faction_id,
+                    owner_faction_id=_owner_faction(entry.owner_faction_id),
                     source_event_id=entry.source_event_id,
                 )
             )
@@ -149,6 +149,12 @@ class ScorchedService:
             severity=entry.severity,
             fallout=entry.fallout,
             resource_value=entry.resource_value,
-            owner_faction_id=entry.owner_faction_id,
+            owner_faction_id=_owner_faction(entry.owner_faction_id),
             source_event_id=entry.source_event_id,
         )
+
+
+def _owner_faction(value: str | None) -> FactionId | None:
+    if value is None:
+        return None
+    return FactionId(value)

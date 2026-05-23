@@ -3,6 +3,8 @@ import type { FactionId } from '@/mock/factions'
 import type { TreatyKind } from '@/mock/types'
 import type { CommandMode } from '@/features/commandTerminal/types'
 import type { HudMode } from '@/features/phaseSystem/PhaseStateMachine'
+import { globeQualityPresets } from '@/render/globe/stylePresets'
+import { useMapStore } from '@/store/mapStore'
 import type { TransportStatus } from '@/protocol/transport'
 
 export type HudFocusTarget = 'left' | 'center' | 'right' | 'bottom'
@@ -94,8 +96,26 @@ type UIStoreState = {
 
 const focusOrder: HudFocusTarget[] = ['left', 'center', 'right', 'bottom']
 const densityOrder: GlobalParticleDensity[] = ['low', 'mid', 'high', 'ultra']
+const densityForQuality: Record<MapQuality, GlobalParticleDensity> = {
+  low: 'low',
+  mid: 'mid',
+  high: 'high',
+}
 const getInitialPanelOpen = () =>
   typeof window === 'undefined' ? true : window.innerWidth >= 960
+
+function applyGlobeQualityPreset(mapQuality: MapQuality) {
+  const preset = globeQualityPresets[mapQuality]
+  const mapStore = useMapStore.getState()
+
+  mapStore.setLighting({
+    bloomStrength: preset.bloomEnabled ? preset.bloomStrength : 0,
+    bloomRadius: preset.bloomRadius,
+    bloomThreshold: preset.bloomThreshold,
+    starfieldDensity: preset.starfieldDensity,
+  })
+  mapStore.setCinematicEnabled(mapQuality === 'high')
+}
 
 export const useUIStore = create<UIStoreState>((set) => ({
   leftPanelOpen: getInitialPanelOpen(),
@@ -176,7 +196,11 @@ export const useUIStore = create<UIStoreState>((set) => ({
     set({ eventFilter })
   },
   setMapQuality: (mapQuality) => {
-    set({ mapQuality })
+    applyGlobeQualityPreset(mapQuality)
+    set({
+      mapQuality,
+      globalParticleDensity: densityForQuality[mapQuality],
+    })
   },
   setGlobalParticleDensity: (globalParticleDensity) => {
     set({ globalParticleDensity })

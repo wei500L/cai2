@@ -11,6 +11,7 @@ export type CameraPose = {
 export type CameraDirectorOptions = {
   cinematicEnabled?: boolean
   reducedMotion?: boolean
+  mode?: 'focus_short' | 'full'
 }
 
 export type SpeechCameraEvent = GameEvent & {
@@ -154,7 +155,7 @@ function easedProgress(kind: DirectorEasing | undefined, t: number) {
 function buildSequenceFrames(
   event: DirectorEvent,
   startPose: CameraPose,
-  options: { reducedMotion: boolean },
+  options: { reducedMotion: boolean; mode: 'focus_short' | 'full' },
 ): DirectorSequence | null {
   const scale = options.reducedMotion ? MOTION_SCALE_REDUCED : 1
   const nukeStart = normalizePose({ lat: 0, lng: 0, altitude: 2.5 })
@@ -162,6 +163,22 @@ function buildSequenceFrames(
   if ('kind' in event && event.kind === 'nuke') {
     const centerLat = Number.isFinite(event.centerLat) ? event.centerLat : 0
     const centerLng = Number.isFinite(event.centerLng) ? event.centerLng : 0
+    if (options.mode === 'focus_short') {
+      return {
+        id: event.id,
+        priority: 3,
+        order: 0,
+        startPose,
+        introMs: 0,
+        frames: [
+          { at: 0, pose: startPose },
+          { at: 320 * scale, pose: normalizePose({ lat: centerLat, lng: centerLng, altitude: 1.25 }), easing: 'ease-out' },
+          { at: 900 * scale, pose: normalizePose({ lat: centerLat, lng: centerLng, altitude: 1.25 }), easing: 'linear' },
+          { at: 1300 * scale, pose: normalizePose({ lat: 0, lng: 0, altitude: 2.5 }), easing: 'ease-in' },
+        ],
+      }
+    }
+
     const sequence: DirectorSequence = {
       id: event.id,
       priority: 3,
@@ -240,6 +257,7 @@ export class CameraDirector {
   private currentPose: CameraPose = OVERVIEW_POSE
   private elapsedMs = 0
   private enabled = true
+  private mode: 'focus_short' | 'full' = 'full'
   private reducedMotion = false
   private readonly lastCinematicById = new Map<string, number>()
   private readonly onUserInput = () => this.resetToOverview()
@@ -248,6 +266,7 @@ export class CameraDirector {
   constructor(globe: TickableGlobe, options: CameraDirectorOptions = {}) {
     this.globe = globe
     this.enabled = options.cinematicEnabled ?? true
+    this.mode = options.mode ?? 'full'
     this.reducedMotion = options.reducedMotion ?? false
     this.globe.pointOfView(OVERVIEW_POSE, 0)
     const controls = this.globe.controls?.() as {
@@ -276,6 +295,10 @@ export class CameraDirector {
     this.reducedMotion = reducedMotion
   }
 
+  setMode(mode: 'focus_short' | 'full') {
+    this.mode = mode
+  }
+
   isActive() {
     return this.active !== null
   }
@@ -291,6 +314,7 @@ export class CameraDirector {
 
     const sequence = buildSequenceFrames(event, this.currentPose, {
       reducedMotion: this.reducedMotion,
+      mode: this.mode,
     })
 
     if (!sequence) {

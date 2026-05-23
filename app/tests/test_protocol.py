@@ -224,6 +224,7 @@ def test_outgoing_payload_route_table_covers_expected_types() -> None:
         "room.finished",
         "phase.change",
         "turn.begin",
+        "turn.end",
         "action.broadcast",
         "action.private",
         "action.rejected",

@@ -7,6 +7,7 @@ type PerfMonitor = {
 export function startPerfMonitor(): PerfMonitor {
   let frameId = 0
   let lastTime = performance.now()
+  const frameTimes: Array<{ at: number; dt: number }> = []
   let lastQualityDowngradeAt = 0
   let lowFrames = 0
   let criticalFrames = 0
@@ -15,7 +16,13 @@ export function startPerfMonitor(): PerfMonitor {
 
   const tick = (time: number) => {
     const delta = Math.max(1, time - lastTime)
-    const fps = 1000 / delta
+    frameTimes.push({ at: time, dt: delta })
+    while (frameTimes.length > 0 && time - frameTimes[0].at > 1_000) {
+      frameTimes.shift()
+    }
+    const averageFrameMs =
+      frameTimes.reduce((sum, frame) => sum + frame.dt, 0) / Math.max(1, frameTimes.length)
+    const fps = 1000 / averageFrameMs
     const ui = useUIStore.getState()
 
     ui.setPerfStats({ fps })

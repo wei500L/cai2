@@ -47,6 +47,7 @@
 | room.finished | `RoomFinishedMessage.p`: `room_id`, `winner`, `final_narration`, `replay_available` | `RoomFinishedPayload`: `room_id`, `winner`, `final_narration`, `replay_available` | 无；完成后前端显示倒计时并跳转 `/replay?room=...` | 是 |
 | phase.change | `PhaseChangeMessage.p`: `room_id`, `epoch`, `turn`, `phase`, `arbitrate_phase?`, `phase_started_at_ms`, `phase_duration_ms`, `server_time_ms`, `is_paused?` | `PhaseChangePayload`: 同名字段，`arbitrate_phase=None`, `is_paused=None` | 无；`server_time_ms` 用于前端校准本地时钟偏移 | 是 |
 | turn.begin | `TurnBeginMessage.p`: `room_id`, `epoch`, `turn`, `phase`, `arbitrate_phase?`, `phase_started_at_ms`, `phase_duration_ms`, `server_time_ms`, `visible_snapshot` | `TurnBeginPayload`: 同名字段 | 无；后端以 `dict[str, Any]` 承载可见快照，regions 现包含 `neighbors` | 是 |
+| turn.end | `TurnEndMessage.p`: `room_id`, `epoch`, `turn`, `next_epoch`, `next_turn`, `server_time_ms` | `TurnEndPayload`: 同名字段 | 无；dev globe seed 用于标记一轮 resolve emit 完成 | 是 |
 | action.broadcast | `ActionBroadcastMessage.p`: `room_id`, `event` | `ActionBroadcastPayload`: `room_id`, `event` | 无 | 是 |
 | action.private | `ActionPrivateMessage.p`: `room_id`, `event`, `private_message?` | `ActionPrivateBroadcastPayload`: `room_id`, `event`, `private_message=None` | 无 | 是 |
 | action.rejected | `ActionRejectedMessage.p`: `room_id`, `request_id`, `reason`, `error_code` | `ActionRejectedPayload`: `room_id`, `request_id`, `reason`, `error_code` | 无 | 是 |

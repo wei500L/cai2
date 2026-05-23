@@ -10,7 +10,7 @@ _DEV_CORS_ORIGINS = ("http://localhost:5173", "http://127.0.0.1:5173")
 class Settings(BaseModel):
     model_config = ConfigDict(strict=True)
 
-    env: Literal["dev", "test", "prod"] = "dev"
+    env: Literal["dev", "development", "test", "prod"] = "dev"
     log_level: str = "INFO"
     llm_provider: Literal["mock", "openai", "claude"] = "mock"
     enable_persistence: bool = False
@@ -60,7 +60,7 @@ def _read_int(name: str, default: int) -> int:
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
     return Settings(
-        env=_read_literal("ENV", "dev", {"dev", "test", "prod"}),
+        env=_read_literal("ENV", "dev", {"dev", "development", "test", "prod"}),
         log_level=getenv("LOG_LEVEL", "INFO"),
         llm_provider=_read_literal("LLM_PROVIDER", "mock", {"mock", "openai", "claude"}),
         enable_persistence=_read_bool("ENABLE_PERSISTENCE", False),

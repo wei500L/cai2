@@ -54,6 +54,7 @@ from app.protocol.outgoing import (
     RoomSnapshotPayload,
     RoomStartPayload,
     TurnBeginPayload,
+    TurnEndPayload,
     WorldGeometryEvent,
     WorldLightingEvent,
 )
@@ -93,6 +94,7 @@ OUTGOING_PAYLOAD_TYPES: dict[str, type[BaseModel]] = {
     "room.finished": RoomFinishedPayload,
     "phase.change": PhaseChangePayload,
     "turn.begin": TurnBeginPayload,
+    "turn.end": TurnEndPayload,
     "action.broadcast": ActionBroadcastPayload,
     "action.private": ActionPrivateBroadcastPayload,
     "action.rejected": ActionRejectedPayload,

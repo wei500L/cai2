@@ -7,6 +7,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.rest.deps import (
     get_action_service,
+    get_clock,
+    get_connection_manager,
     get_outbound_dispatcher,
     get_phase_service,
     get_replay_service,
@@ -44,11 +46,14 @@ from app.api.rest.dto import (
     StartResponse,
     TreatyRequest,
 )
+from app.api.websocket.connection import ConnectionManager
 from app.api.websocket.dispatcher import OutboundDispatcher
+from app.core.clock import Clock
 from app.core.config import get_settings
 from app.domain.enums import FactionId
 from app.repositories.factory import Repositories
 from app.services.action_service import ActionService
+from app.services.dev_seed_globe import run_dev_seed_globe
 from app.services.phase_service import PhaseService
 from app.services.replay_service import ReplayService
 from app.services.room_service import RoomService
@@ -61,7 +66,7 @@ router = APIRouter(prefix=get_settings().rest_prefix, tags=["debug"])
 @router.get("/runtime/config")
 async def runtime_config() -> dict[str, str | int]:
     settings = get_settings()
-    if settings.env != "dev":
+    if settings.env not in {"dev", "development"}:
         raise HTTPException(status_code=404, detail="not found")
 
     return {
@@ -71,6 +76,29 @@ async def runtime_config() -> dict[str, str | int]:
         "llm_provider": settings.llm_provider,
         "server_time_ms": int(time() * 1000),
     }
+
+
+@router.post("/seed/globe")
+async def seed_globe(
+    repos: Annotated[Repositories, Depends(get_repositories)],
+    clock: Annotated[Clock, Depends(get_clock)],
+    dispatcher: Annotated[OutboundDispatcher, Depends(get_outbound_dispatcher)],
+    connection_manager: Annotated[ConnectionManager, Depends(get_connection_manager)],
+) -> dict[str, Any]:
+    settings = get_settings()
+    if settings.env not in {"dev", "development"}:
+        raise HTTPException(status_code=404, detail="not found")
+    if settings.llm_provider != "mock":
+        raise HTTPException(status_code=409, detail="seed/globe requires LLM_PROVIDER=mock")
+
+    result = await run_dev_seed_globe(
+        repos=repos,
+        clock=clock,
+        dispatcher=dispatcher,
+        connection_manager=connection_manager,
+        lighting_dynamic=True,
+    )
+    return result.model_dump()
 
 
 @router.post("/rooms", response_model=CreateRoomResponse)

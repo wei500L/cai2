@@ -158,6 +158,8 @@ def _build_payload(
         fallout_severity=judge_output.fallout_severity,
         economic_loss_pct=judge_output.economic_loss_pct,
         narrative_hint=judge_output.narrative_hint,
+        intensity=_intensity_for_kind(kind),
+        cinematic_hint=_cinematic_hint_for_kind(kind),
     )
 
 
@@ -332,6 +334,30 @@ def _canonical_kind(kind: str) -> str:
     }:
         return kind
     return "other"
+
+
+def _intensity_for_kind(kind: str) -> float:
+    return {
+        "nuke": 2.8,
+        "conventional": 1.25,
+        "aerial": 1.25,
+        "naval": 1.25,
+        "siege": 1.8,
+        "uprising": 1.25,
+        "artillery": 1.1,
+        "missile": 1.15,
+        "other": 1.0,
+    }.get(kind, 1.0)
+
+
+def _cinematic_hint_for_kind(kind: str) -> str:
+    return {
+        "nuke": "nuke_cinematic",
+        "uprising": "focus_short",
+        "artillery": "none",
+        "missile": "none",
+        "other": "none",
+    }.get(kind, "focus_long")
 
 
 def _resource_value_for_cell(world_geometry: WorldGeometry, index: int) -> float:

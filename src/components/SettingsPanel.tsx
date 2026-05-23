@@ -2,9 +2,10 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { GlowPanel } from './GlowPanel'
 import { PixelButton } from './PixelButton'
 import type { ExplosionKind } from '@/protocol/types'
+import { globeQualityPresets } from '@/render/globe/stylePresets'
 import { useGameStore } from '@/store/gameStore'
 import { useMapStore } from '@/store/mapStore'
-import { useUIStore, type GlobalParticleDensity } from '@/store/uiStore'
+import { useUIStore, type GlobalParticleDensity, type MapQuality } from '@/store/uiStore'
 
 const densityOptions: Array<{ value: GlobalParticleDensity; label: string }> = [
   { value: 'low', label: 'LOW' },
@@ -26,6 +27,12 @@ const explosionKindOptions: Array<{ value: ExplosionKind; label: string }> = [
   { value: 'naval', label: '海战' },
   { value: 'uprising', label: '起义' },
   { value: 'siege', label: '围城' },
+]
+
+const qualityOptions: Array<{ value: MapQuality; label: string; hint: string }> = [
+  { value: 'low', label: 'LOW', hint: '老 GPU / 笔记本' },
+  { value: 'mid', label: 'MID', hint: '1080p 中端 GPU' },
+  { value: 'high', label: 'HIGH', hint: '4K / RTX 30+' },
 ]
 
 function createDebugExplosionEvent(kind: ExplosionKind) {
@@ -53,6 +60,7 @@ export function SettingsPanel() {
   const open = useUIStore((state) => state.settingsOpen)
   const density = useUIStore((state) => state.globalParticleDensity)
   const quality = useUIStore((state) => state.mapQuality)
+  const perfFps = useUIStore((state) => state.perfFps)
   const devOverlayOpen = useUIStore((state) => state.devOverlayOpen)
   const phaseDurationScale = useUIStore((state) => state.phaseDurationScale)
   const setOpen = useUIStore((state) => state.setSettingsOpen)
@@ -257,25 +265,38 @@ export function SettingsPanel() {
                   </section>
 
                   <section>
-                    <div className="mb-2 text-[0.58rem] uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
-                      地图质量
+                    <div className="mb-2 flex items-center justify-between gap-3 text-[0.58rem] uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
+                      <span>地图质量</span>
+                      <span className="text-[color:var(--border-glow)]">{Math.round(perfFps)} FPS</span>
                     </div>
                     <div className="grid grid-cols-3 gap-1">
-                      {(['low', 'mid', 'high'] as const).map((value) => (
+                      {qualityOptions.map((option) => (
                         <button
-                          key={value}
+                          key={option.value}
                           type="button"
-                          className="h-9 border font-hud text-[0.58rem] uppercase tracking-[0.14em] transition-holo"
+                          aria-pressed={quality === option.value}
+                          className="grid min-h-12 content-center border px-1 font-hud text-[0.54rem] uppercase leading-tight tracking-[0.12em] transition-holo"
                           style={{
-                            borderColor: quality === value ? 'var(--border-glow)' : 'rgba(255,255,255,0.14)',
+                            borderColor: quality === option.value ? 'var(--border-glow)' : 'rgba(255,255,255,0.14)',
                             background:
-                              quality === value ? 'rgba(51,170,255,0.14)' : 'rgba(255,255,255,0.025)',
-                            color: quality === value ? 'var(--text-primary)' : 'var(--text-muted)',
+                              quality === option.value ? 'rgba(51,170,255,0.14)' : 'rgba(255,255,255,0.025)',
+                            color: quality === option.value ? 'var(--text-primary)' : 'var(--text-muted)',
                           }}
-                          onClick={() => setQuality(value)}
+                          onClick={() => setQuality(option.value)}
                         >
-                          {value.toUpperCase()}
+                          <span>{option.label}</span>
+                          <span className="mt-1 text-[0.45rem] tracking-[0.05em] text-[color:rgba(196,228,255,0.48)]">
+                            ~{globeQualityPresets[option.value].estimatedCells} CELLS
+                          </span>
                         </button>
+                      ))}
+                    </div>
+                    <div className="mt-2 grid gap-1 border border-[color:rgba(196,228,255,0.12)] bg-[color:rgba(255,255,255,0.02)] px-3 py-2 text-[0.55rem] uppercase leading-relaxed tracking-[0.12em] text-[color:var(--text-muted)]">
+                      {qualityOptions.map((option) => (
+                        <div key={option.value} className="flex items-center justify-between gap-2">
+                          <span className="text-[color:rgba(196,228,255,0.5)]">{option.label}</span>
+                          <span>{option.hint}</span>
+                        </div>
                       ))}
                     </div>
                   </section>

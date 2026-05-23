@@ -373,7 +373,19 @@ class OutboundDispatcher:
                 ),
             )
 
-            for offset, event in enumerate(bundle.ai_speech_events, start=seq_offset + 2):
+            ai_start_offset = seq_offset + 2
+            if bundle.resolve_world_lighting is not None:
+                await self.dispatch_to_player(
+                    session.player_id,
+                    _envelope(
+                        "resolve.world_lighting",
+                        bundle.resolve_world_lighting,
+                        seq=bundle.seq_base + ai_start_offset,
+                    ),
+                )
+                ai_start_offset += 1
+
+            for offset, event in enumerate(bundle.ai_speech_events, start=ai_start_offset):
                 if _event_visible_to_faction(event, faction_id):
                     await self.dispatch_to_player(
                         session.player_id,
@@ -383,16 +395,6 @@ class OutboundDispatcher:
                             seq=bundle.seq_base + offset,
                         ),
                     )
-
-            if bundle.resolve_world_lighting is not None:
-                await self.dispatch_to_player(
-                    session.player_id,
-                    _envelope(
-                        "resolve.world_lighting",
-                        bundle.resolve_world_lighting,
-                        seq=bundle.seq_base + seq_offset + 2 + len(bundle.ai_speech_events),
-                    ),
-                )
 
     async def _session_faction(self, session: PlayerSession) -> FactionId | None:
         player = await self._repos.players.get(session.player_id)

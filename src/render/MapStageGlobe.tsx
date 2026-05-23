@@ -13,12 +13,14 @@ import { bindComposerBridge, setupBloom, type ComposerBridge, type MoonComposer 
 import { createStarfield, disposeStarfield } from '@/render/globe/starfield'
 import { CameraDirector, type SpeechCameraEvent } from '@/render/globe/cameraDirector'
 import { spawnExplosion } from '@/render/globe/explosionFx'
+import { createSmokeColumn, type SmokeColumnInput } from '@/render/globe/smokeColumn'
 import { useFxLoop } from '@/render/globe/fxLoop'
-import { hexPolygonColor } from '@/render/globe/stylePresets'
+import { globeQualityPresets, hexPolygonColor } from '@/render/globe/stylePresets'
 import { GlobeInstanceProvider } from '@/render/globe/GlobeInstanceProvider'
 import type { GlobeInstanceSnapshot } from '@/render/globe/globeTypes'
 import { useGameStore } from '@/store/gameStore'
 import { useMapStore } from '@/store/mapStore'
+import { useUIStore } from '@/store/uiStore'
 
 const PRESET_POINTS: Record<'overview' | 'focus' | 'cinematic', { lat: number; lng: number; altitude: number }> = {
   overview: { lat: 0, lng: 0, altitude: 2.5 },
@@ -43,6 +45,22 @@ function unwrapHexPolygonData<T>(hexPolygon: T | { __data?: T }): T {
   return (((hexPolygon as { __data?: T }).__data ?? hexPolygon) as T)
 }
 
+function sampleRegionsForQuality(regions: MapRegion[], maxCells: number) {
+  if (regions.length <= maxCells) {
+    return regions
+  }
+
+  const sampled: MapRegion[] = []
+  const step = regions.length / maxCells
+  for (let index = 0; index < maxCells; index += 1) {
+    const region = regions[Math.floor(index * step)]
+    if (region) {
+      sampled.push(region)
+    }
+  }
+  return sampled
+}
+
 function toSnapshot(globe: GlobeInstance): GlobeInstanceSnapshot {
   return {
     globe,
@@ -56,7 +74,9 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const globeRef = useRef<GlobeInstance | null>(null)
   const starfieldRef = useRef<ReturnType<typeof createStarfield> | null>(null)
+  const smokeColumnRef = useRef<ReturnType<typeof createSmokeColumn> | null>(null)
   const bloomComposerRef = useRef<MoonComposer | null>(null)
+  const composerTargetRef = useRef<ComposerBridge | null>(null)
   const composerBridgeRef = useRef<ReturnType<typeof bindComposerBridge> | null>(null)
   const directorRef = useRef<CameraDirector | null>(null)
   const seenExplosionIdsRef = useRef<Set<string>>(new Set())
@@ -72,6 +92,7 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
   const lighting = useMapStore((state) => state.lighting)
   const explosionQueue = useMapStore((state) => state.explosionQueue)
   const consumeExplosion = useMapStore((state) => state.consumeExplosion)
+  const mapQuality = useUIStore((state) => state.mapQuality)
   const regions = useGameStore((state) => state.regions)
   const events = useGameStore((state) => state.events)
   const currentRoomId = useGameStore((state) => state.currentRoomId)
@@ -91,17 +112,48 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
 
     return capitalMap
   }, [worldGeometry])
+  const qualityPreset = globeQualityPresets[mapQuality]
+  const renderRegions = useMemo(
+    () => sampleRegionsForQuality(regions, qualityPreset.estimatedCells),
+    [regions, qualityPreset.estimatedCells],
+  )
   const fxLoop = useFxLoop(
     published?.globe ?? null,
     {
       onFrame: useCallback((dtMs: number) => {
         directorRef.current?.tick(dtMs)
+        smokeColumnRef.current?.update(dtMs)
         if (starfieldRef.current) {
           starfieldRef.current.rotation.y += dtMs * 0.000006
         }
       }, []),
     },
   )
+
+  useEffect(() => {
+    if (!import.meta.env.DEV || typeof window === 'undefined') {
+      return undefined
+    }
+
+    const target = window as typeof window & {
+      __DIPLOMACY_GLOBE_METRICS__?: {
+        activeExplosionHandles: () => number
+        activeSmokeColumns: () => number
+        quality: () => string
+      }
+    }
+    target.__DIPLOMACY_GLOBE_METRICS__ = {
+      activeExplosionHandles: () => fxLoop.activeCount(),
+      activeSmokeColumns: () => smokeColumnRef.current?.activeCount() ?? 0,
+      quality: () => useUIStore.getState().mapQuality,
+    }
+
+    return () => {
+      if (target.__DIPLOMACY_GLOBE_METRICS__?.activeExplosionHandles() === fxLoop.activeCount()) {
+        delete target.__DIPLOMACY_GLOBE_METRICS__
+      }
+    }
+  }, [fxLoop])
 
   const focusRegion = useMemo(() => {
     if (!focusRegionId) {
@@ -146,20 +198,21 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
     scene.add(ambientLight)
     scene.add(sunLight)
 
+    const initialPreset = globeQualityPresets[useUIStore.getState().mapQuality]
     const initialLighting = useMapStore.getState().lighting
     const bloomRig = setupBloom(renderer, scene, camera, {
-      strength: initialLighting.bloomStrength,
-      radius: initialLighting.bloomRadius,
-      threshold: initialLighting.bloomThreshold,
+      strength: initialPreset.bloomEnabled ? initialPreset.bloomStrength : 0,
+      radius: initialPreset.bloomRadius,
+      threshold: initialPreset.bloomThreshold,
       vignetteDarkness: 0.6,
       noiseOpacity: 0.06,
       noiseEnabled: initialLighting.noiseEnabled,
     })
     bloomComposerRef.current = bloomRig.composer
-    composerBridgeRef.current = bindComposerBridge(
-      globe.postProcessingComposer() as unknown as ComposerBridge,
-      bloomRig.composer,
-    )
+    composerTargetRef.current = globe.postProcessingComposer() as unknown as ComposerBridge
+    if (initialPreset.bloomEnabled) {
+      composerBridgeRef.current = bindComposerBridge(composerTargetRef.current, bloomRig.composer)
+    }
 
     setPublished(toSnapshot(globe))
 
@@ -168,8 +221,11 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
       composerBridgeRef.current?.restore()
       bloomComposerRef.current?.dispose()
       disposeStarfield(starfieldRef.current)
+      smokeColumnRef.current?.dispose()
       starfieldRef.current = null
+      smokeColumnRef.current = null
       bloomComposerRef.current = null
+      composerTargetRef.current = null
       composerBridgeRef.current = null
       try {
         const rendererInstance = globe.renderer()
@@ -215,7 +271,8 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
 
     const state = useMapStore.getState()
     const director = new CameraDirector(globe, {
-      cinematicEnabled: state.cinematicEnabled,
+      cinematicEnabled: true,
+      mode: globeQualityPresets[useUIStore.getState().mapQuality].cinematicMode,
       reducedMotion: state.reducedMotion,
     })
     directorRef.current = director
@@ -229,8 +286,9 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
   }, [published?.globe])
 
   useEffect(() => {
-    directorRef.current?.setEnabled(cinematicEnabled)
-  }, [cinematicEnabled])
+    directorRef.current?.setEnabled(mapQuality === 'high' ? cinematicEnabled : true)
+    directorRef.current?.setMode(qualityPreset.cinematicMode)
+  }, [cinematicEnabled, mapQuality, qualityPreset.cinematicMode])
 
   useEffect(() => {
     directorRef.current?.setReducedMotion(reducedMotion)
@@ -268,7 +326,7 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
     }
 
     disposeStarfield(starfieldRef.current)
-    const starfield = createStarfield(globe.scene() as Scene, lighting.starfieldDensity)
+    const starfield = createStarfield(globe.scene() as Scene, qualityPreset.starfieldDensity)
     starfieldRef.current = starfield
 
     return () => {
@@ -277,7 +335,33 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
       }
       disposeStarfield(starfield)
     }
-  }, [lighting.starfieldDensity])
+  }, [qualityPreset.starfieldDensity])
+
+  useEffect(() => {
+    useMapStore.getState().setLighting({
+      bloomStrength: qualityPreset.bloomEnabled ? qualityPreset.bloomStrength : 0,
+      bloomRadius: qualityPreset.bloomRadius,
+      bloomThreshold: qualityPreset.bloomThreshold,
+      starfieldDensity: qualityPreset.starfieldDensity,
+    })
+    useMapStore.getState().setCinematicEnabled(mapQuality === 'high')
+  }, [mapQuality, qualityPreset])
+
+  useEffect(() => {
+    if (!published?.scene) {
+      return undefined
+    }
+
+    const smokeColumn = createSmokeColumn(published.scene)
+    smokeColumnRef.current = smokeColumn
+
+    return () => {
+      if (smokeColumnRef.current === smokeColumn) {
+        smokeColumnRef.current = null
+      }
+      smokeColumn.dispose()
+    }
+  }, [published?.scene])
 
   useEffect(() => {
     const director = directorRef.current
@@ -295,10 +379,12 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
         director.onResolveEvent(event)
         seenExplosionIdsRef.current.add(event.id)
       }
-      fxLoop.add(spawnExplosion(published.scene, event))
+      fxLoop.add(spawnExplosion(published.scene, event, {
+        particleMultiplier: qualityPreset.particleMultiplier,
+      }))
       consumeExplosion(event.id)
     }
-  }, [consumeExplosion, explosionQueue, fxLoop, published?.scene, currentRoomId])
+  }, [consumeExplosion, explosionQueue, fxLoop, published?.scene, currentRoomId, qualityPreset.particleMultiplier])
 
   useEffect(() => {
     const director = directorRef.current
@@ -342,16 +428,70 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
 
   useEffect(() => {
     const composer = bloomComposerRef.current
+    const composerTarget = composerTargetRef.current
     if (!composer) {
       return
     }
 
+    if (qualityPreset.bloomEnabled && composerTarget && !composerBridgeRef.current) {
+      composerBridgeRef.current = bindComposerBridge(composerTarget, composer)
+    } else if (!qualityPreset.bloomEnabled && composerBridgeRef.current) {
+      composerBridgeRef.current.restore()
+      composerBridgeRef.current = null
+    }
+
     const effects = composer.__moonEffects
-    effects.bloom.intensity = lighting.bloomStrength
-    effects.bloom.mipmapBlurPass.radius = lighting.bloomRadius
-    effects.bloom.luminanceMaterial.threshold = lighting.bloomThreshold
+    effects.bloom.intensity = qualityPreset.bloomEnabled ? qualityPreset.bloomStrength : 0
+    effects.bloom.mipmapBlurPass.radius = qualityPreset.bloomRadius
+    effects.bloom.luminanceMaterial.threshold = qualityPreset.bloomThreshold
     effects.noise.blendMode.opacity.value = lighting.noiseEnabled ? 0.06 : 0
-  }, [lighting.bloomStrength, lighting.bloomRadius, lighting.bloomThreshold, lighting.noiseEnabled])
+  }, [
+    qualityPreset.bloomEnabled,
+    qualityPreset.bloomStrength,
+    qualityPreset.bloomRadius,
+    qualityPreset.bloomThreshold,
+    lighting.noiseEnabled,
+  ])
+
+  useEffect(() => {
+    const smokeColumn = smokeColumnRef.current
+    if (!smokeColumn) {
+      return
+    }
+
+    if (!qualityPreset.smokeColumnEnabled) {
+      smokeColumn.sync([])
+      return
+    }
+
+    const regionById = new Map<string, MapRegion>()
+    for (const region of renderRegions) {
+      regionById.set(region.id, region)
+      if (region.hex_id) {
+        regionById.set(region.hex_id, region)
+      }
+    }
+
+    const entries: SmokeColumnInput[] = []
+    for (const [hexId, entry] of scorchedRegions.entries()) {
+      const region = regionById.get(hexId)
+      if (!region) {
+        continue
+      }
+
+      entries.push({
+        hexId,
+        lat: region.lat ?? region.centerLatLng[0],
+        lng: region.lng ?? region.centerLatLng[1],
+        severity: entry.severity,
+        fallout: entry.fallout,
+        ttlTurns: entry.ttl_turns,
+        sinceTurn: entry.since_turn,
+      })
+    }
+
+    smokeColumn.sync(entries)
+  }, [qualityPreset.smokeColumnEnabled, renderRegions, scorchedRegions])
 
   useEffect(() => {
     const globe = globeRef.current
@@ -362,9 +502,9 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
     const scorchedLookup = scorchedRegions
 
     globe
-      .hexPolygonsData(buildHexPolygons(regions, scorchedRegions))
+      .hexPolygonsData(buildHexPolygons(renderRegions, scorchedRegions))
       .hexPolygonGeoJsonGeometry('geometry')
-      .hexPolygonResolution(worldGeometry.hex_resolution)
+      .hexPolygonResolution(qualityPreset.hexResolution)
       .hexPolygonColor((hexPolygon) => {
         const region = unwrapHexPolygonData<HexPolygonInput>(hexPolygon)
         const scorchedEntry = scorchedLookup.get(region.hexId) ?? scorchedLookup.get(region.regionId)
@@ -377,11 +517,18 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
       })
       .hexPolygonAltitude((hexPolygon) => {
         const region = unwrapHexPolygonData<HexPolygonInput>(hexPolygon)
-        return hexPolygonAltitude(region, scorchedLookup)
+        return Number((hexPolygonAltitude(region, scorchedLookup) * qualityPreset.hexAltitudeScale).toFixed(4))
       })
       .hexPolygonMargin(hexPolygonMargin())
       .hexPolygonUseDots(false)
-  }, [regions, scorchedRegions, worldGeometry, lighting.dayNightMaskAlpha])
+  }, [
+    renderRegions,
+    scorchedRegions,
+    worldGeometry,
+    lighting.dayNightMaskAlpha,
+    qualityPreset.hexResolution,
+    qualityPreset.hexAltitudeScale,
+  ])
 
   return (
     <GlobeInstanceProvider value={published}>

@@ -1,6 +1,7 @@
 import { factionById, type FactionId } from '@/mock/factions'
 import type { MapRegion } from '@/mock/types'
 import type { ScorchedRegionEntry } from '@/store/mapStore'
+import type { MapQuality } from '@/store/uiStore'
 
 type Rgb = {
   r: number
@@ -22,6 +23,64 @@ export type HexPolygonColorContext = {
   sunLng?: number
   nightMaskAlpha?: number
   scorchedEntry?: ScorchedRegionEntry | null
+}
+
+export type GlobeCinematicMode = 'focus_short' | 'full'
+
+export type GlobeQualityPreset = {
+  hexResolution: number
+  hexAltitudeScale: number
+  bloomEnabled: boolean
+  bloomStrength: number
+  bloomRadius: number
+  bloomThreshold: number
+  starfieldDensity: number
+  particleMultiplier: number
+  smokeColumnEnabled: boolean
+  cinematicMode: GlobeCinematicMode
+  estimatedCells: number
+}
+
+export const globeQualityPresets: Record<MapQuality, GlobeQualityPreset> = {
+  low: {
+    hexResolution: 3,
+    hexAltitudeScale: 0.5,
+    bloomEnabled: false,
+    bloomStrength: 0,
+    bloomRadius: 0.45,
+    bloomThreshold: 0.9,
+    starfieldDensity: 0.3,
+    particleMultiplier: 0.4,
+    smokeColumnEnabled: false,
+    cinematicMode: 'focus_short',
+    estimatedCells: 162,
+  },
+  mid: {
+    hexResolution: 4,
+    hexAltitudeScale: 1,
+    bloomEnabled: true,
+    bloomStrength: 1,
+    bloomRadius: 0.55,
+    bloomThreshold: 0.85,
+    starfieldDensity: 0.7,
+    particleMultiplier: 0.7,
+    smokeColumnEnabled: true,
+    cinematicMode: 'focus_short',
+    estimatedCells: 642,
+  },
+  high: {
+    hexResolution: 4,
+    hexAltitudeScale: 1,
+    bloomEnabled: true,
+    bloomStrength: 1.4,
+    bloomRadius: 0.6,
+    bloomThreshold: 0.85,
+    starfieldDensity: 1,
+    particleMultiplier: 1,
+    smokeColumnEnabled: true,
+    cinematicMode: 'full',
+    estimatedCells: 642,
+  },
 }
 
 export const terrainColors = {

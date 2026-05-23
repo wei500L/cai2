@@ -208,6 +208,16 @@ class TurnBeginPayload(OutgoingPayloadModel):
     visible_snapshot: dict[str, Any]
 
 
+class TurnEndPayload(OutgoingPayloadModel):
+    t: Literal["turn.end"] = Field("turn.end", exclude=True)
+    room_id: str
+    epoch: int
+    turn: int
+    next_epoch: int
+    next_turn: int
+    server_time_ms: int
+
+
 class ActionBroadcastPayload(OutgoingPayloadModel):
     t: Literal["action.broadcast"] = Field("action.broadcast", exclude=True)
     room_id: str
@@ -360,6 +370,7 @@ OutgoingMessage: TypeAlias = Annotated[
     | RoomFinishedPayload
     | PhaseChangePayload
     | TurnBeginPayload
+    | TurnEndPayload
     | ActionBroadcastPayload
     | ActionPrivateBroadcastPayload
     | ActionRejectedPayload

@@ -135,7 +135,7 @@ async def test_self_visibility_reaches_only_actor_player() -> None:
 
 
 @pytest.mark.asyncio
-async def test_resolve_bundle_emits_world_lighting_last() -> None:
+async def test_resolve_bundle_emits_world_lighting_before_ai_speak() -> None:
     dispatcher, sockets = await _seed_dispatcher()
     bundle = SettlementOutboundBundle(
         room_id="room-1",
@@ -178,7 +178,7 @@ async def test_resolve_bundle_emits_world_lighting_last() -> None:
         "resolve.events",
         "resolve.map_diff",
         "resolve.stats_diff",
-        "ai.speak",
         "resolve.world_lighting",
+        "ai.speak",
     ]
-    assert json.loads(sockets["p1"].sent_texts[-1])["seq"] == 24
+    assert json.loads(sockets["p1"].sent_texts[3])["seq"] == 23

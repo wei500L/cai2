@@ -18,13 +18,16 @@ import { AIThinkingPanel } from '@/features/phaseSystem/AIThinkingPanel'
 import { PhaseTransitionOverlay } from '@/features/phaseSystem/PhaseTransitionOverlay'
 import { ResolveEventPlayer } from '@/features/phaseSystem/ResolveEventPlayer'
 import { getHudModeFromPhase, getPhaseUIConfig } from '@/features/phaseSystem/PhaseStateMachine'
-import { factionTokens, resolveFactionId } from '@/components/hudTheme'
+import { factionIds, factionTokens, resolveFactionId } from '@/components/hudTheme'
 import EpochSummaryPage from '@/pages/EpochSummaryPage'
 import { factionById } from '@/mock/factions'
+import { createMockWorldGeometry } from '@/mock/worldGeometry'
 import { useGameStore } from '@/store/gameStore'
+import { useMapStore } from '@/store/mapStore'
 import { useUIStore, type GameFinishedBanner as GameFinishedBannerState } from '@/store/uiStore'
 import { useGlobalHotkeys } from '@/hooks/useGlobalHotkeys'
 import { startPerfMonitor } from '@/utils/perfMonitor'
+import type { ExplosionKind } from '@/protocol/types'
 
 const COMPACT_BREAKPOINT = 960
 const DENSE_BREAKPOINT = 1280
@@ -51,6 +54,189 @@ function navigateToReplay(roomId: string | null) {
   const query = roomId ? `?room=${encodeURIComponent(roomId)}` : ''
   window.history.pushState(null, '', `/replay${query}`)
   window.dispatchEvent(new PopStateEvent('popstate'))
+}
+
+type SmokeHarnessWindow = typeof window & {
+  __DIPLOMACY_SMOKE__?: {
+    reset: () => void
+    create4v4Room: () => void
+    setQuality: (quality: 'low' | 'mid' | 'high') => void
+    setRenderer: (renderer: 'globe' | 'r3f' | '2d') => void
+    triggerExplosion: (kind: ExplosionKind) => void
+    addSpeech: (count: number) => void
+    seedExpiredScorched: () => string | null
+    advanceTurns: (count: number) => void
+    metrics: () => Record<string, unknown>
+  }
+  __DIPLOMACY_GLOBE_METRICS__?: {
+    activeExplosionHandles: () => number
+    activeSmokeColumns: () => number
+  }
+}
+
+function installSmokeHarness() {
+  if (!import.meta.env.DEV || typeof window === 'undefined') {
+    return () => undefined
+  }
+
+  const target = window as SmokeHarnessWindow
+  const roomId = 'globe-smoke-room'
+  const now = () => Date.now()
+
+  target.__DIPLOMACY_SMOKE__ = {
+    reset: () => {
+      useGameStore.getState().initGame(2_026_052_3)
+      useGameStore.getState().applyWorldGeometry(createMockWorldGeometry(2_026_052_3))
+      useMapStore.setState({
+        renderer: 'globe',
+        scorchedRegions: new Map(),
+        explosionQueue: [],
+      })
+      useUIStore.getState().setMapQuality('mid')
+    },
+    create4v4Room: () => {
+      const humanFactions = factionIds.slice(0, 4)
+      const aiFactions = factionIds.slice(4, 8)
+      useGameStore.getState()._applyRoomJoined({
+        current_player_id: 'smoke-player-0',
+        room: {
+          id: roomId,
+          mode: 'multi_4v4',
+          status: 'running',
+          players: humanFactions.map((factionId, index) => ({
+            player_id: `smoke-player-${index}`,
+            display_name: `Smoke P${index + 1}`,
+            faction_id: factionId,
+            connected: true,
+            ready: true,
+            ai_takeover: false,
+          })),
+          ai_factions: aiFactions,
+        },
+      })
+      useGameStore.getState()._applyRoomSnapshot({
+        room_id: roomId,
+        mode: 'multi_4v4',
+        status: 'running',
+        players: humanFactions.map((factionId, index) => ({
+          player_id: `smoke-player-${index}`,
+          display_name: `Smoke P${index + 1}`,
+          faction_id: factionId,
+          connected: true,
+          ready: true,
+          ai_takeover: false,
+        })),
+        ai_factions: aiFactions,
+      })
+      useGameStore.getState().selectFaction(humanFactions[0])
+    },
+    setQuality: (quality) => {
+      useUIStore.getState().setMapQuality(quality)
+    },
+    setRenderer: (renderer) => {
+      useMapStore.getState().setRenderer(renderer)
+    },
+    triggerExplosion: (kind) => {
+      const state = useGameStore.getState()
+      const region = state.regions[(state.events.length + state.epoch.turn) % Math.max(1, state.regions.length)]
+      useGameStore.getState().handleExplosion({
+        id: `smoke-${kind}-${now()}-${Math.floor(Math.random() * 1000)}`,
+        room_id: state.currentRoomId ?? roomId,
+        epoch: state.epoch.id,
+        turn: state.epoch.turn,
+        region_id: region?.id,
+        centerLat: region?.lat ?? region?.centerLatLng[0] ?? 0,
+        centerLng: region?.lng ?? region?.centerLatLng[1] ?? 0,
+        intensity: kind === 'nuke' ? 2.8 : 1.25,
+        kind,
+        ttl_ms: 4000,
+        created_at_ms: now(),
+        affected_hex_ids: [region?.hex_id ?? region?.id ?? 'smoke-hex'],
+        primary_hex_id: region?.hex_id ?? region?.id ?? 'smoke-hex',
+        economic_loss_pct: kind === 'nuke' ? 0.24 : 0.12,
+        narrative_hint: `smoke:${kind}`,
+      })
+    },
+    addSpeech: (count) => {
+      const state = useGameStore.getState()
+      for (let index = 0; index < count; index += 1) {
+        useGameStore.getState().pushEvent({
+          id: `smoke-speech-${now()}-${index}`,
+          createdAt: now(),
+          epoch: state.epoch.id,
+          turn: state.epoch.turn,
+          phase: state.epoch.phase,
+          priority: 'P0',
+          kind: 'speech',
+          actor: factionIds[index % factionIds.length],
+          target: factionIds[(index + 1) % factionIds.length],
+          payload: { channel: 'public', smoke: true },
+          narration: `Smoke speech ${index + 1}`,
+        })
+      }
+    },
+    seedExpiredScorched: () => {
+      const state = useGameStore.getState()
+      const region = state.regions.find((item) => item.hex_id) ?? state.regions[0]
+      const hexId = region?.hex_id ?? region?.id ?? null
+      if (!hexId) {
+        return null
+      }
+
+      useMapStore.getState().applyScorchedDiff({
+        room_id: state.currentRoomId ?? roomId,
+        epoch: state.epoch.id,
+        turn: state.epoch.turn,
+        changes: [{
+          hex_id: hexId,
+          scorched_turns_remaining: 1,
+          fallout: 0.25,
+          scorched_since_turn: state.epoch.turn,
+          severity: 0.7,
+        }],
+      })
+      return hexId
+    },
+    advanceTurns: (count) => {
+      const game = useGameStore.getState()
+      for (let offset = 1; offset <= count; offset += 1) {
+        const current = useGameStore.getState()
+        game._applyTurnBegin({
+          room_id: current.currentRoomId ?? roomId,
+          epoch: current.epoch.id,
+          turn: current.epoch.turn + 1,
+          phase: 'observe',
+          phase_started_at_ms: now(),
+          phase_duration_ms: 30_000,
+          visible_snapshot: {},
+        })
+      }
+    },
+    metrics: () => {
+      const game = useGameStore.getState()
+      const map = useMapStore.getState()
+      const ui = useUIStore.getState()
+      return {
+        fps: ui.perfFps,
+        quality: ui.mapQuality,
+        renderer: map.renderer,
+        roomMode: game.roomMode,
+        roomPlayers: game.roomPlayers.length,
+        aiFactions: game.aiFactions.length,
+        turn: game.epoch.turn,
+        scorchedCount: map.scorchedRegions.size,
+        activeExplosionHandles: target.__DIPLOMACY_GLOBE_METRICS__?.activeExplosionHandles() ?? 0,
+        activeSmokeColumns: target.__DIPLOMACY_GLOBE_METRICS__?.activeSmokeColumns() ?? 0,
+        heapUsed: 'memory' in performance
+          ? (performance as Performance & { memory?: { usedJSHeapSize?: number } }).memory?.usedJSHeapSize ?? null
+          : null,
+      }
+    },
+  }
+
+  return () => {
+    delete target.__DIPLOMACY_SMOKE__
+  }
 }
 
 function EpicCurtain({ visible }: { visible: boolean }) {
@@ -135,6 +321,8 @@ export default function GamePage() {
     const monitor = startPerfMonitor()
     return () => monitor.stop()
   }, [])
+
+  useEffect(() => installSmokeHarness(), [])
 
   useEffect(() => {
     if (!gameFinishedBanner || gameFinishedRedirectAtMs === null) {
