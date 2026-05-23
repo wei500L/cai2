@@ -7,6 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
+    "lint:strict": "eslint . --max-warnings 0",
     "test": "vitest run",
     "smoke:globe": "LLM_PROVIDER=mock tsx scripts/globe-smoke.ts",
     "preview": "vite preview"

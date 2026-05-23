@@ -23,6 +23,7 @@ from app.protocol.incoming import (
     RoomReadyPayload,
     RoomSelectFactionPayload,
 )
+from app.protocol.narration_events import EpicNarrationEvent, SummaryNarrationEvent
 from app.protocol.outgoing import (
     ActionBroadcastPayload,
     ActionPrivateBroadcastPayload,
@@ -108,6 +109,8 @@ OUTGOING_PAYLOAD_TYPES: dict[str, type[BaseModel]] = {
     "resolve.scorched_diff": ScorchedDiffEvent,
     "resolve.ripple": RippleEvent,
     "resolve.world_lighting": WorldLightingEvent,
+    "arbitrate.epic_narration": EpicNarrationEvent,
+    "arbitrate.summary_narration": SummaryNarrationEvent,
     "ai.thinking": AIThinkingPayload,
     "ai.speak": AISpeakPayload,
     "ai.reaction": AIReactionPayload,

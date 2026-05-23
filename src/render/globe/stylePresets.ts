@@ -3,6 +3,7 @@ import type { FactionId } from '@/types/faction'
 import type { MapRegion } from '@/types'
 import type { ScorchedRegionEntry } from '@/store/mapStore'
 import type { MapQuality } from '@/store/uiStore'
+import { globeSurfaceNormal } from '@/render/globe/coordinates'
 
 type Rgb = {
   r: number
@@ -45,6 +46,8 @@ export type GlobeQualityPreset = {
   renderCellBudget: number
   estimatedCells: number
 }
+
+export const DEFAULT_DAY_NIGHT_MASK_ALPHA = 0.45
 
 export const globeQualityPresets: Record<MapQuality, GlobeQualityPreset> = {
   low: {
@@ -225,19 +228,8 @@ function terrainBaseColor(terrain: MapRegion['terrain']) {
   }
 }
 
-function surfaceNormal(lat: number, lng: number) {
-  const latRad = (lat * Math.PI) / 180
-  const lngRad = (lng * Math.PI) / 180
-  const cosLat = Math.cos(latRad)
-  return {
-    x: cosLat * Math.cos(lngRad),
-    y: Math.sin(latRad),
-    z: cosLat * Math.sin(lngRad),
-  }
-}
-
 function sunVector(lat: number, lng: number) {
-  const normal = surfaceNormal(lat, lng)
+  const normal = globeSurfaceNormal(lat, lng)
   const length = Math.hypot(normal.x, normal.y, normal.z) || 1
   return {
     x: normal.x / length,
@@ -252,8 +244,8 @@ export function hexPolygonColor(region: HexPolygonLike, ctx: HexPolygonColorCont
   const elevation = clamp(region.elevation ?? 0, 0, 1)
   const sunLat = ctx.sunLat ?? 10
   const sunLng = ctx.sunLng ?? 0
-  const nightMaskAlpha = clamp(ctx.nightMaskAlpha ?? 0.6, 0, 1)
-  const normal = surfaceNormal(region.lat ?? 0, region.lng ?? 0)
+  const nightMaskAlpha = clamp(ctx.nightMaskAlpha ?? DEFAULT_DAY_NIGHT_MASK_ALPHA, 0, 1)
+  const normal = globeSurfaceNormal(region.lat ?? 0, region.lng ?? 0)
   const sun = sunVector(sunLat, sunLng)
   const sunDot = normal.x * sun.x + normal.y * sun.y + normal.z * sun.z
   const nightBlend = clamp(-sunDot, 0, 1) * nightMaskAlpha
@@ -285,7 +277,8 @@ export function hexPolygonColor(region: HexPolygonLike, ctx: HexPolygonColorCont
   color = mixRgb(color, { r: 0, g: 0, b: 0 }, 1 - brightness)
 
   const scorchedEntry = resolveScorchedEntry(region, ctx)
-  const baseAlpha = scorchedEntry ? 0.84 : factionId === null ? 0.72 : 0.95
+  // Normal hexes stay opaque so three-globe keeps them out of the transparent render path.
+  const baseAlpha = scorchedEntry ? 0.92 : 1
 
   if (scorchedEntry) {
     const scorchBase = parseCssColor('#2a3220', { r: 42, g: 50, b: 32 })

@@ -6,7 +6,7 @@ from typing import Any
 from app.api.websocket.dispatcher import OutboundDispatcher
 from app.core.clock import Clock
 from app.core.logging import get_logger
-from app.domain.enums import GamePhase, RoomStatus
+from app.domain.enums import ArbitratePhase, GamePhase, RoomStatus
 from app.domain.models import EpochTurn
 from app.protocol.outgoing import PhaseChangePayload
 from app.repositories.factory import Repositories
@@ -126,6 +126,18 @@ class PhaseScheduler:
                     )
                     self._settlement_tasks.add(task)
                     task.add_done_callback(self._settlement_tasks.discard)
+                elif (
+                    current.phase == GamePhase.arbitrate
+                    and current.arbitrate_phase == ArbitratePhase.summary
+                    and new_turn.phase == GamePhase.observe
+                    and new_turn.epoch == current.epoch + 1
+                ):
+                    task = asyncio.create_task(
+                        self._run_epoch_narration(room_id, current.epoch),
+                        name=f"epoch-narration:{room_id}:{current.epoch}",
+                    )
+                    self._settlement_tasks.add(task)
+                    task.add_done_callback(self._settlement_tasks.discard)
         except asyncio.CancelledError:
             pass
         finally:
@@ -157,6 +169,18 @@ class PhaseScheduler:
                 room_id,
                 epoch,
                 turn,
+                error,
+            )
+
+    async def _run_epoch_narration(self, room_id: str, epoch: int) -> None:
+        try:
+            bundle = await self._settlement_service.run_epoch_settlement(room_id, epoch)
+            await self._dispatcher.dispatch_epoch_narration_bundle(room_id, bundle)
+        except Exception as error:
+            logger.exception(
+                "scheduled epoch narration failed room_id=%s epoch=%s error=%s",
+                room_id,
+                epoch,
                 error,
             )
 

@@ -22,14 +22,13 @@ import { ResolveEventPlayer } from '@/features/phaseSystem/ResolveEventPlayer'
 import { getHudModeFromPhase, getPhaseUIConfig } from '@/features/phaseSystem/PhaseStateMachine'
 import { factionIds, factionTokens, resolveFactionId } from '@/components/hudTheme'
 import EpochSummaryPage from '@/pages/EpochSummaryPage'
-import { createMockWorldGeometry } from '@/mock/worldGeometry'
 import { useFactionMeta } from '@/store/factionMetaStore'
 import { useGameStore } from '@/store/gameStore'
 import { useMapStore } from '@/store/mapStore'
 import { useUIStore, type GameFinishedBanner as GameFinishedBannerState } from '@/store/uiStore'
 import { useGlobalHotkeys } from '@/hooks/useGlobalHotkeys'
 import { startPerfMonitor } from '@/utils/perfMonitor'
-import type { ExplosionKind } from '@/protocol/types'
+import type { ExplosionKind, WorldGeometryPayload } from '@/protocol/types'
 
 const COMPACT_BREAKPOINT = 960
 const DENSE_BREAKPOINT = 1280
@@ -83,6 +82,34 @@ type SmokeHarnessWindow = typeof window & {
   }
 }
 
+function createSmokeWorldGeometry(seed: number): WorldGeometryPayload {
+  const regions = useGameStore.getState().regions
+  const cells = regions.map((region) => ({
+    ...region,
+    lat: region.lat ?? region.centerLatLng[0],
+    lng: region.lng ?? region.centerLatLng[1],
+    hex_id: region.hex_id ?? region.id,
+    elevation: region.elevation ?? 0,
+  }))
+
+  return {
+    seed,
+    hex_resolution: 4,
+    total_cells: cells.length,
+    factions: factionIds.map((id) => {
+      const capital = cells.find((region) => region.owner === id) ?? cells[0]
+
+      return {
+        id,
+        capital_hex_id: capital?.hex_id ?? capital?.id ?? '',
+        capital_lat: capital?.lat ?? 0,
+        capital_lng: capital?.lng ?? 0,
+      }
+    }),
+    cells,
+  }
+}
+
 function installSmokeHarness() {
   if (!import.meta.env.DEV || typeof window === 'undefined') {
     return () => undefined
@@ -95,7 +122,7 @@ function installSmokeHarness() {
   target.__DIPLOMACY_SMOKE__ = {
     reset: () => {
       useGameStore.getState().initGame(2_026_052_3)
-      useGameStore.getState().applyWorldGeometry(createMockWorldGeometry(2_026_052_3))
+      useGameStore.getState().applyWorldGeometry(createSmokeWorldGeometry(2_026_052_3))
       useMapStore.setState({
         renderer: 'globe',
         scorchedRegions: new Map(),

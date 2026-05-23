@@ -1,13 +1,11 @@
 import type { CSSProperties } from 'react'
 import { factionTokens } from '@/components/hudTheme'
-import type { KeyMoment } from '@/types/replay'
+import { useReplay } from '@/store/replayStore'
 import { formatReplayTime, getFactionName } from './replayViewUtils'
 
-type KeyMomentsProps = {
-  moments: KeyMoment[]
-}
+export function KeyMoments() {
+  const moments = useReplay((state) => state.data?.keyMoments ?? [])
 
-export function KeyMoments({ moments }: KeyMomentsProps) {
   return (
     <section className="border border-[color:rgba(255,204,102,0.18)] bg-[color:rgba(12,7,4,0.78)] p-3">
       <div className="mb-3">

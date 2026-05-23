@@ -20,20 +20,23 @@ export default defineConfig([
     },
   },
   {
-    files: ['src/**/*.{ts,tsx}'],
-    ignores: ['src/mock/**', 'src/types/**', 'src/**/__tests__/**'],
+    files: ['src/features/**', 'src/pages/**', 'src/store/**', 'src/render/**', 'src/effects/**', 'src/api/**', 'src/components/**'],
+    ignores: ['**/__tests__/**'],
     rules: {
-      'no-restricted-imports': ['warn', {
-        paths: [
-          {
-            name: '@/mock/types',
-            message: "Types moved to '@/types'.",
-          },
-          {
-            name: '@/mock/factions',
-            importNames: ['FactionId', 'FactionMeta', 'SpeechStyle', 'SpeechStyleId'],
-            message: "Faction types moved to '@/types/faction'. Keep only fixture data imports from '@/mock/factions'.",
-          },
+      'no-restricted-imports': ['error', {
+        patterns: [
+          { group: ['@/mock/*', '@/mock/**'], message: 'Business code must not import from src/mock. Use src/types or src/store/*MetaStore. MockTransport is the only allowed consumer.' },
+        ],
+      }],
+    },
+  },
+  {
+    files: ['src/protocol/adapter.ts', 'src/protocol/dispatcher.ts', 'src/protocol/types.ts'],
+    ignores: ['**/__tests__/**'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [
+          { group: ['@/mock/*', '@/mock/**'], message: 'Business code must not import from src/mock. Use src/types or src/store/*MetaStore. MockTransport is the only allowed consumer.' },
         ],
       }],
     },

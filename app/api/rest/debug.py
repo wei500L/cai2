@@ -12,7 +12,6 @@ from app.api.rest.deps import (
     get_factions_meta_service,
     get_outbound_dispatcher,
     get_phase_service,
-    get_replay_service,
     get_repositories,
     get_room_service,
     get_settlement_service,
@@ -36,7 +35,6 @@ from app.api.rest.dto import (
     PrivateMessageRequest,
     ReadyRequest,
     ReadyResponse,
-    ReplayResponse,
     RoomStateResponse,
     RunSettlementRequest,
     SelectFactionRequest,
@@ -47,6 +45,7 @@ from app.api.rest.dto import (
     StartResponse,
     TreatyRequest,
 )
+from app.api.rest.replay import router as replay_router
 from app.api.websocket.connection import ConnectionManager
 from app.api.websocket.dispatcher import OutboundDispatcher
 from app.core.clock import Clock
@@ -57,12 +56,12 @@ from app.services.action_service import ActionService
 from app.services.dev_seed_globe import run_dev_seed_globe
 from app.services.factions_meta_service import FactionsMetaService
 from app.services.phase_service import PhaseService
-from app.services.replay_service import ReplayService
 from app.services.room_service import RoomService
 from app.services.settlement_service import SettlementService
 from app.services.takeover_service import TakeoverService
 
 router = APIRouter(prefix=get_settings().rest_prefix, tags=["debug"])
+router.include_router(replay_router)
 
 
 @router.get("/connection-info")
@@ -417,15 +416,6 @@ async def list_messages(
         if turn is not None:
             messages = [message for message in messages if message.turn == turn]
     return _dump_all(messages)
-
-
-@router.get("/rooms/{room_id}/replay", response_model=ReplayResponse)
-async def get_replay(
-    room_id: str,
-    replay_service: Annotated[ReplayService, Depends(get_replay_service)],
-) -> dict[str, Any]:
-    replay = await replay_service.build_replay(room_id)
-    return replay.model_dump(mode="json")
 
 
 def _dump(model: Any) -> dict[str, Any]:

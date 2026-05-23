@@ -1,7 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import Globe from 'globe.gl'
 import type { GlobeInstance } from 'globe.gl'
-import { AmbientLight, DirectionalLight, type Camera, type Scene, type WebGLRenderer } from 'three'
+import {
+  MeshLambertMaterial,
+  NoToneMapping,
+  SRGBColorSpace,
+  type Camera,
+  type Scene,
+  type WebGLRenderer,
+} from 'three'
 import type { MapRegion } from '@/types'
 import {
   buildHexPolygons,
@@ -9,6 +16,13 @@ import {
   hexPolygonAltitude,
   hexPolygonMargin,
 } from '@/render/globe/buildHexPolygons'
+import {
+  buildHtmlElementsData,
+  buildPointsData,
+  createLabelDiv,
+  type FactionRelationBadge,
+  type GlobeCapitalDatum,
+} from '@/render/globe/dataLayers'
 import { bindComposerBridge, setupBloom, type ComposerBridge, type MoonComposer } from '@/render/globe/postprocess'
 import { createStarfield, disposeStarfield } from '@/render/globe/starfield'
 import { CameraDirector, type SpeechCameraEvent } from '@/render/globe/cameraDirector'
@@ -16,8 +30,10 @@ import { spawnExplosion } from '@/render/globe/explosionFx'
 import { createSmokeColumn, type SmokeColumnInput } from '@/render/globe/smokeColumn'
 import { useFxLoop } from '@/render/globe/fxLoop'
 import { globeQualityPresets, hexPolygonColor } from '@/render/globe/stylePresets'
+import { latLngToVec3 } from '@/render/globe/coordinates'
 import { GlobeInstanceProvider } from '@/render/globe/GlobeInstanceProvider'
 import type { GlobeInstanceSnapshot } from '@/render/globe/globeTypes'
+import { factionMetaStore } from '@/store/factionMetaStore'
 import { useGameStore } from '@/store/gameStore'
 import { useMapStore } from '@/store/mapStore'
 import { useUIStore } from '@/store/uiStore'
@@ -33,6 +49,12 @@ const FOCUS_ALTITUDE: Record<'overview' | 'focus' | 'cinematic', number> = {
   focus: 1.4,
   cinematic: 2.2,
 }
+
+const GLOBE_BASE_COLOR = '#101824'
+const AMBIENT_FILL_COLOR = '#8ea6bd'
+const AMBIENT_FILL_INTENSITY = 0.38
+const SUNLIGHT_COLOR = '#f2e5c0'
+const SUNLIGHT_INTENSITY = 1.25
 
 function resolveRegionPoint(region: MapRegion) {
   return {
@@ -59,6 +81,18 @@ function sampleRegionsForQuality(regions: MapRegion[], maxCells: number) {
     }
   }
   return sampled
+}
+
+function relationBadgeFromStatus(status: string | null | undefined): FactionRelationBadge {
+  if (status === 'friendly' || status === 'allied') {
+    return '友好'
+  }
+
+  if (status === 'hostile' || status === 'wary') {
+    return '敌对'
+  }
+
+  return '中立'
 }
 
 function toSnapshot(globe: GlobeInstance): GlobeInstanceSnapshot {
@@ -92,7 +126,10 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
   const lighting = useMapStore((state) => state.lighting)
   const explosionQueue = useMapStore((state) => state.explosionQueue)
   const consumeExplosion = useMapStore((state) => state.consumeExplosion)
+  const selectedFactionId = useGameStore((state) => state.selectedFactionId)
+  const relationships = useGameStore((state) => state.relationships)
   const mapQuality = useUIStore((state) => state.mapQuality)
+  const factionMetaById = factionMetaStore((state) => state.byId)
   const regions = useGameStore((state) => state.regions)
   const events = useGameStore((state) => state.events)
   const currentRoomId = useGameStore((state) => state.currentRoomId)
@@ -112,6 +149,38 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
 
     return capitalMap
   }, [worldGeometry])
+  const capitalLayerData = useMemo<GlobeCapitalDatum[]>(() => {
+    if (!worldGeometry) {
+      return []
+    }
+
+    const relationshipByFactionId = new Map<string, string>()
+    if (selectedFactionId) {
+      for (const relationship of relationships) {
+        if (relationship.from === selectedFactionId) {
+          relationshipByFactionId.set(relationship.to, relationship.status)
+        }
+      }
+    }
+
+    return worldGeometry.factions.map((capital) => {
+      const meta = factionMetaById[capital.id]
+      const status = capital.id === selectedFactionId ? 'allied' : relationshipByFactionId.get(capital.id)
+      return {
+        id: capital.id,
+        lat: capital.capital_lat,
+        lng: capital.capital_lng,
+        name: meta?.name ?? capital.id,
+        glow: meta?.glow ?? '#7dd3fc',
+        badge: relationBadgeFromStatus(status),
+      }
+    })
+  }, [factionMetaById, relationships, selectedFactionId, worldGeometry])
+  const capitalPointsData = useMemo(() => buildPointsData(capitalLayerData), [capitalLayerData])
+  const capitalHtmlElementsData = useMemo(
+    () => buildHtmlElementsData(capitalLayerData),
+    [capitalLayerData],
+  )
   const qualityPreset = globeQualityPresets[mapQuality]
   const renderRegions = useMemo(
     () => sampleRegionsForQuality(regions, qualityPreset.renderCellBudget),
@@ -196,6 +265,7 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
     }
 
     globeApi.globeImageUrl(null)
+    globeApi.globeMaterial(new MeshLambertMaterial({ color: GLOBE_BASE_COLOR }))
     globeApi.enablePointerInteraction?.(false)
     globe
       .backgroundColor('#000')
@@ -203,20 +273,22 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
       .pointOfView(PRESET_POINTS.overview, 0)
     globeApi.showGraticules?.(false)
 
-    const ambientLight = new AmbientLight('#09111c', 0.18)
-    const sunLight = new DirectionalLight('#f2e5c0', 1.25)
-    const sunLat = (10 * Math.PI) / 180
-    const sunLng = 0
-    sunLight.position.set(
-      Math.cos(sunLat) * Math.cos(sunLng) * 900,
-      Math.sin(sunLat) * 900,
-      Math.cos(sunLat) * Math.sin(sunLng) * 900,
-    )
-    scene.add(ambientLight)
-    scene.add(sunLight)
+    const ambientLight = globe.lights().find((light) => light.type === 'AmbientLight')
+    if (ambientLight) {
+      ambientLight.color.set(AMBIENT_FILL_COLOR)
+      ambientLight.intensity = AMBIENT_FILL_INTENSITY
+    }
+    const sunLight = globe.lights().find((light) => light.type === 'DirectionalLight')
+    if (sunLight) {
+      sunLight.color.set(SUNLIGHT_COLOR)
+      sunLight.intensity = SUNLIGHT_INTENSITY
+      sunLight.position.copy(latLngToVec3(10, 0, 8))
+    }
 
     const initialPreset = globeQualityPresets[useUIStore.getState().mapQuality]
     const initialLighting = useMapStore.getState().lighting
+    renderer.outputColorSpace = SRGBColorSpace
+    renderer.toneMapping = NoToneMapping
     renderer.setPixelRatio(
       Math.max(0.5, (typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1) * initialPreset.renderScale),
     )
@@ -539,7 +611,15 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
 
   useEffect(() => {
     const globe = globeRef.current
-    if (!globe || !worldGeometry) {
+    if (!globe) {
+      return
+    }
+
+    if (!worldGeometry) {
+      globe
+        .hexPolygonsData([])
+        .pointsData([])
+        .htmlElementsData([])
       return
     }
 
@@ -563,9 +643,30 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
         const region = unwrapHexPolygonData<HexPolygonInput>(hexPolygon)
         return Number((hexPolygonAltitude(region, scorchedLookup) * qualityPreset.hexAltitudeScale).toFixed(4))
       })
+      .hexPolygonCurvatureResolution(5)
       .hexPolygonMargin(hexPolygonMargin())
       .hexPolygonUseDots(false)
+      .pointsData(capitalPointsData)
+      .pointLat('lat')
+      .pointLng('lng')
+      .pointColor('color')
+      .pointAltitude('altitude')
+      .pointRadius('radius')
+      .pointLabel('label')
+      .pointResolution(18)
+      .pointsTransitionDuration(0)
+      .htmlElementsData(capitalHtmlElementsData)
+      .htmlLat('lat')
+      .htmlLng('lng')
+      .htmlAltitude(0.016)
+      .htmlElement((datum) => createLabelDiv(datum as GlobeCapitalDatum))
+      .htmlElementVisibilityModifier((element, isVisible) => {
+        element.style.opacity = isVisible ? '1' : '0'
+      })
+      .htmlTransitionDuration(0)
   }, [
+    capitalHtmlElementsData,
+    capitalPointsData,
     renderRegions,
     scorchedRegions,
     worldGeometry,

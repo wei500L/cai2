@@ -1,6 +1,5 @@
 import { factionMetaStore } from '@/store/factionMetaStore'
 import type { FactionId } from '@/types/faction'
-import { getReplayEventCategory } from '@/mock/replay'
 import type { GameEvent, GamePhase, RelationshipStatus } from '@/types'
 
 export const phaseLabels: Record<GamePhase, string> = {
@@ -62,4 +61,28 @@ export function getMarkerLabel(event?: GameEvent) {
   }
 
   return event.priority === 'P0' ? '▲战役' : '▲转折'
+}
+
+export function getReplayEventCategory(event: GameEvent): 'declare_war' | 'elimination' | 'betrayal' | 'alliance' | null {
+  if (event.kind === 'declare_war' || event.narration.includes('宣战')) {
+    return 'declare_war'
+  }
+
+  if (
+    event.payload.eliminatedFaction ||
+    event.payload.elimination ||
+    /灭国|灭亡|旗帜熄灭|消失/.test(event.narration)
+  ) {
+    return 'elimination'
+  }
+
+  if (event.kind === 'betrayal' || /背叛|违约|撕毁/.test(event.narration)) {
+    return 'betrayal'
+  }
+
+  if (event.kind === 'alliance' || /结盟|同盟|盟约/.test(event.narration)) {
+    return 'alliance'
+  }
+
+  return null
 }

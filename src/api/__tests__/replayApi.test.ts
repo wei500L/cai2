@@ -106,11 +106,50 @@ describe('replayApi', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
 
-    await expect(fetchReplay('room-1')).resolves.toEqual(replayDto)
+    await expect(fetchReplay('room-1')).resolves.toEqual({ ok: true, data: replayDto })
     expect(fetchMock).toHaveBeenCalledWith(
       'http://localhost:8000/debug/v1/rooms/room-1/replay',
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     )
+  })
+
+  it('returns NOT_FOUND when the replay endpoint is 404', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+    }))
+
+    await expect(fetchReplay('missing-room')).resolves.toMatchObject({
+      ok: false,
+      code: 'NOT_FOUND',
+      message: '房间不存在或回放尚未生成。',
+    })
+  })
+
+  it('returns NETWORK when the replay request fails before parsing', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')))
+
+    await expect(fetchReplay('room-1')).resolves.toMatchObject({
+      ok: false,
+      code: 'NETWORK',
+      message: '网络请求失败。',
+    })
+  })
+
+  it('returns PARSE when the replay response body is invalid JSON', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => {
+        throw new SyntaxError('Unexpected token')
+      },
+    }))
+
+    await expect(fetchReplay('room-1')).resolves.toMatchObject({
+      ok: false,
+      code: 'PARSE',
+      message: '回放数据解析失败。',
+    })
   })
 
   it('loads and normalizes REST replay data for the page view model', async () => {
@@ -135,7 +174,7 @@ describe('replayApi', () => {
     expect(result.deceptionStats[0].successRate).toBe(75)
   })
 
-  it('throws a direct error on timeout', async () => {
+  it('returns TIMEOUT on timeout', async () => {
     vi.useFakeTimers()
     vi.stubGlobal('fetch', vi.fn((_url, init?: RequestInit) => {
       return new Promise((_resolve, reject) => {
@@ -145,7 +184,11 @@ describe('replayApi', () => {
       })
     }))
 
-    const pending = expect(loadReplay('room-1')).rejects.toThrow('真实复盘读取失败。请求超时。')
+    const pending = expect(fetchReplay('room-1')).resolves.toMatchObject({
+      ok: false,
+      code: 'TIMEOUT',
+      message: '请求超时。',
+    })
     await vi.advanceTimersByTimeAsync(10_000)
     await pending
 

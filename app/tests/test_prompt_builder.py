@@ -1,9 +1,10 @@
-# ruff: noqa: RUF001
+# ruff: noqa: RUF001, I001
 from __future__ import annotations
 
 import socket
 from pathlib import Path
 from typing import Any
+from types import SimpleNamespace
 
 import pytest
 
@@ -28,6 +29,8 @@ from app.domain import (
 )
 from app.game.settlement_aggregator import SettlementInput
 from app.llm.prompt_builder import (
+    EPIC_NARRATION_JSON_SCHEMA_HINT,
+    SUMMARY_NARRATION_JSON_SCHEMA_HINT,
     OUTPUT_JSON_SCHEMA_HINT,
     PromptBuilder,
     SettlementPrompt,
@@ -217,6 +220,85 @@ def test_prompt_builder_does_not_open_network_socket(
     monkeypatch.setattr(socket, "socket", _blocked_socket)
 
     PromptBuilder().build_settlement_prompt(settlement_input)
+
+
+def test_build_epoch_narration_prompts_include_required_sections() -> None:
+    epoch_state = SimpleNamespace(
+        room_id="room-1",
+        epoch=3,
+        turn=8,
+        generated_at_ms=12_345,
+        tone="肃杀",
+        key_events=["铁冠帝国发动边境攻势", "星辉联邦公开演讲反击"],
+        rankings=[
+            {
+                "id": "ironCrown",
+                "name": "铁冠帝国",
+                "totalPower": 92.4,
+                "previousRank": 2,
+                "currentRank": 1,
+                "rankDelta": 1,
+                "previousPower": 86.2,
+            }
+        ],
+        highlights={
+            "majorEvents": [
+                {
+                    "id": "event-1",
+                    "kind": "speech",
+                    "turn": 8,
+                    "priority": "P1",
+                    "actor": "ironCrown",
+                    "target": "starlight",
+                    "narration": "铁冠帝国发动边境攻势。",
+                }
+            ],
+            "wars": [
+                {
+                    "id": "battle-1",
+                    "kind": "battle",
+                    "turn": 8,
+                    "priority": "P0",
+                    "actor": "ironCrown",
+                    "target": "starlight",
+                    "regionId": "region-1",
+                    "attackerLoss": 2.0,
+                    "defenderLoss": 4.0,
+                    "attackerRemainingTroops": 14.0,
+                    "defenderRemainingTroops": 10.0,
+                    "narration": "边境爆发战争。",
+                }
+            ],
+            "betrayals": [
+                {
+                    "id": "betrayal-1",
+                    "kind": "betrayal",
+                    "turn": 8,
+                    "priority": "P1",
+                    "actor": "starlight",
+                    "target": "emerald",
+                    "narration": "翡翠王庭突然倒向新盟约。",
+                }
+            ],
+        },
+    )
+
+    builder = PromptBuilder()
+    epic = builder.build_epic_narration_prompt(epoch_state)
+    summary = builder.build_summary_narration_prompt(epoch_state)
+
+    assert "关键事件" in epic.user
+    assert "势力排名变化" in epic.user
+    assert "重大战争" in epic.user
+    assert "重大背叛" in epic.user
+    assert "铁冠帝国发动边境攻势" in epic.user
+    assert EPIC_NARRATION_JSON_SCHEMA_HINT in epic.json_schema_hint
+    assert epic.temperature > summary.temperature
+
+    assert "排名快照" in summary.user
+    assert "战争摘要" in summary.user
+    assert "背叛摘要" in summary.user
+    assert SUMMARY_NARRATION_JSON_SCHEMA_HINT in summary.json_schema_hint
 
 
 def test_prompt_builder_has_no_forbidden_project_imports() -> None:

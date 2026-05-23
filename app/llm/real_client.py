@@ -9,7 +9,12 @@ from pydantic import BaseModel
 
 from app.llm.client import LLMRequest, LLMResponse
 from app.llm.mock_client import MockLLMClient
-from app.llm.output_schema import ExplosionJudgeOutput, SettlementModelOutput
+from app.llm.output_schema import (
+    EpicNarrationModelOutput,
+    ExplosionJudgeOutput,
+    SettlementModelOutput,
+    SummaryNarrationModelOutput,
+)
 
 
 class RealLLMClient:
@@ -34,6 +39,22 @@ class RealLLMClient:
             schema=SettlementModelOutput,
             retries=1,
             payload_kind="settlement",
+        )
+
+    async def call_epic_narration(self, request: LLMRequest) -> LLMResponse:
+        return await self._call_json_model(
+            request,
+            schema=EpicNarrationModelOutput,
+            retries=2,
+            payload_kind="epic_narration",
+        )
+
+    async def call_summary_narration(self, request: LLMRequest) -> LLMResponse:
+        return await self._call_json_model(
+            request,
+            schema=SummaryNarrationModelOutput,
+            retries=2,
+            payload_kind="summary_narration",
         )
 
     async def call_explosion_judge(self, prompt: str) -> LLMResponse:
@@ -94,6 +115,10 @@ class RealLLMClient:
     async def _fallback_response(self, request: LLMRequest, payload_kind: str) -> LLMResponse:
         if payload_kind == "explosion":
             return await self._fallback_client.call_explosion_judge(request.user)
+        if payload_kind == "epic_narration":
+            return await self._fallback_client.call_epic_narration(request)
+        if payload_kind == "summary_narration":
+            return await self._fallback_client.call_summary_narration(request)
         return await self._fallback_client.call_settlement_model(request)
 
     def _can_call_real(self) -> bool:

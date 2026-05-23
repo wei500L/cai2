@@ -22,10 +22,13 @@ function clampBadge(badge: string): FactionRelationBadge {
 }
 
 export function createLabelDiv(capital: GlobeCapitalDatum) {
+  const anchor = document.createElement('div')
+  anchor.className = styles.factionLabelAnchor
+  anchor.style.color = capital.glow
+  anchor.style.setProperty('--faction-glow', capital.glow)
+
   const el = document.createElement('div')
   el.className = styles.factionLabel
-  el.style.color = capital.glow
-  el.style.setProperty('--faction-glow', capital.glow)
 
   const name = document.createElement('span')
   name.className = styles.factionName
@@ -36,7 +39,8 @@ export function createLabelDiv(capital: GlobeCapitalDatum) {
   badge.textContent = clampBadge(capital.badge)
 
   el.append(name, badge)
-  return el
+  anchor.append(el)
+  return anchor
 }
 
 function lookupCapital(

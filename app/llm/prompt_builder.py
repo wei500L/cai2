@@ -113,6 +113,89 @@ OUTPUT_JSON_SCHEMA_HINT = """{
   ]
 }"""
 
+EPIC_NARRATION_SYSTEM_PROMPT = """你是纪元终章史官。
+你只在纪元结束的裁决阶段工作。
+你会收到本纪元的关键事件、势力排名变化、重大战争和背叛摘要。
+你的任务是生成一段 200-600 字的中文纪元叙事。
+叙事必须有史诗感，但不能夸张到失真。
+你必须输出 tone 和 key_events，key_events 应是简短条目。
+你不能输出 markdown 围栏。
+你不能输出解释文字。
+你不能输出超过 1000 字符的结果。
+输出必须是严格 JSON，符合用户提供的 schema 形态。
+如果信息不足，保持克制，优先描述能确认的事实。"""
+
+SUMMARY_NARRATION_SYSTEM_PROMPT = """你是纪元终章简报生成器。
+你只在纪元结束的裁决阶段工作。
+你会收到本纪元的关键事件、势力排名变化、重大战争和背叛摘要。
+你的任务是生成结构化 JSON 简报，headline 要简短有力，highlights 要保持简洁。
+不要输出长篇叙事字段。
+不要输出 markdown 围栏。
+不要输出解释文字。
+不要输出超过 1000 字符的结果。
+输出必须是严格 JSON，符合用户提供的 schema 形态。"""
+
+EPIC_NARRATION_JSON_SCHEMA_HINT = """{
+  "narrative": "string(200..600, 中文)",
+  "tone": "string(1..32)",
+  "key_events": ["string"]
+}"""
+
+SUMMARY_NARRATION_JSON_SCHEMA_HINT = """{
+  "headline": "string(1..64)",
+  "rankings": [
+    {
+      "id": "faction_id",
+      "name": "string",
+      "totalPower": 0.0,
+      "previousRank": 1,
+      "currentRank": 1,
+      "rankDelta": 0,
+      "previousPower": 0.0
+    }
+  ],
+  "highlights": {
+    "majorEvents": [
+      {
+        "id": "string",
+        "kind": "string",
+        "turn": 1,
+        "priority": "P0|P1|P2",
+        "actor": "faction_id|null",
+        "target": "faction_id|null",
+        "narration": "string"
+      }
+    ],
+    "wars": [
+      {
+        "id": "string",
+        "kind": "battle",
+        "turn": 1,
+        "priority": "P0|P1|P2",
+        "actor": "faction_id",
+        "target": "faction_id",
+        "regionId": "string",
+        "attackerLoss": 0.0,
+        "defenderLoss": 0.0,
+        "attackerRemainingTroops": 0.0,
+        "defenderRemainingTroops": 0.0,
+        "narration": "string"
+      }
+    ],
+    "betrayals": [
+      {
+        "id": "string",
+        "kind": "betrayal",
+        "turn": 1,
+        "priority": "P0|P1|P2",
+        "actor": "faction_id",
+        "target": "faction_id",
+        "narration": "string"
+      }
+    ]
+  }
+}"""
+
 
 class SettlementPrompt(BaseModel):
     model_config = ConfigDict(strict=True)
@@ -122,6 +205,16 @@ class SettlementPrompt(BaseModel):
     json_schema_hint: str
     temperature: float = 0.6
     max_tokens: int = 4000
+
+
+class NarrationPrompt(BaseModel):
+    model_config = ConfigDict(strict=True)
+
+    system: str
+    user: str
+    json_schema_hint: str
+    temperature: float = 0.45
+    max_tokens: int = 800
 
 
 class PromptBuilder:
@@ -167,6 +260,90 @@ class PromptBuilder:
             system=SYSTEM_PROMPT_TEMPLATE,
             user=user,
             json_schema_hint=OUTPUT_JSON_SCHEMA_HINT,
+        )
+
+    def build_epic_narration_prompt(self, epoch_state: Any) -> NarrationPrompt:
+        key_events = _format_narration_lines(_value_of(epoch_state, "key_events", []))
+        rankings = _format_epoch_rankings(_value_of(epoch_state, "rankings", []))
+        major_events = _format_narration_lines(
+            _value_of(_value_of(epoch_state, "highlights", {}), "majorEvents", []),
+        )
+        wars = _format_narration_lines(
+            _value_of(_value_of(epoch_state, "highlights", {}), "wars", []),
+        )
+        betrayals = _format_narration_lines(
+            _value_of(_value_of(epoch_state, "highlights", {}), "betrayals", []),
+        )
+
+        user = "\n\n".join(
+            [
+                "## 当前纪元信息\n"
+                f"room_id={_value_of(epoch_state, 'room_id', 'unknown')}\n"
+                f"epoch={_value_of(epoch_state, 'epoch', '?')}\n"
+                f"turn={_value_of(epoch_state, 'turn', '?')}\n"
+                f"generated_at_ms={_value_of(epoch_state, 'generated_at_ms', '?')}\n"
+                f"tone_hint={_value_of(epoch_state, 'tone', '史诗')}",
+                "## 关键事件\n"
+                f"{_join_lines(key_events)}",
+                "## 势力排名变化\n"
+                f"{_join_lines(rankings)}",
+                "## 重大战争\n"
+                f"{_join_lines(wars)}",
+                "## 重大背叛\n"
+                f"{_join_lines(betrayals)}",
+                "## 重大事件摘要\n"
+                f"{_join_lines(major_events)}",
+                "## 输出格式\n"
+                f"{EPIC_NARRATION_JSON_SCHEMA_HINT}",
+            ]
+        )
+
+        return NarrationPrompt(
+            system=EPIC_NARRATION_SYSTEM_PROMPT,
+            user=user,
+            json_schema_hint=EPIC_NARRATION_JSON_SCHEMA_HINT,
+            temperature=0.7,
+            max_tokens=720,
+        )
+
+    def build_summary_narration_prompt(self, epoch_state: Any) -> NarrationPrompt:
+        key_events = _format_narration_lines(_value_of(epoch_state, "key_events", []))
+        rankings = _format_epoch_rankings(_value_of(epoch_state, "rankings", []))
+        highlights = _value_of(epoch_state, "highlights", {})
+        major_events = _format_narration_lines(_value_of(highlights, "majorEvents", []))
+        wars = _format_narration_lines(_value_of(highlights, "wars", []))
+        betrayals = _format_narration_lines(_value_of(highlights, "betrayals", []))
+
+        user = "\n\n".join(
+            [
+                "## 当前纪元信息\n"
+                f"room_id={_value_of(epoch_state, 'room_id', 'unknown')}\n"
+                f"epoch={_value_of(epoch_state, 'epoch', '?')}\n"
+                f"turn={_value_of(epoch_state, 'turn', '?')}\n"
+                f"generated_at_ms={_value_of(epoch_state, 'generated_at_ms', '?')}",
+                "## 关键事件\n"
+                f"{_join_lines(key_events)}",
+                "## 排名快照\n"
+                f"{_join_lines(rankings)}",
+                "## 重大事件\n"
+                f"{_join_lines(major_events)}",
+                "## 战争摘要\n"
+                f"{_join_lines(wars)}",
+                "## 背叛摘要\n"
+                f"{_join_lines(betrayals)}",
+                "## 输出要求\n"
+                "仅输出严格 JSON，不要输出长篇叙事字段，不要添加解释文本。",
+                "## 输出格式\n"
+                f"{SUMMARY_NARRATION_JSON_SCHEMA_HINT}",
+            ]
+        )
+
+        return NarrationPrompt(
+            system=SUMMARY_NARRATION_SYSTEM_PROMPT,
+            user=user,
+            json_schema_hint=SUMMARY_NARRATION_JSON_SCHEMA_HINT,
+            temperature=0.35,
+            max_tokens=540,
         )
 
 
@@ -298,3 +475,60 @@ def _stringify(value: Any) -> str:
     if hasattr(value, "value"):
         return str(value.value)
     return str(value)
+
+
+def _value_of(value: Any, key: str, default: Any = None) -> Any:
+    if isinstance(value, Mapping):
+        return value.get(key, default)
+    return getattr(value, key, default)
+
+
+def _format_epoch_rankings(rankings: Sequence[Any]) -> list[str]:
+    if not rankings:
+        return ["- （无排名变化）"]
+
+    lines: list[str] = []
+    for index, ranking in enumerate(rankings, start=1):
+        faction_name = _stringify(_value_of(ranking, "name", _value_of(ranking, "id", "unknown")))
+        faction_id = _stringify(_value_of(ranking, "id", "unknown"))
+        current_rank = _stringify(
+            _value_of(ranking, "currentRank", _value_of(ranking, "rank", "?"))
+        )
+        previous_rank = _stringify(_value_of(ranking, "previousRank", "?"))
+        rank_delta = _stringify(_value_of(ranking, "rankDelta", _value_of(ranking, "delta", 0)))
+        total_power = _stringify(_value_of(ranking, "totalPower", 0.0))
+        previous_power = _stringify(_value_of(ranking, "previousPower", 0.0))
+        lines.append(
+            f"- {index}. {faction_name}({faction_id}) rank {previous_rank} -> {current_rank}; "
+            f"delta={rank_delta}; power {previous_power} -> {total_power}"
+        )
+    return lines
+
+
+def _format_narration_lines(items: Sequence[Any]) -> list[str]:
+    if not items:
+        return ["- （无）"]
+
+    lines: list[str] = []
+    for index, item in enumerate(items, start=1):
+        item_id = _stringify(_value_of(item, "id", f"item-{index}"))
+        kind = _stringify(_value_of(item, "kind", "unknown"))
+        turn = _stringify(_value_of(item, "turn", "?"))
+        priority = _stringify(_value_of(item, "priority", "P2"))
+        actor = _stringify(_value_of(item, "actor", ""))
+        target = _stringify(_value_of(item, "target", ""))
+        narration = truncate(_stringify(_value_of(item, "narration", "")), max_chars=180)
+        parts = [
+            f"- {index}. id={item_id}",
+            f"kind={kind}",
+            f"T{turn}",
+            f"priority={priority}",
+        ]
+        if actor and actor != "None":
+            parts.append(f"actor={actor}")
+        if target and target != "None":
+            parts.append(f"target={target}")
+        parts.append(f"text={narration}")
+        lines.append("; ".join(parts))
+
+    return lines

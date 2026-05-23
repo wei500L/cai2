@@ -17,8 +17,8 @@ import {
   type Scene,
 } from 'three'
 import type { ExplosionEvent, ExplosionKind } from '@/protocol/types'
+import { latLngToVec3 } from '@/render/globe/coordinates'
 
-const GLOBE_RADIUS = 100
 const DEFAULT_TTL_MS = 4000
 const MAX_PARTICLES = 600
 const PARTICLES_PER_INTENSITY = 200
@@ -94,18 +94,7 @@ function hash(index: number, salt = 0) {
   return value - Math.floor(value)
 }
 
-export function latLngToVec3(lat: number, lng: number, altitude = 0) {
-  const phi = ((90 - lat) * Math.PI) / 180
-  const theta = ((90 - lng) * Math.PI) / 180
-  const radius = GLOBE_RADIUS * (1 + altitude)
-  const sinPhi = Math.sin(phi)
-
-  return new Vector3(
-    radius * sinPhi * Math.cos(theta),
-    radius * Math.cos(phi),
-    radius * sinPhi * Math.sin(theta),
-  )
-}
+export { latLngToVec3 }
 
 function tangentBasis(normal: Vector3) {
   const reference = Math.abs(normal.y) > 0.92 ? new Vector3(1, 0, 0) : new Vector3(0, 1, 0)

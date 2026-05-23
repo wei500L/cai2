@@ -17,6 +17,7 @@ from app.domain.enums import (
     RoomStatus,
     VisibilityScope,
 )
+from app.domain.faction_meta import FactionMeta
 from app.domain.factions import all_faction_ids
 from app.domain.models import (
     FactionStatChange,
@@ -32,6 +33,7 @@ from app.domain.models import (
 from app.game.relationships_init import relationship_status_for_value
 from app.repositories.base import MessageRecord
 from app.repositories.factory import Repositories
+from app.services.factions_meta_service import FactionsMetaService
 
 
 class ReplayTimelineEntry(BaseModel):
@@ -49,12 +51,17 @@ class ReplayDTO(BaseModel):
     room_id: str
     generated_at_ms: int
     mode: str
+    start_ts: int = 0
+    end_ts: int = 0
+    in_progress: bool = False
     total_epochs: int
     total_turns: int
     timeline: list[ReplayTimelineEntry]
+    factions: list[FactionMeta] = Field(default_factory=list)
     public_events: list[dict[str, Any]]
     private_messages: list[dict[str, Any]]
     ai_internal_thoughts: list[dict[str, Any]]
+    ai_inner_thoughts: list[dict[str, Any]] = Field(default_factory=list)
     faction_curves: list[dict[str, Any]]
     relationship_snapshots: list[dict[str, Any]]
     key_moments: list[dict[str, Any]]
@@ -70,11 +77,17 @@ class ReplayService:
     def __init__(self, repos: Repositories, clock: Clock) -> None:
         self._repos = repos
         self._clock = clock
+        self._factions_meta_service = FactionsMetaService(repos)
 
     async def build_replay(self, room_id: str) -> ReplayDTO:
         room = await self._repos.rooms.get(room_id)
         if room is None:
             raise RoomNotFoundError(f"room {room_id} not found")
+        replay = await self.build_replay_dto(room)
+        await self._repos.replays.save_replay(room_id, replay.model_dump(mode="json"))
+        return replay
+
+    async def build_replay_dto(self, room: GameRoom) -> ReplayDTO:
         is_finished = room.status == RoomStatus.finished
 
         (
@@ -85,15 +98,28 @@ class ReplayService:
             final_relationships,
             actions,
             diaries_by_faction,
+            factions_meta,
         ) = await asyncio.gather(
-            self._repos.events.list_all(room_id),
-            self._repos.messages.list_by_room(room_id),
-            self._repos.settlements.list_by_room(room_id),
-            self._repos.state.get_factions(room_id),
-            self._repos.state.get_relationships(room_id),
-            self._repos.actions.list_by_room(room_id),
-            self._repos.diaries.list_all_by_room(room_id),
+            self._repos.events.list_all(room.id),
+            self._repos.messages.list_by_room(room.id),
+            self._repos.settlements.list_by_room(room.id),
+            self._repos.state.get_factions(room.id),
+            self._repos.state.get_relationships(room.id),
+            self._repos.actions.list_by_room(room.id),
+            self._repos.diaries.list_all_by_room(room.id),
+            self._factions_meta_service.get_factions_meta(room.id),
         )
+
+        if not is_finished:
+            cutoff = (room.current.epoch, room.current.turn)
+            events = _filter_by_turn(events, cutoff)
+            messages = _filter_by_turn(messages, cutoff)
+            settlements = _filter_by_turn(settlements, cutoff)
+            actions = _filter_by_turn(actions, cutoff)
+            diaries_by_faction = {
+                faction_id: _filter_by_turn(entries, cutoff)
+                for faction_id, entries in diaries_by_faction.items()
+            }
 
         events = sorted(events, key=_event_sort_key)
         messages = sorted(messages, key=_message_sort_key)
@@ -102,19 +128,33 @@ class ReplayService:
 
         timeline = _build_timeline(events)
         turn_keys = _turn_keys(room, events, messages, settlements, actions)
+        ai_thoughts = _ai_internal_thoughts(diaries_by_faction) if is_finished else []
+        start_ts, end_ts = _replay_window(
+            room,
+            events,
+            messages,
+            settlements,
+            actions,
+            diaries_by_faction,
+            is_finished,
+            self._clock.now_ms(),
+        )
 
-        replay = ReplayDTO(
-            room_id=room_id,
+        return ReplayDTO(
+            room_id=room.id,
             generated_at_ms=self._clock.now_ms(),
             mode=room.mode,
+            start_ts=start_ts,
+            end_ts=end_ts,
+            in_progress=not is_finished,
             total_epochs=_total_epochs(room, turn_keys, settlements, events),
             total_turns=len(turn_keys),
             timeline=timeline,
+            factions=sorted(factions_meta, key=lambda faction: str(faction.id)),
             public_events=[_dump_model(event) for event in events],
             private_messages=[_dump_model(message) for message in _private_messages(messages)],
-            ai_internal_thoughts=_ai_internal_thoughts(diaries_by_faction)
-            if is_finished
-            else [],
+            ai_internal_thoughts=ai_thoughts,
+            ai_inner_thoughts=ai_thoughts,
             faction_curves=_faction_curves(turn_keys, settlements, final_factions),
             relationship_snapshots=_relationship_snapshots(
                 turn_keys,
@@ -131,8 +171,6 @@ class ReplayService:
             if is_finished
             else "游戏尚未结束, 当前复盘为中途快照。",
         )
-        await self._repos.replays.save_replay(room_id, replay.model_dump(mode="json"))
-        return replay
 
     async def export_replay_dto(self, room_id: str) -> dict[str, Any]:
         return (await self.build_replay(room_id)).model_dump(mode="json")
@@ -180,6 +218,42 @@ def _total_epochs(
     epochs.extend(settlement.epoch for settlement in settlements)
     epochs.extend(event.epoch for event in events)
     return max(epochs, default=0)
+
+
+def _filter_by_turn(items: list[Any], cutoff: tuple[int, int]) -> list[Any]:
+    return [
+        item
+        for item in items
+        if (getattr(item, "epoch", 0), getattr(item, "turn", 0)) <= cutoff
+    ]
+
+
+def _replay_window(
+    room: GameRoom,
+    events: list[GameEvent],
+    messages: list[MessageRecord],
+    settlements: list[SettlementResult],
+    actions: list[GameAction],
+    diaries_by_faction: dict[FactionId, list[Any]],
+    is_finished: bool,
+    now_ms: int,
+) -> tuple[int, int]:
+    timestamps: list[int] = [room.created_at_ms, room.current.phase_started_at_ms]
+    timestamps.extend(event.created_at_ms for event in events)
+    timestamps.extend(message.created_at_ms for message in messages)
+    timestamps.extend(settlement.generated_at_ms for settlement in settlements)
+    timestamps.extend(action.created_at_ms for action in actions)
+    timestamps.extend(
+        entry.created_at_ms
+        for entries in diaries_by_faction.values()
+        for entry in entries
+    )
+
+    start_ts = min(timestamps) if timestamps else room.created_at_ms
+    end_ts = max(timestamps) if timestamps else room.created_at_ms
+    if not is_finished:
+        end_ts = max(end_ts, now_ms)
+    return start_ts, end_ts
 
 
 def _private_messages(messages: list[MessageRecord]) -> list[MessageRecord]:

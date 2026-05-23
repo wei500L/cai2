@@ -4,6 +4,7 @@ import { useEffect } from 'react'
 import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { DEFAULT_DAY_NIGHT_MASK_ALPHA } from '@/render/globe/stylePresets'
 import { useMapStore } from '@/store/mapStore'
 
 ;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
@@ -68,7 +69,7 @@ describe('MapSwitcher', () => {
         bloomRadius: 0.6,
         bloomThreshold: 0.85,
         starfieldDensity: 0.7,
-        dayNightMaskAlpha: 0.6,
+        dayNightMaskAlpha: DEFAULT_DAY_NIGHT_MASK_ALPHA,
         noiseEnabled: true,
       },
     })

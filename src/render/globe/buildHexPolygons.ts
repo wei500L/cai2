@@ -146,5 +146,5 @@ export function hexPolygonAltitude(region: HexPolygonInput, scorchedRegions?: Re
 }
 
 export function hexPolygonMargin() {
-  return 0.2
+  return 0.08
 }

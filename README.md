@@ -65,6 +65,10 @@ VITE_USE_WS=true npm run dev
 
 该启动方式仅用于本机前后端联调，未做鉴权、未做 TLS、未连接数据库。联调期间保持 `LLM_PROVIDER=mock`；行动期不调用 LLM 仍是架构红线，联调改动不得绕过这条边界。
 
+## Mock 边界
+
+`src/mock/**` 只允许 `src/protocol/transport.ts` 的 MockTransport 和测试夹具使用。业务代码目录 `src/features/**`、`src/pages/**`、`src/store/**`、`src/render/**`、`src/effects/**`、`src/api/**`、`src/components/**` 不能导入 `@/mock/*`。开发期如果遇到临时违规，不能用 `eslint-disable-next-line` 绕过，必须把类型迁到 `src/types`、把运行期元数据改走 `src/store/*MetaStore`，或把 mock 行为收敛到 MockTransport 后再运行 `npm run lint:strict`。
+
 ## 目录结构
 
 ```text

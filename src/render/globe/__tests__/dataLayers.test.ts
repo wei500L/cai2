@@ -106,7 +106,8 @@ describe('globe data layers', () => {
     })
 
     const labelEl = createLabelDiv(labels[0])
-    expect(labelEl.className).toContain('factionLabel')
+    expect(labelEl.className).toContain('factionLabelAnchor')
+    expect(labelEl.firstElementChild?.className).toContain('factionLabel')
     expect(labelEl.textContent).toContain('星辉联邦')
     expect(labelEl.textContent).toContain('友好')
   })

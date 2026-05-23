@@ -52,7 +52,7 @@ describe('buildHexPolygons', () => {
       hexPolygonAltitude(cells[1]) * 0.5,
       4,
     )
-    expect(hexPolygonMargin()).toBe(0.2)
+    expect(hexPolygonMargin()).toBe(0.08)
   })
 
   it('handles unowned, ashen and high-elevation cells distinctly', () => {

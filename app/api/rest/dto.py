@@ -6,6 +6,7 @@ from uuid import uuid4
 from pydantic import BaseModel, ConfigDict, Field, RootModel
 
 from app.domain.enums import ArbitratePhase, FactionId, GamePhase, TreatyKind
+from app.services.replay_service import ReplayDTO as ReplayServiceDTO
 
 
 class RestDTO(BaseModel):
@@ -158,5 +159,5 @@ class MessagesResponse(RootModel[list[dict[str, Any]]]):
     pass
 
 
-class ReplayResponse(RootModel[dict[str, Any]]):
+class ReplayResponse(RootModel[ReplayServiceDTO]):
     pass

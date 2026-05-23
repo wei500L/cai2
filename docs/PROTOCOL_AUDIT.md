@@ -173,3 +173,11 @@
 
 - 前端 dev 运行态新增 `REAL WS` / `MOCK MODE` 横幅与连接失败面板；真实 ws 失败不自动回退 mock。
 - `mockEventEmittedCount` 是前端 dev-only 诊断计数，不进入 WebSocket wire envelope，也不要求后端新增字段。
+
+## 12. Replay 复盘协议
+
+- `GET /debug/v1/rooms/{room_id}/replay` 返回 `ReplayDTO`，路由仍只挂在 debug 前缀下，不对 prod 公开。
+- `ReplayDTO` 包含 `room_id`、`generated_at_ms`、`mode`、`start_ts`、`end_ts`、`in_progress`、`total_epochs`、`total_turns`、`timeline`、`factions`、`public_events`、`private_messages`、`ai_internal_thoughts`、`ai_inner_thoughts`、`faction_curves`、`relationship_snapshots`、`key_moments`、`famous_quotes`、`betrayal_events`、`deception_stats`、`final_factions`、`winner`、`final_narration`。
+- 房间不存在时返回 `404 { "error": "room_not_found" }`。
+- 房间未结束时，`in_progress=true`，`timeline` 只暴露已发生部分，`ai_internal_thoughts` / `ai_inner_thoughts` 保持空数组。
+- `factions` 取房间对应的静态势力元数据，`capital_hex_id` 会随房间 world geometry 兜底补齐。

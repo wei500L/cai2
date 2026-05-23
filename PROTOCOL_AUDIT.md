@@ -40,3 +40,11 @@
 - `ai.reaction` 负载新增 `target_event_id`，并继续携带 `event` / `faction_id` / `reaction` / `target_faction`。
 - `OutboundDispatcher` 现在会把 `ai.speak` 与 `ai.reaction` 分开下发，避免把反应误发成普通发言。
 - 回归目标：thinking -> speak -> reaction 的顺序在 resolve 阶段保持稳定，且 reaction 不再缺少目标事件锚点。
+
+## Replay 复盘协议
+
+- `GET /debug/v1/rooms/{room_id}/replay` 返回 `ReplayDTO`，路由仍只挂在 debug 前缀下，不对 prod 公开。
+- `ReplayDTO` 包含 `room_id`、`generated_at_ms`、`mode`、`start_ts`、`end_ts`、`in_progress`、`total_epochs`、`total_turns`、`timeline`、`factions`、`public_events`、`private_messages`、`ai_internal_thoughts`、`ai_inner_thoughts`、`faction_curves`、`relationship_snapshots`、`key_moments`、`famous_quotes`、`betrayal_events`、`deception_stats`、`final_factions`、`winner`、`final_narration`。
+- 房间不存在时返回 `404 { "error": "room_not_found" }`。
+- 房间未结束时，`in_progress=true`，`timeline` 只暴露已发生部分，`ai_internal_thoughts` / `ai_inner_thoughts` 保持空数组。
+- `factions` 取房间对应的静态势力元数据，`capital_hex_id` 会随房间 world geometry 兜底补齐。

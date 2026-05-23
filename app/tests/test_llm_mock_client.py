@@ -1,3 +1,6 @@
+"""Mock LLM client tests."""
+# ruff: noqa: I001, E501
+
 from __future__ import annotations
 
 import json
@@ -9,7 +12,7 @@ from app.llm.client import LLMRequest, LLMResponse
 from app.llm.factory import make_llm_client
 from app.llm.mock_client import MockLLMClient
 from app.llm.openai_client import OpenAICompatibleClient
-from app.llm.output_schema import SettlementModelOutput
+from app.llm.output_schema import EpicNarrationModelOutput, SettlementModelOutput, SummaryNarrationModelOutput
 from app.llm.retry import call_with_retry
 
 
@@ -40,6 +43,167 @@ async def test_mock_default_output_is_json(llm_request: LLMRequest) -> None:
     assert payload["map_change_suggestions"] == []
     assert payload["stat_change_suggestions"] == []
     assert SettlementModelOutput.model_validate(payload).relationship_deltas
+
+
+@pytest.mark.asyncio
+async def test_mock_epic_narration_is_deterministic() -> None:
+    request = LLMRequest(
+        system="epic system",
+        user="epoch=3 ironCrown starlight battle betrayal speech",
+        temperature=0.7,
+        max_tokens=720,
+        metadata={
+            "epoch_state": {
+                "room_id": "room-1",
+                "epoch": 3,
+                "turn": 8,
+                "generated_at_ms": 1_234,
+                "tone": "肃杀",
+                "key_events": ["铁冠帝国发动边境攻势", "星辉联邦公开演讲反击"],
+                "rankings": [
+                    {
+                        "id": "ironCrown",
+                        "name": "铁冠帝国",
+                        "totalPower": 92.4,
+                        "previousRank": 2,
+                        "currentRank": 1,
+                        "rankDelta": 1,
+                        "previousPower": 86.2,
+                    }
+                ],
+                "highlights": {
+                    "majorEvents": [
+                        {
+                            "id": "event-1",
+                            "kind": "speech",
+                            "turn": 8,
+                            "priority": "P1",
+                            "actor": "ironCrown",
+                            "target": "starlight",
+                            "narration": "铁冠帝国发动边境攻势。",
+                        }
+                    ],
+                    "wars": [
+                        {
+                            "id": "battle-1",
+                            "kind": "battle",
+                            "turn": 8,
+                            "priority": "P0",
+                            "actor": "ironCrown",
+                            "target": "starlight",
+                            "regionId": "region-1",
+                            "attackerLoss": 2.0,
+                            "defenderLoss": 4.0,
+                            "attackerRemainingTroops": 14.0,
+                            "defenderRemainingTroops": 10.0,
+                            "narration": "边境爆发战争。",
+                        }
+                    ],
+                    "betrayals": [
+                        {
+                            "id": "betrayal-1",
+                            "kind": "betrayal",
+                            "turn": 8,
+                            "priority": "P1",
+                            "actor": "starlight",
+                            "target": "emerald",
+                            "narration": "翡翠王庭突然倒向新盟约。",
+                        }
+                    ],
+                },
+            }
+        },
+    )
+
+    response = await MockLLMClient().call_epic_narration(request)
+    payload = json.loads(response.content)
+
+    assert response.model == "mock"
+    assert len(payload["narrative"]) >= 200
+    assert payload["key_events"]
+    assert payload["tone"] == "肃杀"
+    assert EpicNarrationModelOutput.model_validate(payload)
+
+
+@pytest.mark.asyncio
+async def test_mock_summary_narration_is_deterministic() -> None:
+    request = LLMRequest(
+        system="summary system",
+        user="epoch=3 ironCrown starlight battle betrayal speech",
+        temperature=0.35,
+        max_tokens=540,
+        metadata={
+            "epoch_state": {
+                "room_id": "room-1",
+                "epoch": 3,
+                "turn": 8,
+                "generated_at_ms": 1_234,
+                "tone": "肃杀",
+                "key_events": ["铁冠帝国发动边境攻势", "星辉联邦公开演讲反击"],
+                "rankings": [
+                    {
+                        "id": "ironCrown",
+                        "name": "铁冠帝国",
+                        "totalPower": 92.4,
+                        "previousRank": 2,
+                        "currentRank": 1,
+                        "rankDelta": 1,
+                        "previousPower": 86.2,
+                    }
+                ],
+                "highlights": {
+                    "majorEvents": [
+                        {
+                            "id": "event-1",
+                            "kind": "speech",
+                            "turn": 8,
+                            "priority": "P1",
+                            "actor": "ironCrown",
+                            "target": "starlight",
+                            "narration": "铁冠帝国发表公开演讲。",
+                        }
+                    ],
+                    "wars": [
+                        {
+                            "id": "battle-1",
+                            "kind": "battle",
+                            "turn": 8,
+                            "priority": "P0",
+                            "actor": "ironCrown",
+                            "target": "starlight",
+                            "regionId": "region-1",
+                            "attackerLoss": 2.0,
+                            "defenderLoss": 4.0,
+                            "attackerRemainingTroops": 14.0,
+                            "defenderRemainingTroops": 10.0,
+                            "narration": "边境爆发战争。",
+                        }
+                    ],
+                    "betrayals": [
+                        {
+                            "id": "betrayal-1",
+                            "kind": "betrayal",
+                            "turn": 8,
+                            "priority": "P1",
+                            "actor": "starlight",
+                            "target": "emerald",
+                            "narration": "翡翠王庭突然倒向新盟约。",
+                        }
+                    ],
+                },
+            }
+        },
+    )
+
+    response = await MockLLMClient().call_summary_narration(request)
+    payload = json.loads(response.content)
+
+    assert response.model == "mock"
+    assert payload["headline"]
+    assert payload["rankings"]
+    assert payload["highlights"]["wars"]
+    assert payload["highlights"]["majorEvents"]
+    assert SummaryNarrationModelOutput.model_validate_json(json.dumps(payload, ensure_ascii=False))
 
 
 @pytest.mark.asyncio

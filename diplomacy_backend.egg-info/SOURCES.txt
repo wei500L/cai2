@@ -8,6 +8,7 @@ app/api/rest/debug.py
 app/api/rest/deps.py
 app/api/rest/dto.py
 app/api/rest/health.py
+app/api/rest/replay.py
 app/api/websocket/__init__.py
 app/api/websocket/connection.py
 app/api/websocket/dispatcher.py
@@ -19,8 +20,12 @@ app/core/config.py
 app/core/errors.py
 app/core/ids.py
 app/core/logging.py
+app/data/__init__.py
+app/data/factions_default.py
+app/data/narration_templates.py
 app/domain/__init__.py
 app/domain/enums.py
+app/domain/faction_meta.py
 app/domain/factions.py
 app/domain/models.py
 app/domain/world_geometry.py
@@ -54,6 +59,7 @@ app/protocol/envelope.py
 app/protocol/errors.py
 app/protocol/explosion_events.py
 app/protocol/incoming.py
+app/protocol/narration_events.py
 app/protocol/outgoing.py
 app/protocol/routing.py
 app/protocol/serialization.py
@@ -68,6 +74,10 @@ app/services/action_service.py
 app/services/ai_output_service.py
 app/services/ai_templates.py
 app/services/arc_builder.py
+app/services/dev_seed_globe.py
+app/services/epoch_narration_service.py
+app/services/explosion_dispatcher.py
+app/services/factions_meta_service.py
 app/services/phase_scheduler.py
 app/services/phase_service.py
 app/services/replay_service.py
@@ -79,6 +89,7 @@ app/tests/__init__.py
 app/tests/conftest.py
 app/tests/test_action_service.py
 app/tests/test_aggregator_with_diary.py
+app/tests/test_ai_event_emission.py
 app/tests/test_ai_output_service.py
 app/tests/test_animation_params.py
 app/tests/test_arc_builder.py
@@ -88,6 +99,9 @@ app/tests/test_diary_reveal_on_finish.py
 app/tests/test_dispatcher_strips_internal.py
 app/tests/test_dispatcher_visibility.py
 app/tests/test_domain_models.py
+app/tests/test_enums_consistency.py
+app/tests/test_explosion_dispatcher.py
+app/tests/test_factions_meta_service.py
 app/tests/test_gateway_router.py
 app/tests/test_globe_geometry.py
 app/tests/test_health.py
@@ -108,6 +122,7 @@ app/tests/test_replay_service.py
 app/tests/test_repositories_memory.py
 app/tests/test_resolve_map_diff_changes.py
 app/tests/test_rest_debug.py
+app/tests/test_rest_factions.py
 app/tests/test_room_finished_dispatch.py
 app/tests/test_room_service.py
 app/tests/test_room_snapshot_dispatch.py

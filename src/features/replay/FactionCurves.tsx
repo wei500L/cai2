@@ -1,17 +1,14 @@
 import type { CSSProperties } from 'react'
 import { factionTokens } from '@/components/hudTheme'
-import type { FactionCurve } from '@/types/replay'
+import { useReplay } from '@/store/replayStore'
+import type { ReplayData } from '@/types/replay'
 import { getFactionName } from './replayViewUtils'
-
-type FactionCurvesProps = {
-  curves: FactionCurve[]
-}
 
 const width = 520
 const height = 210
 const padding = 24
 
-function buildPath(points: FactionCurve['points'], minPower: number, maxPower: number) {
+function buildPath(points: ReplayData['factionCurves'][number]['points'], minPower: number, maxPower: number) {
   const span = Math.max(1, maxPower - minPower)
   return points
     .map((point, index) => {
@@ -25,7 +22,8 @@ function buildPath(points: FactionCurve['points'], minPower: number, maxPower: n
     .join(' ')
 }
 
-export function FactionCurves({ curves }: FactionCurvesProps) {
+export function FactionCurves() {
+  const curves = useReplay((state) => state.data?.factionCurves ?? [])
   const powers = curves.flatMap((curve) => curve.points.map((point) => point.totalPower))
   const minPower = Math.min(...powers, 80)
   const maxPower = Math.max(...powers, 420)

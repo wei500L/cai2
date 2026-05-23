@@ -108,34 +108,77 @@ class EpicNarrationModelOutput(BaseModel):
     key_events: list[str] = Field(default_factory=list, min_length=1, max_length=6)
 
 
-class SummaryRankingItem(BaseModel):
+class SummaryHighlightMajorEventOutput(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid", validate_assignment=True)
 
-    faction_id: FactionId
-    rank: int = Field(ge=1, le=8)
-    previous_rank: int | None = Field(default=None, ge=1, le=8)
-    movement: Literal["up", "down", "flat"]
-    total_power: float
-    delta: float
+    id: str
+    kind: str
+    turn: int
+    priority: Literal["P0", "P1", "P2"]
+    actor: FactionId | None = None
+    target: FactionId | None = None
+    narration: str
 
 
-class SummaryHighlightItem(BaseModel):
+class SummaryHighlightBattleOutput(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid", validate_assignment=True)
 
-    kind: Literal["war", "speech", "betrayal", "alliance", "trade", "rank_change", "other"]
-    text: str = Field(min_length=1, max_length=120)
+    id: str
+    kind: Literal["battle"]
+    turn: int
+    priority: Literal["P0", "P1", "P2"]
+    actor: FactionId
+    target: FactionId
+    regionId: str
+    attackerLoss: float
+    defenderLoss: float
+    attackerRemainingTroops: float
+    defenderRemainingTroops: float
+    narration: str
+
+
+class SummaryHighlightBetrayalOutput(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid", validate_assignment=True)
+
+    id: str
+    kind: Literal["betrayal"]
+    turn: int
+    priority: Literal["P0", "P1", "P2"]
+    actor: FactionId
+    target: FactionId
+    narration: str
+
+
+class SummaryHighlightBundleOutput(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid", validate_assignment=True)
+
+    majorEvents: list[SummaryHighlightMajorEventOutput] = Field(default_factory=list)
+    wars: list[SummaryHighlightBattleOutput] = Field(default_factory=list)
+    betrayals: list[SummaryHighlightBetrayalOutput] = Field(default_factory=list)
+
+
+class SummaryRankingRowOutput(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid", validate_assignment=True)
+
+    id: FactionId
+    name: str
+    totalPower: float
+    previousRank: int
+    currentRank: int
+    rankDelta: int
+    previousPower: float
 
 
 class SummaryNarrationModelOutput(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid", validate_assignment=True)
 
     headline: str = Field(min_length=4, max_length=64)
-    rankings: list[SummaryRankingItem] = Field(default_factory=list, min_length=1, max_length=8)
-    highlights: list[SummaryHighlightItem] = Field(
+    rankings: list[SummaryRankingRowOutput] = Field(
         default_factory=list,
-        min_length=2,
-        max_length=6,
+        min_length=1,
+        max_length=8,
     )
+    highlights: SummaryHighlightBundleOutput
 
 
 class ExplosionJudgeOutput(BaseModel):

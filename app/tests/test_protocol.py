@@ -1,3 +1,6 @@
+"""Protocol round-trip tests."""
+# ruff: noqa: RUF001, I001
+
 from __future__ import annotations
 
 import pytest
@@ -11,6 +14,8 @@ from app.protocol import (
     ActionSpeakPayload,
     DiplomaticArcsEvent,
     DiplomaticArcsPayload,
+    EpicNarrationEvent,
+    EpicNarrationPayload,
     Envelope,
     ExplosionEvent,
     ExplosionPayload,
@@ -23,6 +28,8 @@ from app.protocol import (
     RipplePayload,
     RoomFactionsMetaEvent,
     RoomFactionsMetaPayload,
+    SummaryNarrationEvent,
+    SummaryNarrationPayload,
     WorldGeometryCellPayload,
     WorldGeometryEvent,
     WorldGeometryFactionPayload,
@@ -239,6 +246,8 @@ def test_outgoing_payload_route_table_covers_expected_types() -> None:
         "resolve.scorched_diff",
         "resolve.ripple",
         "resolve.world_lighting",
+        "arbitrate.epic_narration",
+        "arbitrate.summary_narration",
         "ai.thinking",
         "ai.speak",
         "ai.reaction",
@@ -413,6 +422,105 @@ def test_explosion_event_round_trip_is_stable() -> None:
 
     raw = serialize_json(payload)
     decoded = deserialize_json(raw, ExplosionEvent)
+
+    assert decoded == payload
+    assert serialize_json(decoded) == raw
+
+
+def test_epic_narration_event_round_trip_is_stable() -> None:
+    payload = EpicNarrationEvent(
+        v=1,
+        id="msg_epic",
+        t="arbitrate.epic_narration",
+        ts=459,
+        seq=19,
+        p=EpicNarrationPayload(
+            epoch=3,
+            source="llm",
+            narrative="纪元三的边境燃起战火，旧盟约裂开，新的秩序正在成形。",
+            tone="肃杀",
+            keyEvents=["边境开战", "公开演讲", "背约"],
+            model="mock",
+            generatedAtMs=123_456,
+        ),
+    )
+
+    raw = serialize_json(payload)
+    decoded = deserialize_json(raw, EpicNarrationEvent)
+
+    assert decoded == payload
+    assert serialize_json(decoded) == raw
+
+
+def test_summary_narration_event_round_trip_is_stable() -> None:
+    payload = SummaryNarrationEvent(
+        v=1,
+        id="msg_summary",
+        t="arbitrate.summary_narration",
+        ts=460,
+        seq=20,
+        p=SummaryNarrationPayload(
+            epoch=3,
+            source="llm",
+            headline="纪元三：铁冠帝国重夺节奏",
+            rankings=[
+                {
+                    "id": FactionId.ironCrown,
+                    "name": "铁冠帝国",
+                    "totalPower": 92.4,
+                    "previousRank": 2,
+                    "currentRank": 1,
+                    "rankDelta": 1,
+                    "previousPower": 86.2,
+                }
+            ],
+            highlights={
+                "majorEvents": [
+                    {
+                        "id": "event-1",
+                        "kind": "speech",
+                        "turn": 8,
+                        "priority": "P1",
+                        "actor": FactionId.ironCrown,
+                        "target": FactionId.starlight,
+                        "narration": "铁冠帝国公开演讲。",
+                    }
+                ],
+                "wars": [
+                    {
+                        "id": "battle-1",
+                        "kind": "battle",
+                        "turn": 8,
+                        "priority": "P0",
+                        "actor": FactionId.ironCrown,
+                        "target": FactionId.starlight,
+                        "regionId": "region-1",
+                        "attackerLoss": 2.0,
+                        "defenderLoss": 4.0,
+                        "attackerRemainingTroops": 14.0,
+                        "defenderRemainingTroops": 10.0,
+                        "narration": "边境爆发战争。",
+                    }
+                ],
+                "betrayals": [
+                    {
+                        "id": "betrayal-1",
+                        "kind": "betrayal",
+                        "turn": 8,
+                        "priority": "P1",
+                        "actor": FactionId.starlight,
+                        "target": FactionId.emerald,
+                        "narration": "翡翠王庭倒向新盟约。",
+                    }
+                ],
+            },
+            model="mock",
+            generatedAtMs=123_456,
+        ),
+    )
+
+    raw = serialize_json(payload)
+    decoded = deserialize_json(raw, SummaryNarrationEvent)
 
     assert decoded == payload
     assert serialize_json(decoded) == raw

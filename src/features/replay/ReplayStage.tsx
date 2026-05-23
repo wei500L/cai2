@@ -2,15 +2,20 @@ import type { CSSProperties } from 'react'
 import { motion } from 'framer-motion'
 import { GlowPanel } from '@/components/GlowPanel'
 import { factionTokens } from '@/components/hudTheme'
-import type { ReplayData, ReplayTimelineNode } from '@/types/replay'
+import type { ReplayTimelineNode } from '@/types/replay'
+import { useReplay } from '@/store/replayStore'
 import { createEventLookup, formatReplayTime, getEventFaction, getFactionName, getMarkerLabel } from './replayViewUtils'
 
 type ReplayStageProps = {
-  replay: ReplayData
   replayTime: ReplayTimelineNode
 }
 
-export function ReplayStage({ replay, replayTime }: ReplayStageProps) {
+export function ReplayStage({ replayTime }: ReplayStageProps) {
+  const replay = useReplay((state) => state.data)
+  if (!replay) {
+    return null
+  }
+
   const events = createEventLookup(replay.events)
   const focusEvent = replayTime.keyEventIds.map((id) => events.get(id)).find(Boolean)
   const focusFaction = getEventFaction(focusEvent)

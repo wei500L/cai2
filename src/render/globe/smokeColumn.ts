@@ -10,7 +10,7 @@ import {
   Vector3,
   type Scene,
 } from 'three'
-import { latLngToVec3 } from '@/render/globe/explosionFx'
+import { latLngToVec3 } from '@/render/globe/coordinates'
 
 export type SmokeColumnInput = {
   hexId: string

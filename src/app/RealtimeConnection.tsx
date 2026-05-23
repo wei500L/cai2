@@ -5,7 +5,6 @@ import { incrementMockEventEmittedCount, setConnectionDebugSnapshot } from '@/ap
 import { fetchFactionsMeta } from '@/api/factionsMetaApi'
 import { ConnectionErrorPanel } from '@/components/ConnectionErrorPanel'
 import { DevModeBanner } from '@/components/DevModeBanner'
-import { factionMetaFixtures } from '@/mock/factions'
 import { attachAdapter } from '@/protocol/adapter'
 import { ActionDispatcher } from '@/protocol/dispatcher'
 import { createTransport } from '@/protocol/transport'
@@ -119,9 +118,6 @@ export function RealtimeConnection({
 
     factionMetaStore.getState().reset()
     epochSummaryStore.getState().reset()
-    if (transportMode === 'mock') {
-      factionMetaStore.getState().applyFromMock(factionMetaFixtures)
-    }
     handledFailureRef.current = false
     setConnectionFailureReason(null)
     setConnectionDebugSnapshot({

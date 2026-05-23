@@ -35,7 +35,13 @@ line-length = 100
 target-version = "py311"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP", "RUF"]
+select = ["E", "F", "I", "B", "UP", "RUF", "TID251"]
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"src.mock".msg = "Backend app code must not import frontend src/mock. Use protocol DTOs or backend-owned fixtures; see docs/MOCK_BOUNDARY_AUDIT.md."
+"src.mock.types".msg = "Backend app code must not import frontend mock types. Use app/protocol or app/domain schemas; see docs/MOCK_BOUNDARY_AUDIT.md."
+"src.mock.fixtures".msg = "Backend app code must not import frontend fixtures. Tests belong under app/tests; see docs/MOCK_BOUNDARY_AUDIT.md."
+"fixtures".msg = "Production app code must not import fixture modules. Move fixture use to app/tests or scripts; see docs/MOCK_BOUNDARY_AUDIT.md."
 
 [tool.pytest.ini_options]
 testpaths = ["app/tests"]

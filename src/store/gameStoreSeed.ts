@@ -1,5 +1,4 @@
-import { factionIds } from '@/components/hudTheme'
-import { factionById } from '@/mock/factions'
+import { factionIds, factionLabels } from '@/components/hudTheme'
 import type { FactionId } from '@/types/faction'
 import type { GameEvent, GameState } from '@/types'
 import { buildNeighbors } from '@/render/buildNeighbors'
@@ -200,5 +199,5 @@ export function createInitialState(seed = DEFAULT_INITIAL_SEED): GameState {
 export const createDevelopmentInitialState = createInitialState
 
 export function getDevelopmentFactionName(id: FactionId) {
-  return factionById[id].name
+  return factionLabels[id]
 }

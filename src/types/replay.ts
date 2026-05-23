@@ -1,4 +1,4 @@
-import type { FactionId } from '@/types/faction'
+import type { FactionId, FactionMeta } from '@/types/faction'
 import type { GameEvent } from '@/types/event'
 import type { GamePhase } from '@/types/phase'
 import type { PrivateMessage } from '@/types/speech'
@@ -118,12 +118,17 @@ export type ReplayDTO = {
   room_id: string
   generated_at_ms: number
   mode: string
+  start_ts?: number
+  end_ts?: number
+  in_progress?: boolean
   total_epochs: number
   total_turns: number
   timeline: Array<Record<string, unknown>>
+  factions?: FactionMeta[]
   public_events: Array<Record<string, unknown>>
   private_messages: Array<Record<string, unknown>>
   ai_internal_thoughts: Array<Record<string, unknown>>
+  ai_inner_thoughts?: Array<Record<string, unknown>>
   faction_curves: Array<Record<string, unknown>>
   relationship_snapshots: Array<Record<string, unknown>>
   key_moments: Array<Record<string, unknown>>

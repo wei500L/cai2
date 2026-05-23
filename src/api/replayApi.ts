@@ -13,6 +13,11 @@ import type {
 import type { EventKind, EventPriority, GameEvent, GamePhase, PrivateMessage } from '@/types'
 
 export type { ReplayDTO } from '@/types/replay'
+export type ReplayFetchErrorCode = 'NOT_FOUND' | 'NETWORK' | 'PARSE' | 'TIMEOUT'
+
+export type ReplayFetchResult =
+  | { ok: true; data: ReplayDTO }
+  | { ok: false; code: ReplayFetchErrorCode; message: string }
 
 const REPLAY_FETCH_TIMEOUT_MS = 10_000
 const eventKinds = new Set<EventKind>([
@@ -41,9 +46,27 @@ const eventKinds = new Set<EventKind>([
 const priorities = new Set<EventPriority>(['P0', 'P1', 'P2'])
 const phases = new Set<GamePhase>(['observe', 'action', 'resolve', 'arbitrate'])
 
-export async function fetchReplay(roomId: string): Promise<ReplayDTO> {
+const errorMessages: Record<ReplayFetchErrorCode, string> = {
+  NOT_FOUND: '房间不存在或回放尚未生成。',
+  NETWORK: '网络请求失败。',
+  PARSE: '回放数据解析失败。',
+  TIMEOUT: '请求超时。',
+}
+
+export async function fetchReplay(
+  roomId: string,
+  signal?: AbortSignal,
+): Promise<ReplayFetchResult> {
   const controller = new AbortController()
   const timeoutId = globalThis.setTimeout(() => controller.abort(), REPLAY_FETCH_TIMEOUT_MS)
+  const abortListener = () => controller.abort()
+
+  if (signal?.aborted) {
+    globalThis.clearTimeout(timeoutId)
+    return { ok: false, code: 'TIMEOUT', message: errorMessages.TIMEOUT }
+  }
+
+  signal?.addEventListener('abort', abortListener, { once: true })
 
   try {
     const response = await fetch(
@@ -51,22 +74,38 @@ export async function fetchReplay(roomId: string): Promise<ReplayDTO> {
       { signal: controller.signal },
     )
 
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`)
+    if (response.status === 404) {
+      return { ok: false, code: 'NOT_FOUND', message: errorMessages.NOT_FOUND }
     }
 
-    return await response.json() as ReplayDTO
+    if (!response.ok) {
+      return { ok: false, code: 'NETWORK', message: errorMessages.NETWORK }
+    }
+
+    try {
+      return { ok: true, data: await response.json() as ReplayDTO }
+    } catch {
+      return { ok: false, code: 'PARSE', message: errorMessages.PARSE }
+    }
+  } catch (error) {
+    if (isAbortError(error) || signal?.aborted) {
+      return { ok: false, code: 'TIMEOUT', message: errorMessages.TIMEOUT }
+    }
+
+    return { ok: false, code: 'NETWORK', message: errorMessages.NETWORK }
   } finally {
+    signal?.removeEventListener('abort', abortListener)
     globalThis.clearTimeout(timeoutId)
   }
 }
 
 export async function loadReplay(roomId: string): Promise<ReplayData> {
-  try {
-    return normalizeReplayDto(await fetchReplay(roomId))
-  } catch (error) {
-    throw new Error(`真实复盘读取失败。${formatFetchError(error)}`, { cause: error })
+  const result = await fetchReplay(roomId)
+  if (!result.ok) {
+    throw new Error(`真实复盘读取失败。${result.message}`)
   }
+
+  return normalizeReplayDto(result.data)
 }
 
 export function normalizeReplayDto(dto: ReplayDTO): ReplayData {
@@ -219,6 +258,13 @@ function priorityValue(value: unknown, fallback: EventPriority): EventPriority {
     : fallback
 }
 
+function isAbortError(error: unknown) {
+  return (
+    (typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'AbortError') ||
+    (error instanceof Error && error.name === 'AbortError')
+  )
+}
+
 function eventKindValue(value: unknown, fallback: EventKind): EventKind {
   return typeof value === 'string' && eventKinds.has(value as EventKind)
     ? value as EventKind
@@ -245,16 +291,4 @@ function numberValue(value: unknown, fallback: number): number
 function numberValue(value: unknown, fallback: undefined): number | undefined
 function numberValue(value: unknown, fallback: number | undefined): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback
-}
-
-function formatFetchError(error: unknown) {
-  if (typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'AbortError') {
-    return '请求超时。'
-  }
-
-  if (error instanceof Error && error.message) {
-    return error.message
-  }
-
-  return '未知错误。'
 }

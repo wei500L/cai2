@@ -26,6 +26,7 @@ from app.protocol.outgoing import (
     WorldGeometryPayload,
 )
 from app.repositories.factory import Repositories
+from app.services.epoch_narration_service import EpochNarrationBundle
 from app.services.factions_meta_service import FactionsMetaService
 from app.services.room_service import build_snapshot
 from app.services.settlement_service import SettlementOutboundBundle
@@ -399,6 +400,24 @@ class OutboundDispatcher:
                         session.player_id,
                         _envelope(message_type, payload, seq=bundle.seq_base + offset),
                     )
+
+    async def dispatch_epoch_narration_bundle(
+        self,
+        room_id: str,
+        bundle: EpochNarrationBundle,
+    ) -> None:
+        await self.emit(
+            room_id,
+            "arbitrate.epic_narration",
+            bundle.epic_narration.model_dump(mode="json"),
+            seq=bundle.seq_base,
+        )
+        await self.emit(
+            room_id,
+            "arbitrate.summary_narration",
+            bundle.summary_narration.model_dump(mode="json"),
+            seq=bundle.seq_base + 1,
+        )
 
     async def dispatch_factions_meta(self, room_id: str) -> None:
         payload = await self.build_factions_meta_payload(room_id)
