@@ -7,6 +7,17 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.domain.enums import ArbitratePhase, FactionId, GamePhase, TerrainKind
 
 
+class BaseEnvelope(BaseModel):
+    model_config = ConfigDict(strict=True, extra="forbid", validate_assignment=True)
+
+    v: Literal[1] = 1
+    id: str
+    t: str
+    ts: int
+    seq: int
+    p: Any
+
+
 class OutgoingPayloadModel(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid", validate_assignment=True)
 
@@ -98,6 +109,29 @@ class RoomStartPayload(OutgoingPayloadModel):
     initial_state: dict[str, Any]
 
 
+class WorldGeometryCellPayload(OutgoingPayloadModel):
+    lat: float = Field(ge=-90.0, le=90.0)
+    lng: float = Field(ge=-180.0, le=180.0)
+    hex_id: str = Field(max_length=32)
+    faction_id: FactionId
+    terrain: TerrainKind
+    elevation: float = Field(ge=0.0, le=1.0)
+    neighbors: list[int] = Field(default_factory=list)
+
+
+class WorldGeometryPayload(OutgoingPayloadModel):
+    seed: int
+    hex_resolution: int
+    total_cells: int
+    factions: list[FactionId]
+    cells: list[WorldGeometryCellPayload]
+
+
+class WorldGeometryEvent(BaseEnvelope):
+    t: Literal["room.world_geometry"] = Field("room.world_geometry", exclude=True)
+    p: WorldGeometryPayload
+
+
 class RegionEntryOut(OutgoingPayloadModel):
     id: str
     owner: FactionId | None = None
@@ -105,9 +139,9 @@ class RegionEntryOut(OutgoingPayloadModel):
     development_level: float
     terrain: TerrainKind
     center_lat_lng: tuple[float, float]
-    lat: float | None = Field(default=None, ge=-90.0, le=90.0)
-    lng: float | None = Field(default=None, ge=-180.0, le=180.0)
-    hex_id: str | None = Field(default=None, max_length=32)
+    lat: float = Field(ge=-90.0, le=90.0)
+    lng: float = Field(ge=-180.0, le=180.0)
+    hex_id: str = Field(max_length=32)
     min_garrison: int
     supply_lines: int
     neighbors: list[str] = Field(default_factory=list, max_length=8)

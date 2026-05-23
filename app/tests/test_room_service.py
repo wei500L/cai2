@@ -212,6 +212,8 @@ async def test_start_game_assigns_ai_factions_and_sets_running(
     human_factions = {player.faction_id for player in room.players}
     ai_factions = set(room.ai_factions)
     assert room.status == RoomStatus.running
+    assert room.world_geometry is not None
+    assert room.world_geometry.total_cells == 642
     assert len(room.players) == 4
     assert len(room.ai_factions) == 4
     assert human_factions.isdisjoint(ai_factions)
@@ -233,6 +235,8 @@ async def test_start_game_solo_assigns_seven_ai_factions(
     room = await service.start_game(room_id=room.id, requester_player_id=host.id)
 
     assert room.status == RoomStatus.running
+    assert room.world_geometry is not None
+    assert room.world_geometry.total_cells == 642
     assert len(room.players) == 1
     assert len(room.ai_factions) == 7
     assert set(room.ai_factions) == set(FactionId) - {FactionId.ironCrown}

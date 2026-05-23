@@ -72,11 +72,14 @@ class VisibilityScope(StrEnum):
 
 
 class TerrainKind(StrEnum):
-    mountain = "mountain"
+    ocean = "ocean"
     plains = "plains"
+    forest = "forest"
+    mountain = "mountain"
+    desert = "desert"
+    tundra = "tundra"
     river = "river"
     fortress = "fortress"
-    desert = "desert"
 
 
 class FactionStatusKind(StrEnum):

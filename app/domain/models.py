@@ -19,6 +19,7 @@ from app.domain.enums import (
     TreatyKind,
     VisibilityScope,
 )
+from app.domain.world_geometry import WorldGeometry
 
 
 class DomainModel(BaseModel):
@@ -294,6 +295,7 @@ class GameRoom(DomainModel):
     ai_factions: list[FactionId] = Field(default_factory=list)
     current: EpochTurn
     seed: int
+    world_geometry: WorldGeometry | None = None
 
 
 class GameState(DomainModel):

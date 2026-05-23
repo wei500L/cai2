@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import random
 from collections.abc import Awaitable, Callable
+from hashlib import blake2b
 from typing import Literal
 
 import app.game.initializer as game_initializer
@@ -20,6 +20,7 @@ from app.core.ids import new_player_id, new_room_id
 from app.domain.enums import FactionId, GamePhase, PlayerKind, RoomStatus
 from app.domain.factions import all_faction_ids
 from app.domain.models import EpochTurn, GameRoom, Player
+from app.game.globe_geometry import generate_world_geometry
 from app.repositories.factory import Repositories
 
 RoomMode = Literal["solo_1v7", "multi_4v4"]
@@ -76,7 +77,7 @@ class RoomService:
                 phase_started_at_ms=now_ms,
                 phase_duration_ms=0,
             ),
-            seed=seed if seed is not None else random.randrange(1, 2**31),
+            seed=seed if seed is not None else _default_seed(room_id),
         )
 
         created_room = await self._repos.rooms.create(room)
@@ -209,7 +210,16 @@ class RoomService:
         for player in room.players:
             await self._repos.players.upsert(player)
 
-        initial_state = game_initializer.initialize_game_state(room, clock=self._clock)
+        world_geometry = generate_world_geometry(
+            room.seed,
+            faction_ids=list(all_faction_ids()),
+        )
+        room.world_geometry = world_geometry
+        initial_state = game_initializer.initialize_game_state(
+            room,
+            clock=self._clock,
+            world_geometry=world_geometry,
+        )
         await self._repos.state.save_factions(room.id, initial_state.factions)
         await self._repos.state.save_regions(room.id, initial_state.regions)
         await self._repos.state.save_relationships(room.id, initial_state.relationships)
@@ -293,3 +303,9 @@ class RoomService:
 
         if len(selected_factions) + len(room.ai_factions) != self._total_factions:
             raise InvalidActionError("factions are not fully covered")
+
+
+def _default_seed(room_id: str) -> int:
+    digest = blake2b(room_id.encode("utf-8"), digest_size=8).digest()
+    seed = int.from_bytes(digest, "big") & 0x7FFF_FFFF
+    return seed or 1

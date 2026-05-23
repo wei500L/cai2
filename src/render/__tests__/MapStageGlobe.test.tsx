@@ -1,10 +1,13 @@
 /** @vitest-environment jsdom */
 
-import { act } from 'react-dom/test-utils'
+import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useGameStore } from '@/store/gameStore'
 import { useMapStore } from '@/store/mapStore'
+
+;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
+  true
 
 const rendererDispose = vi.fn()
 const destructor = vi.fn()
@@ -77,4 +80,3 @@ describe('MapStageGlobe', () => {
     container.remove()
   })
 })
-

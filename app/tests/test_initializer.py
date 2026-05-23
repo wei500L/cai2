@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections import Counter, defaultdict
+from collections import Counter
 
 import pytest
 
@@ -106,38 +106,35 @@ def test_faction_initial_metrics_follow_baselines_and_power_formula() -> None:
 def test_regions_are_generated_for_all_factions_with_required_terrain() -> None:
     state = initialize_game_state(_room(42), clock=FrozenClock(12_345))
 
-    assert len(state.regions) == 64
-    assert [region.id for region in state.regions] == [f"region_{index:02d}" for index in range(64)]
+    assert len(state.regions) == 642
+    assert [region.id for region in state.regions] == [
+        f"region_{index:05d}" for index in range(642)
+    ]
 
     counts = Counter(region.owner for region in state.regions)
-    assert counts == {faction_id: 8 for faction_id in FactionId}
+    assert sum(counts.values()) == 642
+    assert len(counts) == 7
+    assert max(counts.values()) / min(counts.values()) < 1.5
 
-    terrains_by_owner: dict[FactionId, set[TerrainKind]] = defaultdict(set)
+    terrain_counts = Counter(region.terrain for region in state.regions)
+    assert set(terrain_counts) == set(TerrainKind)
+
     for region in state.regions:
         assert region.owner is not None
         assert region.min_garrison == 10
         assert 1 <= region.supply_lines <= 3
-        assert 0.5 <= region.development_level <= 1.0
-        assert 4 <= len(region.neighbors) <= 6
+        assert 0.0 <= region.development_level <= 1.5
+        assert len(region.neighbors) == 6
         assert region.id not in region.neighbors
         assert len(region.neighbors) == len(set(region.neighbors))
-        lat, lng = region.center_lat_lng
-        assert -60.0 <= lat <= 60.0
+        lat, lng = region.lat, region.lng
+        assert -90.0 <= lat <= 90.0
         assert -180.0 <= lng <= 180.0
-        if region.owner == FactionId.magma:
-            assert 25.0 <= region.resource_value <= 100.0
-        else:
-            assert 20.0 <= region.resource_value <= 80.0
-        terrains_by_owner[region.owner].add(region.terrain)
-
-    required = {
-        TerrainKind.mountain,
-        TerrainKind.plains,
-        TerrainKind.fortress,
-        TerrainKind.river,
-    }
-    for faction_id in FactionId:
-        assert required.issubset(terrains_by_owner[faction_id])
+        projected_lat, projected_lng = region.center_lat_lng
+        assert -180.0 <= projected_lat <= 180.0
+        assert -90.0 <= projected_lng <= 90.0
+        assert 8.0 <= region.resource_value <= 120.0
+        assert region.hex_id is not None
 
 
 def test_relationship_matrix_has_all_directions_and_forced_baselines() -> None:
@@ -216,10 +213,13 @@ async def test_room_service_start_game_persists_initial_state_and_sets_running()
     assert room.current.turn == 1
     assert room.current.phase == GamePhase.observe
     assert len(await repos.state.get_factions(room.id)) == 8
-    assert len(await repos.state.get_regions(room.id)) == 64
+    assert len(await repos.state.get_regions(room.id)) == 642
     assert len(await repos.state.get_relationships(room.id)) == 56
     assert await repos.state.get_treaties(room.id) == []
     assert await repos.state.get_current_turn(room.id) == room.current
+    assert room.world_geometry is not None
+    assert room.world_geometry.total_cells == 642
+    assert len(room.world_geometry.capitals) == 7
 
 
 def _assert_relationship(

@@ -1,12 +1,15 @@
 /** @vitest-environment jsdom */
 
 import { useEffect } from 'react'
-import { act } from 'react-dom/test-utils'
+import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { describe, expect, it } from 'vitest'
 import { GlobeInstanceProvider } from '../GlobeInstanceProvider'
 import { useGlobeInstance } from '../useGlobeInstance'
 import type { GlobeInstanceSnapshot } from '../globeTypes'
+
+;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
+  true
 
 function Consumer({ onValue }: { onValue: (value: GlobeInstanceSnapshot | null) => void }) {
   const value = useGlobeInstance()

@@ -1,10 +1,13 @@
 /** @vitest-environment jsdom */
 
 import { useEffect } from 'react'
-import { act } from 'react-dom/test-utils'
+import { act } from 'react'
 import { createRoot } from 'react-dom/client'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useMapStore } from '@/store/mapStore'
+
+;(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
+  true
 
 const lifecycle = vi.hoisted(() => ({
   globeMount: vi.fn(),

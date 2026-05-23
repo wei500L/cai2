@@ -35,11 +35,14 @@ from app.game.settlement_aggregator import SettlementInput
 from app.llm.output_schema import SettlementModelOutput
 
 TERRAIN_MODIFIERS: dict[TerrainKind, dict[str, float]] = {
+    TerrainKind.ocean: {"attack": 0.5, "defense": 0.8},
     TerrainKind.mountain: {"attack": 0.8, "defense": 1.4},
     TerrainKind.plains: {"attack": 1.0, "defense": 1.0},
+    TerrainKind.forest: {"attack": 0.95, "defense": 1.1},
     TerrainKind.river: {"attack": 0.8, "defense": 1.0},
     TerrainKind.fortress: {"attack": 0.7, "defense": 1.6},
     TerrainKind.desert: {"attack": 0.9, "defense": 0.9},
+    TerrainKind.tundra: {"attack": 0.85, "defense": 1.15},
 }
 WAR_PENALTY_TABLE: dict[int, float] = {
     1: 1.0,

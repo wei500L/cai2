@@ -15,6 +15,7 @@ from app.domain.enums import (
 )
 from app.domain.factions import all_faction_ids
 from app.domain.models import EpochTurn, GameEvent, GameRoom, MessageVisibility, Player
+from app.game.globe_geometry import generate_world_geometry
 from app.game.initializer import initialize_game_state
 from app.repositories.factory import make_repositories
 
@@ -77,6 +78,7 @@ async def test_reconnect_catchup_returns_continuous_seq_envelopes() -> None:
     repos = make_repositories("memory")
     room = _room()
     player = _player()
+    room.world_geometry = generate_world_geometry(room.seed, faction_ids=list(all_faction_ids()))
     state = initialize_game_state(room, clock=clock)
 
     await repos.rooms.create(room)
@@ -99,6 +101,7 @@ async def test_reconnect_catchup_returns_continuous_seq_envelopes() -> None:
     )
 
     assert payload["t"] == "reconnect.catchup"
+    assert payload["p"]["world_geometry"]["total_cells"] == 642
     assert payload["p"]["from_seq"] == 1
     assert payload["p"]["to_seq"] == 30
     assert len(payload["p"]["messages"]) == 30

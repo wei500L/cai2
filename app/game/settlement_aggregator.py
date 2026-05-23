@@ -21,6 +21,7 @@ from app.domain.models import (
     Treaty,
     TreatyAction,
 )
+from app.domain.world_geometry import WorldGeometry
 from app.repositories.factory import Repositories
 
 _ACTION_BUCKETS = ("speech", "private", "treaty", "military", "intel", "lock")
@@ -43,6 +44,7 @@ class SettlementInput(BaseModel):
     relationships_snapshot: list[Relationship]
     regions_snapshot: list[MapRegion]
     treaties_snapshot: list[Treaty]
+    world_geometry: WorldGeometry | None = None
     turn_actions: list[GameAction]
     public_speeches: list[SpeechAction]
     private_messages: list[PrivateMessageAction]
@@ -109,6 +111,7 @@ class SettlementAggregator:
         relationships = await self._repos.state.get_relationships(room_id)
         regions = await self._repos.state.get_regions(room_id)
         treaties = await self._repos.state.get_treaties(room_id)
+        room = await self._repos.rooms.get(room_id)
         _current_turn = await self._repos.state.get_current_turn(room_id)
 
         recent_events = await self._load_recent_events(
@@ -128,6 +131,7 @@ class SettlementAggregator:
             relationships_snapshot=relationships,
             regions_snapshot=regions,
             treaties_snapshot=treaties,
+            world_geometry=room.world_geometry if room is not None else None,
             turn_actions=actions,
             public_speeches=cast(list[SpeechAction], action_buckets["speech"]),
             private_messages=cast(list[PrivateMessageAction], action_buckets["private"]),

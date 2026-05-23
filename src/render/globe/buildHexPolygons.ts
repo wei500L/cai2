@@ -24,6 +24,10 @@ export type HexPolygonInput = {
   regionId: string
   owner: FactionId | null
   scorched: boolean
+  geometry: {
+    type: 'Polygon'
+    coordinates: number[][][]
+  }
 }
 
 type HexPolygonRegion = {
@@ -148,6 +152,29 @@ function getFactionId(region: HexPolygonRegion) {
   return region.factionId ?? region.owner ?? region.faction ?? null
 }
 
+function wrapLongitude(lng: number) {
+  return ((((lng + 180) % 360) + 360) % 360) - 180
+}
+
+function buildGeometry(lat: number, lng: number) {
+  const delta = 0.08
+  const north = clamp(lat + delta, -89.9, 89.9)
+  const south = clamp(lat - delta, -89.9, 89.9)
+  const east = wrapLongitude(lng + delta)
+  const west = wrapLongitude(lng - delta)
+
+  return {
+    type: 'Polygon' as const,
+    coordinates: [[
+      [west, south],
+      [east, south],
+      [east, north],
+      [west, north],
+      [west, south],
+    ]],
+  }
+}
+
 function isScorched(region: HexPolygonRegion, scorchedRegions: ReadonlySet<string>) {
   const hexId = getHexId(region)
   return scorchedRegions.has(region.id) || scorchedRegions.has(hexId)
@@ -167,6 +194,7 @@ export function buildHexPolygons(
     regionId: region.id,
     owner: region.owner ?? region.faction ?? region.factionId ?? null,
     scorched: isScorched(region, scorchedRegions),
+    geometry: buildGeometry(getLat(region), getLng(region)),
   }))
 }
 

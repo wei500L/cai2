@@ -49,4 +49,42 @@ describe('buildHexPolygons', () => {
     expect(hexPolygonAltitude(cells[1])).toBeLessThanOrEqual(0.02)
     expect(hexPolygonMargin()).toBe(0.2)
   })
+
+  it('handles unowned, ashen and high-elevation cells distinctly', () => {
+    const cells = buildHexPolygons([
+      {
+        id: 'neutral',
+        factionId: null,
+        terrain: 'river',
+        elevation: 0,
+        centerLatLng: [1, 2],
+      },
+      {
+        id: 'ashen',
+        owner: 'ashen',
+        terrain: 'desert',
+        elevation: 0.4,
+        centerLatLng: [3, 4],
+      },
+      {
+        id: 'glow',
+        owner: 'aurora',
+        terrain: 'fortress',
+        elevation: 1,
+        centerLatLng: [5, 6],
+      },
+    ])
+
+    expect(cells[0]).toMatchObject({
+      lat: 1,
+      lng: 2,
+      hexId: 'neutral',
+      factionId: null,
+    })
+    expect(hexPolygonColor(cells[0])).toBe('rgba(102, 110, 120, 0.55)')
+    expect(hexPolygonColor(cells[1])).toMatch(/^rgba\(/)
+    expect(hexPolygonColor(cells[2])).toMatch(/^rgba\(/)
+    expect(hexPolygonAltitude(cells[0])).toBe(0.005)
+    expect(hexPolygonAltitude(cells[2])).toBe(0.02)
+  })
 })

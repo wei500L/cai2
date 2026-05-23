@@ -20,6 +20,7 @@ from app.domain.models import (
     SettlementResult,
     Treaty,
 )
+from app.domain.world_geometry import WorldGeometry
 from app.game.map_neighbors import build_region_neighbors
 from app.game.relationships_init import relationship_status_for_value
 from app.game.rule_resolver import RuleResolver
@@ -310,6 +311,7 @@ def _build_map_diff(
             projected_regions,
             projected_relationships,
             result.battle_results,
+            getattr(input, "world_geometry", None),
         ),
     }
 
@@ -318,8 +320,13 @@ def _build_border_updates(
     regions: list[MapRegion],
     relationships: list[Relationship],
     battle_results: list[BattleEvent],
+    world_geometry: WorldGeometry | None = None,
 ) -> list[dict[str, Any]]:
-    adjacency_pairs = _adjacent_faction_pairs(regions)
+    adjacency_pairs = (
+        _adjacent_faction_pairs_from_world_geometry(world_geometry)
+        if world_geometry is not None
+        else _adjacent_faction_pairs(regions)
+    )
     relationship_by_pair = _best_relationship_by_pair(relationships)
     battle_pairs = {
         _sorted_faction_pair(battle.attacker, battle.defender)
@@ -366,6 +373,24 @@ def _adjacent_faction_pairs(regions: list[MapRegion]) -> set[tuple[str, str]]:
                 continue
 
             pairs.add(_sorted_faction_pair(region.owner, neighbor.owner))
+
+    return pairs
+
+
+def _adjacent_faction_pairs_from_world_geometry(
+    world_geometry: WorldGeometry,
+) -> set[tuple[str, str]]:
+    pairs: set[tuple[str, str]] = set()
+    cells = world_geometry.cells
+
+    for index, cell in enumerate(cells):
+        for neighbor_index in cell.neighbors:
+            if neighbor_index <= index or neighbor_index >= len(cells):
+                continue
+            neighbor = cells[neighbor_index]
+            if neighbor.faction_id == cell.faction_id:
+                continue
+            pairs.add(_sorted_faction_pair(cell.faction_id, neighbor.faction_id))
 
     return pairs
 
@@ -731,10 +756,12 @@ def _dump_model(model: BaseModel | None) -> dict[str, Any] | None:
 def _dump_region_entry(region: MapRegion | None) -> dict[str, Any] | None:
     if region is None:
         return None
-    return RegionEntryOut.model_validate(region.model_dump(mode="python")).model_dump(
-        mode="json",
-        exclude_none=True,
-    )
+    lat = region.lat if region.lat is not None else region.center_lat_lng[0]
+    lng = region.lng if region.lng is not None else region.center_lat_lng[1]
+    hex_id = region.hex_id if region.hex_id is not None else region.id
+    payload = region.model_dump(mode="python")
+    payload.update({"lat": lat, "lng": lng, "hex_id": hex_id})
+    return RegionEntryOut.model_validate(payload).model_dump(mode="json", exclude_none=True)
 
 
 def _value(value: Any) -> Any:

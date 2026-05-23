@@ -12,6 +12,7 @@ from app.core.config import get_settings
 from app.core.errors import DiplomacyError
 from app.domain.enums import FactionId, GamePhase
 from app.domain.models import GameEvent, Player
+from app.domain.world_geometry import WorldGeometry
 from app.game.map_neighbors import build_region_neighbors
 from app.protocol.envelope import Envelope, make_envelope
 from app.protocol.outgoing import (
@@ -423,12 +424,15 @@ async def _build_reconnect_payload(
             full_state=full_state,
             seq=current_seq,
         )
-        return make_envelope(
+        envelope = make_envelope(
             "reconnect.snapshot",
             payload,
             clock=clock,
             seq=current_seq,
         ).model_dump(mode="json")
+        if room is not None and room.world_geometry is not None:
+            envelope["p"]["world_geometry"] = _world_geometry_payload(room.world_geometry)
+        return envelope
 
     visible_events = await repos.events.list_visible_to_faction(
         room_id,
@@ -443,12 +447,15 @@ async def _build_reconnect_payload(
             full_state=full_state,
             seq=current_seq,
         )
-        return make_envelope(
+        envelope = make_envelope(
             "reconnect.snapshot",
             payload,
             clock=clock,
             seq=current_seq,
         ).model_dump(mode="json")
+        if room is not None and room.world_geometry is not None:
+            envelope["p"]["world_geometry"] = _world_geometry_payload(room.world_geometry)
+        return envelope
 
     ordered_events = sorted(
         visible_events,
@@ -467,12 +474,15 @@ async def _build_reconnect_payload(
             full_state=full_state,
             seq=current_seq,
         )
-        return make_envelope(
+        envelope = make_envelope(
             "reconnect.snapshot",
             payload,
             clock=clock,
             seq=current_seq,
         ).model_dump(mode="json")
+        if room is not None and room.world_geometry is not None:
+            envelope["p"]["world_geometry"] = _world_geometry_payload(room.world_geometry)
+        return envelope
 
     payload = ReconnectCatchupPayload(
         room_id=room_id,
@@ -481,9 +491,12 @@ async def _build_reconnect_payload(
         server_time_ms=clock.now_ms(),
         messages=[_event_envelope(event, clock=clock) for event in ordered_events],
     )
-    return make_envelope("reconnect.catchup", payload, clock=clock, seq=current_seq).model_dump(
+    envelope = make_envelope("reconnect.catchup", payload, clock=clock, seq=current_seq).model_dump(
         mode="json"
     )
+    if room is not None and room.world_geometry is not None:
+        envelope["p"]["world_geometry"] = _world_geometry_payload(room.world_geometry)
+    return envelope
 
 
 def _player_faction(player: Player | None) -> FactionId | None:
@@ -527,7 +540,7 @@ async def _room_full_state(
     ai_thinking_state = _latest_ai_thinking_state(visible_events)
     border_tension = compute_border_tension(regions, relationships)
     winner, final_narration = await _final_outcome(repos, room_id, room)
-    return {
+    full_state = {
         "room": _room_state(room),
         "current_turn": current_turn.model_dump(mode="json") if current_turn is not None else None,
         "factions": [faction.model_dump(mode="json") for faction in factions],
@@ -541,6 +554,9 @@ async def _room_full_state(
         "winner": winner,
         "final_narration": final_narration,
     }
+    if room is not None and getattr(room, "world_geometry", None) is not None:
+        full_state["world_geometry"] = _world_geometry_payload(room.world_geometry)
+    return full_state
 
 
 def _room_state(room: Any) -> dict[str, Any]:
@@ -561,6 +577,29 @@ def _room_state(room: Any) -> dict[str, Any]:
         "max_players": room.max_players,
         "players": [player.model_dump(mode="json") for player in room.players],
         "ai_factions": list(room.ai_factions),
+    }
+
+
+def _world_geometry_payload(world_geometry: WorldGeometry | None) -> dict[str, Any] | None:
+    if world_geometry is None:
+        return None
+    return {
+        "seed": world_geometry.seed,
+        "hex_resolution": world_geometry.hex_resolution,
+        "total_cells": world_geometry.total_cells,
+        "factions": [faction_id for faction_id, _, _ in world_geometry.capitals],
+        "cells": [
+            {
+                "lat": cell.lat,
+                "lng": cell.lng,
+                "hex_id": cell.hex_id,
+                "faction_id": cell.faction_id,
+                "terrain": cell.terrain.value,
+                "elevation": cell.elevation,
+                "neighbors": list(cell.neighbors),
+            }
+            for cell in world_geometry.cells
+        ],
     }
 
 

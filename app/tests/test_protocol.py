@@ -15,6 +15,9 @@ from app.protocol import (
     RegionEntryOut,
     ReplayAIDiaryRevealPayload,
     ResolveMapDiffPayload,
+    WorldGeometryCellPayload,
+    WorldGeometryEvent,
+    WorldGeometryPayload,
     deserialize_json,
     make_envelope,
     parse_incoming,
@@ -210,6 +213,7 @@ def test_outgoing_payload_route_table_covers_expected_types() -> None:
         "room.player_takeover",
         "room.player_resume",
         "room.start",
+        "room.world_geometry",
         "room.finished",
         "phase.change",
         "turn.begin",
@@ -243,24 +247,21 @@ def test_replay_ai_diary_reveal_payload_validates_entries() -> None:
     assert payload.room_id == "room-1"
 
 
-def test_region_entry_out_omits_null_globe_fields() -> None:
-    payload = RegionEntryOut(
-        id="region-1",
-        owner=FactionId.ironCrown,
-        resource_value=18.0,
-        development_level=1.0,
-        terrain=TerrainKind.plains,
-        center_lat_lng=(12.0, 34.0),
-        min_garrison=10,
-        supply_lines=2,
-    ).model_dump(mode="json", exclude_none=True)
-
-    assert "lat" not in payload
-    assert "lng" not in payload
-    assert "hex_id" not in payload
+def test_region_entry_out_requires_globe_fields() -> None:
+    with pytest.raises(ValidationError):
+        RegionEntryOut(
+            id="region-1",
+            owner=FactionId.ironCrown,
+            resource_value=18.0,
+            development_level=1.0,
+            terrain=TerrainKind.plains,
+            center_lat_lng=(12.0, 34.0),
+            min_garrison=10,
+            supply_lines=2,
+        )
 
 
-def test_region_entry_out_serializes_globe_fields_when_present() -> None:
+def test_region_entry_out_serializes_full_globe_fields_when_present() -> None:
     payload = RegionEntryOut(
         id="region-1",
         owner=FactionId.ironCrown,
@@ -346,7 +347,40 @@ def test_optional_protocol_fields_are_accepted() -> None:
     ).seq == 12
 
 
-def test_region_entry_out_serializes_globe_fields_when_present() -> None:
+def test_world_geometry_event_round_trip_is_stable() -> None:
+    payload = WorldGeometryEvent(
+        v=1,
+        id="msg_geo",
+        t="room.world_geometry",
+        ts=123,
+        seq=9,
+        p=WorldGeometryPayload(
+            seed=42,
+            hex_resolution=4,
+            total_cells=642,
+            factions=[FactionId.ironCrown, FactionId.starlight],
+            cells=[
+                WorldGeometryCellPayload(
+                    lat=12.5,
+                    lng=34.5,
+                    hex_id="H4_00001",
+                    faction_id=FactionId.ironCrown,
+                    terrain=TerrainKind.plains,
+                    elevation=0.42,
+                    neighbors=[1, 2, 3],
+                )
+            ],
+        ),
+    )
+
+    raw = serialize_json(payload)
+    decoded = deserialize_json(raw, WorldGeometryEvent)
+
+    assert decoded == payload
+    assert serialize_json(decoded) == raw
+
+
+def test_region_entry_out_serializes_extended_globe_fields_when_present() -> None:
     payload = RegionEntryOut(
         id="region-1",
         owner=FactionId.starlight,
@@ -382,30 +416,24 @@ def test_region_entry_out_serializes_globe_fields_when_present() -> None:
     }
 
 
-def test_region_entry_out_excludes_none_globe_fields_when_missing() -> None:
-    payload = RegionEntryOut(
-        id="region-1",
-        owner=None,
-        resource_value=18.0,
-        development_level=1.0,
-        terrain=TerrainKind.plains,
-        center_lat_lng=(12.0, 34.0),
-        lat=None,
-        lng=None,
-        hex_id=None,
-        min_garrison=10,
-        supply_lines=2,
-        neighbors=[],
-        resistance=0.25,
-        captured_at_turn=None,
-    )
-
-    dumped = payload.model_dump(mode="json", exclude_none=True)
-
-    assert "lat" not in dumped
-    assert "lng" not in dumped
-    assert "hex_id" not in dumped
-    assert dumped["center_lat_lng"] == [12.0, 34.0]
+def test_region_entry_out_rejects_missing_globe_fields() -> None:
+    with pytest.raises(ValidationError):
+        RegionEntryOut(
+            id="region-1",
+            owner=None,
+            resource_value=18.0,
+            development_level=1.0,
+            terrain=TerrainKind.plains,
+            center_lat_lng=(12.0, 34.0),
+            lat=None,
+            lng=None,
+            hex_id=None,
+            min_garrison=10,
+            supply_lines=2,
+            neighbors=[],
+            resistance=0.25,
+            captured_at_turn=None,
+        )
 
 
 def test_resolve_map_diff_payload_accepts_region_entry_dump() -> None:

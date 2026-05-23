@@ -51,6 +51,7 @@ from app.protocol.outgoing import (
     RoomSnapshotPayload,
     RoomStartPayload,
     TurnBeginPayload,
+    WorldGeometryEvent,
 )
 
 INCOMING_PAYLOAD_TYPES: dict[str, type[BaseModel]] = {
@@ -84,6 +85,7 @@ OUTGOING_PAYLOAD_TYPES: dict[str, type[BaseModel]] = {
     "room.player_takeover": RoomPlayerTakeoverPayload,
     "room.player_resume": RoomPlayerResumePayload,
     "room.start": RoomStartPayload,
+    "room.world_geometry": WorldGeometryEvent,
     "room.finished": RoomFinishedPayload,
     "phase.change": PhaseChangePayload,
     "turn.begin": TurnBeginPayload,

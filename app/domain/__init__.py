@@ -54,6 +54,7 @@ from app.domain.models import (
     TreatyAction,
     TreatyDecision,
 )
+from app.domain.world_geometry import Terrain
 
 __all__ = [
     "FACTION_IDS",
@@ -96,6 +97,7 @@ __all__ = [
     "RoomStatus",
     "SettlementResult",
     "SpeechAction",
+    "Terrain",
     "TerrainKind",
     "Treaty",
     "TreatyAction",

@@ -11,8 +11,11 @@ from app.core.clock import Clock, SystemClock
 from app.domain.enums import FactionId, VisibilityScope
 from app.domain.factions import all_faction_ids
 from app.domain.models import GameRoom, Player
+from app.domain.world_geometry import WorldGeometry
 from app.protocol.outgoing import (
     AIThinkingPayload,
+    WorldGeometryCellPayload,
+    WorldGeometryPayload,
     ReplayAIDiaryRevealPayload,
     RoomFinishedPayload,
     RoomPlayerResumePayload,
@@ -138,6 +141,9 @@ class OutboundDispatcher:
         )
 
     async def dispatch_room_start(self, room_id: str) -> None:
+        room = await self._repos.rooms.get(room_id)
+        if room is None:
+            return
         full_state = {
             "factions": [
                 faction.model_dump(mode="json")
@@ -161,6 +167,8 @@ class OutboundDispatcher:
             room_id,
             _envelope("room.start", payload.model_dump(mode="json")),
         )
+        if room.world_geometry is not None:
+            await self._dispatch_world_geometry(room_id, room.world_geometry)
 
     async def dispatch_room_finished(
         self,
@@ -186,6 +194,7 @@ class OutboundDispatcher:
         player_id: str,
         payload: dict[str, Any],
     ) -> None:
+        await self._dispatch_world_geometry_if_present(player_id, payload)
         await self.dispatch_to_player(
             player_id,
             _envelope("reconnect.snapshot", payload, seq=payload.get("seq")),
@@ -196,6 +205,7 @@ class OutboundDispatcher:
         player_id: str,
         payload: dict[str, Any],
     ) -> None:
+        await self._dispatch_world_geometry_if_present(player_id, payload)
         await self.dispatch_to_player(
             player_id,
             _envelope("reconnect.catchup", payload, seq=payload.get("to_seq")),
@@ -302,6 +312,45 @@ class OutboundDispatcher:
     async def _session_faction(self, session: PlayerSession) -> FactionId | None:
         player = await self._repos.players.get(session.player_id)
         return player.faction_id if player is not None else None
+
+    async def _dispatch_world_geometry_if_present(
+        self,
+        player_id: str,
+        payload: dict[str, Any],
+    ) -> None:
+        world_geometry = payload.pop("world_geometry", None)
+        if not isinstance(world_geometry, dict):
+            return
+        if not str(payload.get("room_id", "")):
+            return
+        await self.dispatch_to_player(
+            player_id,
+            _envelope("room.world_geometry", world_geometry),
+        )
+
+    async def _dispatch_world_geometry(self, room_id: str, world_geometry: WorldGeometry) -> None:
+        payload = WorldGeometryPayload(
+            seed=world_geometry.seed,
+            hex_resolution=world_geometry.hex_resolution,
+            total_cells=world_geometry.total_cells,
+            factions=[faction_id for faction_id, _, _ in world_geometry.capitals],
+            cells=[
+                WorldGeometryCellPayload(
+                    lat=cell.lat,
+                    lng=cell.lng,
+                    hex_id=cell.hex_id,
+                    faction_id=cell.faction_id,
+                    terrain=cell.terrain,
+                    elevation=cell.elevation,
+                    neighbors=list(cell.neighbors),
+                )
+                for cell in world_geometry.cells
+            ],
+        )
+        await self.dispatch_to_room(
+            room_id,
+            _envelope("room.world_geometry", payload.model_dump(mode="json")),
+        )
 
     async def _default_visible(
         self,

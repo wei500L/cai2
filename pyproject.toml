@@ -9,6 +9,7 @@ description = "Diplomacy backend skeleton for the AI Diplomacy project."
 requires-python = ">=3.11"
 dependencies = [
   "fastapi",
+  "numpy",
   "pydantic>=2",
   "uvicorn[standard]",
   "python-multipart",
@@ -38,4 +39,3 @@ select = ["E", "F", "I", "B", "UP", "RUF"]
 
 [tool.pytest.ini_options]
 testpaths = ["app/tests"]
-

@@ -27,6 +27,7 @@ from app.protocol.outgoing import (
     AIReactionPayload,
     AISpeakPayload,
     AIThinkingPayload,
+    BaseEnvelope,
     ConnAuthFailPayload,
     ConnAuthOkPayload,
     ConnKickPayload,
@@ -52,6 +53,9 @@ from app.protocol.outgoing import (
     RoomSnapshotPayload,
     RoomStartPayload,
     TurnBeginPayload,
+    WorldGeometryCellPayload,
+    WorldGeometryEvent,
+    WorldGeometryPayload,
 )
 from app.protocol.routing import INCOMING_PAYLOAD_TYPES, OUTGOING_PAYLOAD_TYPES, parse_incoming
 from app.protocol.serialization import (
@@ -76,6 +80,7 @@ __all__ = [
     "ActionRejectedPayload",
     "ActionSpeakPayload",
     "ActionTreatyPayload",
+    "BaseEnvelope",
     "ConnAuthFailPayload",
     "ConnAuthOkPayload",
     "ConnAuthPayload",
@@ -114,6 +119,9 @@ __all__ = [
     "RoomStartPayload",
     "TurnBeginPayload",
     "UnknownMessageTypeError",
+    "WorldGeometryCellPayload",
+    "WorldGeometryEvent",
+    "WorldGeometryPayload",
     "deserialize_json",
     "deserialize_msgpack",
     "make_envelope",

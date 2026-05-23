@@ -33,6 +33,10 @@ function resolveRegionPoint(region: MapRegion) {
   }
 }
 
+function unwrapHexPolygonData<T>(hexPolygon: T | { __data?: T }) {
+  return (hexPolygon as { __data?: T }).__data ?? hexPolygon
+}
+
 function toSnapshot(globe: GlobeInstance): GlobeInstanceSnapshot {
   return {
     globe,
@@ -146,9 +150,10 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
 
     globe
       .hexPolygonsData(buildHexPolygons(regions, scorchedRegions))
+      .hexPolygonGeoJsonGeometry('geometry')
       .hexPolygonResolution(worldGeometry.hex_resolution)
-      .hexPolygonColor((hexPolygon) => hexPolygonColor(hexPolygon.__data))
-      .hexPolygonAltitude((hexPolygon) => hexPolygonAltitude(hexPolygon.__data))
+      .hexPolygonColor((hexPolygon) => hexPolygonColor(unwrapHexPolygonData(hexPolygon)))
+      .hexPolygonAltitude((hexPolygon) => hexPolygonAltitude(unwrapHexPolygonData(hexPolygon)))
       .hexPolygonMargin(hexPolygonMargin())
       .hexPolygonUseDots(false)
   }, [regions, scorchedRegions, worldGeometry])

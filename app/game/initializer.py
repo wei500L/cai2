@@ -6,20 +6,30 @@ from app.core.clock import Clock
 from app.domain.enums import GamePhase
 from app.domain.factions import all_faction_ids
 from app.domain.models import EpochTurn, GameRoom, InitialGameState
+from app.domain.world_geometry import WorldGeometry
 from app.game.factions_init import build_initial_faction_state
-from app.game.map_init import build_initial_regions
+from app.game.map_init import build_initial_regions, build_regions_from_world_geometry
 from app.game.relationships_init import build_initial_relationships
 
 INITIAL_PHASE_DURATION_MS = 15_000
 
 
-def initialize_game_state(room: GameRoom, *, clock: Clock) -> InitialGameState:
+def initialize_game_state(
+    room: GameRoom,
+    *,
+    clock: Clock,
+    world_geometry: WorldGeometry | None = None,
+) -> InitialGameState:
     rng = Random(room.seed)
     faction_ids = list(all_faction_ids())
 
     return InitialGameState(
         factions=[build_initial_faction_state(faction_id, rng) for faction_id in faction_ids],
-        regions=build_initial_regions(faction_ids, rng),
+        regions=(
+            build_regions_from_world_geometry(world_geometry)
+            if world_geometry is not None
+            else build_initial_regions(faction_ids, room.seed)
+        ),
         relationships=build_initial_relationships(rng),
         treaties=[],
         current_turn=EpochTurn(

@@ -15,6 +15,7 @@ from app.domain.enums import (
 )
 from app.domain.factions import all_faction_ids
 from app.domain.models import EpochTurn, GameEvent, GameRoom, MessageVisibility, Player
+from app.game.globe_geometry import generate_world_geometry
 from app.game.initializer import initialize_game_state
 from app.repositories.factory import make_repositories
 
@@ -77,6 +78,7 @@ async def test_reconnect_snapshot_includes_region_neighbors() -> None:
     repos = make_repositories("memory")
     room = _room()
     player = _player()
+    room.world_geometry = generate_world_geometry(room.seed, faction_ids=list(all_faction_ids()))
     state = initialize_game_state(room, clock=clock)
 
     await repos.rooms.create(room)
@@ -99,7 +101,8 @@ async def test_reconnect_snapshot_includes_region_neighbors() -> None:
     )
 
     assert payload["t"] == "reconnect.snapshot"
+    assert payload["p"]["world_geometry"]["total_cells"] == 642
     regions = payload["p"]["full_state"]["regions"]
-    assert len(regions) == 64
-    assert all(4 <= len(region["neighbors"]) <= 6 for region in regions)
+    assert len(regions) == 642
+    assert all(len(region["neighbors"]) == 6 for region in regions)
     assert all(region["id"] not in region["neighbors"] for region in regions)
