@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { PixelButton } from '@/components/PixelButton'
 import { useGameStore } from '@/store/gameStore'
 import { useUIStore } from '@/store/uiStore'
-import type { GameEvent } from '@/mock/types'
+import type { GameEvent } from '@/types'
 import { getPhaseUIConfig, isKeyResolveEvent } from './PhaseStateMachine'
 
 type KeyNumber = {

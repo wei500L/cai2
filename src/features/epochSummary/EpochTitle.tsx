@@ -1,4 +1,3 @@
-import { useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { useGameStore } from '@/store/gameStore'
 
@@ -20,6 +19,17 @@ function toRoman(value: number) {
   return romanNumerals[value] ?? String(value)
 }
 
+const titleParticles = Array.from({ length: 34 }, (_, index) => {
+  const angle = (index / 34) * Math.PI * 2
+  const radius = 80 + (index % 7) * 18
+  return {
+    id: index,
+    x: Math.cos(angle) * radius,
+    y: Math.sin(angle) * (radius * 0.42),
+    delay: (index % 9) * 0.035,
+  }
+})
+
 export function EpochTitle() {
   const epochId = useGameStore((state) => state.epoch.id)
   const eventCount = useGameStore(
@@ -29,25 +39,11 @@ export function EpochTitle() {
       ).length,
   )
   const subtitle = eventCount >= 5 ? '终章' : '史册'
-  const particles = useMemo(
-    () =>
-      Array.from({ length: 34 }, (_, index) => {
-        const angle = (index / 34) * Math.PI * 2
-        const radius = 80 + (index % 7) * 18
-        return {
-          id: index,
-          x: Math.cos(angle) * radius,
-          y: Math.sin(angle) * (radius * 0.42),
-          delay: (index % 9) * 0.035,
-        }
-      }),
-    [],
-  )
 
   return (
     <div className="pointer-events-none relative mx-auto w-[min(44rem,calc(100vw-2rem))] pt-7 text-center sm:pt-9">
       <div aria-hidden className="absolute left-1/2 top-16 h-0 w-0">
-        {particles.map((particle) => (
+        {titleParticles.map((particle) => (
           <motion.span
             key={particle.id}
             className="absolute h-1 w-1 bg-[color:rgba(255,222,158,0.92)] shadow-[0_0_16px_rgba(255,204,102,0.9)]"

@@ -3,12 +3,13 @@ from __future__ import annotations
 from time import time
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.api.rest.deps import (
     get_action_service,
     get_clock,
     get_connection_manager,
+    get_factions_meta_service,
     get_outbound_dispatcher,
     get_phase_service,
     get_replay_service,
@@ -54,6 +55,7 @@ from app.domain.enums import FactionId
 from app.repositories.factory import Repositories
 from app.services.action_service import ActionService
 from app.services.dev_seed_globe import run_dev_seed_globe
+from app.services.factions_meta_service import FactionsMetaService
 from app.services.phase_service import PhaseService
 from app.services.replay_service import ReplayService
 from app.services.room_service import RoomService
@@ -61,6 +63,21 @@ from app.services.settlement_service import SettlementService
 from app.services.takeover_service import TakeoverService
 
 router = APIRouter(prefix=get_settings().rest_prefix, tags=["debug"])
+
+
+@router.get("/connection-info")
+async def connection_info(request: Request) -> dict[str, Any]:
+    settings = get_settings()
+    if settings.env == "prod":
+        raise HTTPException(status_code=403, detail="not available in prod")
+
+    host = request.headers.get("host") or request.url.netloc
+    ws_scheme = "wss" if request.url.scheme == "https" else "ws"
+    return {
+        "ws_url": f"{ws_scheme}://{host}{settings.ws_path}",
+        "allow_token_skip": True,
+        "server_time": int(time() * 1000),
+    }
 
 
 @router.get("/runtime/config")
@@ -210,6 +227,20 @@ async def get_room_state(
         relationships=_dump_all(await repos.state.get_relationships(room_id)),
         current_turn=_dump(current_turn or room.current),
     )
+
+
+@router.get("/rooms/{room_id}/factions_meta")
+async def get_room_factions_meta(
+    room_id: str,
+    room_service: Annotated[RoomService, Depends(get_room_service)],
+    factions_meta_service: Annotated[
+        FactionsMetaService,
+        Depends(get_factions_meta_service),
+    ],
+) -> list[dict[str, Any]]:
+    await room_service.get_room(room_id)
+    factions = await factions_meta_service.get_factions_meta(room_id)
+    return [faction.model_dump(mode="json") for faction in factions]
 
 
 @router.post("/rooms/{room_id}/actions/speak", response_model=ActionAckResponse)

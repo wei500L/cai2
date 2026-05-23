@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
-import { FACTIONS } from '@/mock/factions'
+import { useAllFactionMeta } from '@/store/factionMetaStore'
+import type { FactionMeta } from '@/types/faction'
 import type { CommandMode, ToneAnalysis, ToneBand } from './types'
 
 type WeightedWord = {
@@ -51,9 +52,11 @@ const deceptiveWords: WeightedWord[] = [
   { word: 'spy', weight: 22 },
 ]
 
-const factionTriggerWords: WeightedWord[] = FACTIONS.flatMap((faction) =>
-  faction.triggerWords.map((word) => ({ word, weight: 10 })),
-)
+function getFactionTriggerWords(factions: FactionMeta[]): WeightedWord[] {
+  return factions.flatMap((faction) =>
+    faction.trigger_words.map((word) => ({ word, weight: 10 })),
+  )
+}
 
 function scoreWords(text: string, words: WeightedWord[]) {
   let score = 0
@@ -74,11 +77,11 @@ function clamp(value: number) {
   return Math.min(100, Math.max(0, value))
 }
 
-export function analyzeTone(content: string, mode: CommandMode): ToneAnalysis {
+export function analyzeTone(content: string, mode: CommandMode, factions: FactionMeta[] = []): ToneAnalysis {
   const hostile = scoreWords(content, hostileWords)
   const cooperative = scoreWords(content, cooperativeWords)
   const deceptive = scoreWords(content, deceptiveWords)
-  const triggers = scoreWords(content, factionTriggerWords)
+  const triggers = scoreWords(content, getFactionTriggerWords(factions))
   const exclamationBoost = Math.min(12, (content.match(/[!！]/g)?.length ?? 0) * 4)
   const modeBoost = mode === 'military' ? 10 : mode === 'private' ? 4 : 0
   const heat = clamp(18 + hostile.score + deceptive.score * 0.34 + triggers.score * 0.45 + exclamationBoost + modeBoost - cooperative.score * 0.42)
@@ -102,5 +105,6 @@ export function analyzeTone(content: string, mode: CommandMode): ToneAnalysis {
 }
 
 export function useToneAnalyzer(content: string, mode: CommandMode) {
-  return useMemo(() => analyzeTone(content, mode), [content, mode])
+  const factions = useAllFactionMeta()
+  return useMemo(() => analyzeTone(content, mode, factions), [content, factions, mode])
 }

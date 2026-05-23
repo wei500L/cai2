@@ -2,7 +2,7 @@
 
 import { factionIds, type FactionId } from '@/components/hudTheme'
 import { buildNeighbors } from '@/render/buildNeighbors'
-import type { MapRegion } from '@/mock/types'
+import type { MapRegion } from '@/types'
 import type { RegionEntry, WorldGeometryPayload } from '@/protocol/types'
 import { mulberry32, randomFloat, randomInt } from '@/utils/random'
 

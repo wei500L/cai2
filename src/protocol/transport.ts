@@ -1,6 +1,7 @@
 import { tryConsumeRate } from '@/features/commandTerminal/RateLimiter'
 import { militaryActionLabels, treatyKindLabels, type CommandMode } from '@/features/commandTerminal/types'
-import { factionById, type FactionId } from '@/mock/factions'
+import { factionMetaFixtures } from '@/mock/factions'
+import type { FactionId, FactionMeta } from '@/types/faction'
 import { MAX_EPOCHS, TURNS_PER_EPOCH, getPhaseDurationMs } from '@/mock/gameState'
 import type {
   BattleEvent,
@@ -12,7 +13,7 @@ import type {
   MapRegion,
   PrivateMessage,
   Relationship,
-} from '@/mock/types'
+} from '@/types'
 import { clearAIResponseTimers, triggerAIResponses } from '@/mock/aiResponder'
 import { createMockWorldGeometry } from '@/mock/worldGeometry'
 import { createMockDiplomaticVisuals } from '@/mock/diplomaticArcs'
@@ -32,6 +33,10 @@ import type {
 
 const DEFAULT_ROOM_ID = 'mock-room'
 const MAX_CONTENT_LENGTH = 400
+const mockFactionById = Object.fromEntries(factionMetaFixtures.map((faction) => [faction.id, faction])) as Record<
+  FactionId,
+  FactionMeta
+>
 
 type MessageHandler = (msg: IncomingMessage) => void
 
@@ -207,14 +212,14 @@ function nextEpochState(epoch: Epoch): Epoch | null {
 }
 
 function findMentionedFaction(content: string, actor: FactionId) {
-  return Object.values(factionById).find(
+  return Object.values(mockFactionById).find(
     (faction) =>
       faction.id !== actor && (content.includes(faction.name) || content.includes(faction.id)),
   )?.id
 }
 
 function getTargetNames(targets: FactionId[]) {
-  return targets.map((target) => factionById[target].name).join('、')
+  return targets.map((target) => mockFactionById[target].name).join('、')
 }
 
 function estimateCultureGain(content: string, toneHeat: number) {
@@ -434,6 +439,11 @@ export class MockTransport implements Transport {
       display_name: 'Mock Player',
       server_time_ms: Date.now(),
     }))
+    this.emit(nextEnvelope('room.factions_meta', {
+      room_id: getRoomId(),
+      schema_version: 'mock',
+      factions_meta: factionMetaFixtures,
+    }))
     this.emit(nextEnvelope('room.world_geometry', createMockWorldGeometry()))
   }
 
@@ -577,7 +587,7 @@ export class MockTransport implements Transport {
         event,
         faction_id: event.actor ?? 'starlight',
         reaction: typeof event.payload.label === 'string' ? event.payload.label : event.narration,
-        target_faction: event.target,
+        target_faction: event.target ?? undefined,
       }))
       return
     }
@@ -813,11 +823,11 @@ export class MockTransport implements Transport {
         def_loss: defenderCasualties,
         territory_captured: regionOwnerChanged,
         morale_shift: winner === attackerId ? 0.04 : -0.06,
-        narrative: `${factionById[attackerId].name}与${factionById[defenderId].name}在${regionId}爆发战斗，${factionById[winner].name}取得优势`,
+        narrative: `${mockFactionById[attackerId].name}与${mockFactionById[defenderId].name}在${regionId}爆发战斗，${mockFactionById[winner].name}取得优势`,
         attacker_remaining_troops: attackerNext.military,
         defender_remaining_troops: defenderNext.military,
       },
-      narration: `${factionById[attackerId].name}与${factionById[defenderId].name}在${regionId}爆发战斗，${factionById[winner].name}取得优势`,
+      narration: `${mockFactionById[attackerId].name}与${mockFactionById[defenderId].name}在${regionId}爆发战斗，${mockFactionById[winner].name}取得优势`,
     }
 
     this.emitEvents([event])
@@ -844,7 +854,7 @@ export class MockTransport implements Transport {
       affected_hex_ids: affectedHexIds,
       primary_hex_id: regionKey(region),
       economic_loss_pct: regionOwnerChanged ? 0.18 : 0.08,
-      narrative_hint: `${factionById[attackerId].name}的冲击波沿着${regionKey(region)}扩散，焦土将持续发酵。`,
+      narrative_hint: `${mockFactionById[attackerId].name}的冲击波沿着${regionKey(region)}扩散，焦土将持续发酵。`,
     })
 
     const scorchedDiff = buildScorchedDiffPayload(region, explosionKind, state.epoch.turn)
@@ -893,11 +903,11 @@ export class MockTransport implements Transport {
     const treatyLabel = treatyKind ? treatyKindLabels[treatyKind] : undefined
     const militaryLabel = message.t === 'action.military' ? militaryActionLabels[message.p.movement] : undefined
     const narrationByMode: Record<CommandMode, string> = {
-      speech: `${factionById[actor].name}发表公开演讲，预计文化影响 +${estimateCultureGain(content, toneHeat)}`,
-      private: `${factionById[actor].name}向${targetNames}发送加密密谈`,
-      treaty: `${factionById[actor].name}向${targetNames}提出${treatyLabel ?? '条约'}草案`,
-      military: `${factionById[actor].name}下达${militaryLabel ?? '战术'}军令`,
-      intel: `${factionById[actor].name}请求针对${targetNames}的情报`,
+      speech: `${mockFactionById[actor].name}发表公开演讲，预计文化影响 +${estimateCultureGain(content, toneHeat)}`,
+      private: `${mockFactionById[actor].name}向${targetNames}发送加密密谈`,
+      treaty: `${mockFactionById[actor].name}向${targetNames}提出${treatyLabel ?? '条约'}草案`,
+      military: `${mockFactionById[actor].name}下达${militaryLabel ?? '战术'}军令`,
+      intel: `${mockFactionById[actor].name}请求针对${targetNames}的情报`,
     }
     const event = makeEvent(mode, {
       priority,
@@ -936,7 +946,7 @@ export class MockTransport implements Transport {
             from: actor,
             to: target,
             priority,
-            subject: `密谈：${factionById[target].name}`,
+            subject: `密谈：${mockFactionById[target].name}`,
             body: content,
             encrypted: true,
             payload: {
@@ -959,7 +969,7 @@ export class MockTransport implements Transport {
           provisional: true,
           toneHeat,
         },
-        narration: `${factionById[actor].name}的强硬措辞被记录为潜在背叛倾向`,
+        narration: `${mockFactionById[actor].name}的强硬措辞被记录为潜在背叛倾向`,
       }))
     }
 

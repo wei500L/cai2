@@ -3,7 +3,7 @@ import { attachAdapter } from '../adapter'
 import type { IncomingMessage } from '../types'
 import type { Transport } from '../transport'
 import type { DiaryEntry } from '../types'
-import type { FactionId } from '@/mock/factions'
+import type { FactionId } from '@/types/faction'
 import { gameStoreApi, useGameStore } from '@/store/gameStore'
 
 class FakeTransport {

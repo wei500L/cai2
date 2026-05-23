@@ -2,7 +2,8 @@ import { create } from 'zustand'
 import { tryConsumeRate } from '@/features/commandTerminal/RateLimiter'
 import type { CommandSubmission, SubmitSpeechResult } from '@/features/commandTerminal/types'
 import { treatyKindLabels, militaryActionLabels } from '@/features/commandTerminal/types'
-import { factionById, type FactionId } from '@/mock/factions'
+import { factionMetaStore } from '@/store/factionMetaStore'
+import { FACTION_IDS, type FactionId } from '@/types/faction'
 import { createInitialState } from '@/mock/initialState'
 import { MAX_EPOCHS, TURNS_PER_EPOCH, getPhaseDurationMs } from '@/mock/gameState'
 import { useUIStore } from '@/store/uiStore'
@@ -19,7 +20,7 @@ import type {
   Relationship,
   RelationshipStatus,
   Treaty,
-} from '@/mock/types'
+} from '@/types'
 import type {
   BorderTensionEntry,
   DiaryEntry,
@@ -403,7 +404,7 @@ function toNullableStringValue(value: unknown): string | null | undefined {
 }
 
 function toFactionIdValue(value: unknown): FactionId | null {
-  return typeof value === 'string' && value in factionById ? (value as FactionId) : null
+  return typeof value === 'string' && (FACTION_IDS as readonly string[]).includes(value) ? (value as FactionId) : null
 }
 
 function normalizeLatLng(value: unknown): [number, number] {
@@ -854,17 +855,22 @@ function createPhaseKey(epoch: Epoch) {
 }
 
 function isKnownFaction(value: string): value is FactionId {
-  return value in factionById
+  return (FACTION_IDS as readonly string[]).includes(value)
 }
 
 function getTargetNames(targets: FactionId[]) {
-  return targets.map((target) => factionById[target].name).join('、')
+  const metaById = factionMetaStore.getState().byId
+  return targets.map((target) => metaById[target]?.name ?? target).join('、')
+}
+
+function getFactionName(id: FactionId) {
+  return factionMetaStore.getState().byId[id]?.name ?? id
 }
 
 function findMentionedFaction(content: string, actor: FactionId) {
-  return Object.values(factionById).find(
+  return Object.values(factionMetaStore.getState().byId).find(
     (faction) =>
-      faction.id !== actor && (content.includes(faction.name) || content.includes(faction.id)),
+      faction && faction.id !== actor && (content.includes(faction.name) || content.includes(faction.id)),
   )?.id
 }
 
@@ -1245,11 +1251,11 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
           def_loss: defenderCasualties,
           territory_captured: regionOwnerChanged,
           morale_shift: winner === attackerId ? 0.04 : -0.06,
-          narrative: `${factionById[attackerId].name}与${factionById[defenderId].name}在${regionId}爆发战斗，${factionById[winner].name}取得优势`,
+          narrative: `${getFactionName(attackerId)}与${getFactionName(defenderId)}在${regionId}爆发战斗，${getFactionName(winner)}取得优势`,
           attacker_remaining_troops: Math.max(0, attacker.military - attackerCasualties),
           defender_remaining_troops: Math.max(0, defender.military - defenderCasualties),
         },
-        narration: `${factionById[attackerId].name}与${factionById[defenderId].name}在${regionId}爆发战斗，${factionById[winner].name}取得优势`,
+        narration: `${getFactionName(attackerId)}与${getFactionName(defenderId)}在${regionId}爆发战斗，${getFactionName(winner)}取得优势`,
       }
 
       return {
@@ -1318,11 +1324,11 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       ? militaryActionLabels[submission.military.action]
       : undefined
     const narrationByMode: Record<CommandSubmission['mode'], string> = {
-      speech: `${factionById[actor].name}发表公开演讲，预计文化影响 +${estimateCultureGain(content, toneHeat)}`,
-      private: `${factionById[actor].name}向${targetNames}发送加密密谈`,
-      treaty: `${factionById[actor].name}向${targetNames}提出${treatyLabel ?? '条约'}草案`,
-      military: `${factionById[actor].name}下达${militaryLabel ?? '战术'}军令`,
-      intel: `${factionById[actor].name}请求针对${targetNames}的情报`,
+      speech: `${getFactionName(actor)}发表公开演讲，预计文化影响 +${estimateCultureGain(content, toneHeat)}`,
+      private: `${getFactionName(actor)}向${targetNames}发送加密密谈`,
+      treaty: `${getFactionName(actor)}向${targetNames}提出${treatyLabel ?? '条约'}草案`,
+      military: `${getFactionName(actor)}下达${militaryLabel ?? '战术'}军令`,
+      intel: `${getFactionName(actor)}请求针对${targetNames}的情报`,
     }
 
     const event: GameEvent = {
@@ -1367,7 +1373,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
               provisional: true,
               toneHeat,
             },
-            narration: `${factionById[actor].name}的强硬措辞被记录为潜在背叛倾向`,
+            narration: `${getFactionName(actor)}的强硬措辞被记录为潜在背叛倾向`,
           }
         : null
 
@@ -1382,7 +1388,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
             from: actor,
             to: target,
             priority,
-            subject: `密谈：${factionById[target].name}`,
+            subject: `密谈：${getFactionName(target)}`,
             body: content,
             encrypted: true,
             payload: {
@@ -1775,7 +1781,8 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
           : state.roomPlayers,
         aiFactions: room && Array.isArray(room.ai_factions)
           ? room.ai_factions.filter(
-              (faction): faction is FactionId => typeof faction === 'string' && faction in factionById,
+              (faction): faction is FactionId =>
+                typeof faction === 'string' && (FACTION_IDS as readonly string[]).includes(faction),
             )
           : state.aiFactions,
         currentPlayerId:

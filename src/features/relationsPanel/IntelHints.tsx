@@ -1,4 +1,4 @@
-import { factionById } from '@/mock/factions'
+import { useFactionMeta } from '@/store/factionMetaStore'
 import { useGameStore } from '@/store/gameStore'
 
 const fallbackHints = [
@@ -9,7 +9,8 @@ const fallbackHints = [
 
 export function IntelHints() {
   const selectedFactionId = useGameStore((state) => state.selectedFactionId)
-  const actorName = selectedFactionId ? factionById[selectedFactionId].name : '星辉联邦'
+  const actorMeta = useFactionMeta(selectedFactionId)
+  const actorName = actorMeta?.name ?? selectedFactionId ?? '星辉联邦'
 
   return (
     <div className="grid gap-3">

@@ -1,5 +1,6 @@
 import { factionIds } from '@/components/hudTheme'
-import { factionById, type FactionId } from '@/mock/factions'
+import { factionById } from '@/mock/factions'
+import type { FactionId } from '@/types/faction'
 import { getPhaseDurationMs } from '@/mock/gameState'
 import type {
   EventPriority,
@@ -10,7 +11,7 @@ import type {
   Relationship,
   RelationshipStatus,
   TreatyKind,
-} from '@/mock/types'
+} from '@/types'
 import { buildNeighbors } from '@/render/buildNeighbors'
 import { mulberry32, randomFloat, randomInt, shuffle } from '@/utils/random'
 

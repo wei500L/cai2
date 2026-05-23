@@ -1,7 +1,8 @@
 import clsx from 'clsx'
 import { factionTokens } from '@/components/hudTheme'
-import { factionById, type FactionId } from '@/mock/factions'
-import type { MapRegion, TreatyKind } from '@/mock/types'
+import { factionMetaStore } from '@/store/factionMetaStore'
+import type { FactionId } from '@/types/faction'
+import type { MapRegion, TreatyKind } from '@/types'
 import {
   militaryActionLabels,
   treatyKindLabels,
@@ -50,6 +51,7 @@ export function TargetSelector({
   onMilitaryChange,
 }: TargetSelectorProps) {
   const availableFactions = factions.filter((id) => id !== actorId)
+  const factionMetaById = factionMetaStore((state) => state.byId)
   const ownedRegions = regions.filter((region) => region.owner === actorId)
   const targetRegions = regions.slice(0, 16)
 
@@ -161,7 +163,7 @@ export function TargetSelector({
               onTargetsChange(selected ? targets.filter((target) => target !== id) : [...targets, id])
             }}
           >
-            {factionById[id].name}
+            {factionMetaById[id]?.name ?? id}
           </button>
         )
       })}

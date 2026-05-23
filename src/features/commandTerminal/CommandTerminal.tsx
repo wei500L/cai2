@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { GlowPanel } from '@/components/GlowPanel'
 import { HoloDivider } from '@/components/HoloDivider'
-import { factionById, type FactionId } from '@/mock/factions'
-import type { TreatyKind } from '@/mock/types'
+import { factionMetaStore } from '@/store/factionMetaStore'
+import type { FactionId } from '@/types/faction'
+import type { TreatyKind } from '@/types'
 import { ActionDispatcher } from '@/protocol/dispatcher'
 import { useGameStore } from '@/store/gameStore'
 import { useUIStore } from '@/store/uiStore'
@@ -56,28 +57,33 @@ function hashText(text: string) {
   return hash >>> 0
 }
 
-function buildTreatyTemplate(kind: TreatyKind, targets: FactionId[]) {
-  const names = targets.length ? targets.map((target) => factionById[target].name).join('、') : '目标势力'
+function buildTreatyTemplate(
+  kind: TreatyKind,
+  targets: FactionId[],
+  metaById: ReturnType<typeof factionMetaStore.getState>['byId'],
+) {
+  const names = targets.length ? targets.map((target) => metaById[target]?.name ?? target).join('、') : '目标势力'
   const label = treatyKindLabels[kind]
 
   return `我们提议与${names}签署${label}条约：即刻冻结敌对行动，开放必要联络线，并在本回合结束前确认执行边界。`
 }
 
-function findFactionByText(value: string, factions: FactionId[]) {
+function findFactionByText(value: string, factions: FactionId[], metaById: ReturnType<typeof factionMetaStore.getState>['byId']) {
   const normalized = value.trim().toLowerCase()
 
-  return factions.find((id) => id.toLowerCase() === normalized || factionById[id].name === value.trim())
+  return factions.find((id) => id.toLowerCase() === normalized || metaById[id]?.name === value.trim())
 }
 
 function getShortcut(
   rawValue: string,
   factions: FactionId[],
+  metaById: ReturnType<typeof factionMetaStore.getState>['byId'],
 ): { mode: CommandMode; targets: FactionId[]; content: string; treatyKind?: TreatyKind } | null {
   const trimmed = rawValue.trim()
   const match = trimmed.match(/^\/(ally|war|trade|spy)\s+(.+)$/i)
 
   if (match) {
-    const target = findFactionByText(match[2], factions)
+    const target = findFactionByText(match[2], factions, metaById)
 
     if (!target) {
       return null
@@ -88,7 +94,7 @@ function getShortcut(
         mode: 'treaty',
         targets: [target],
         treatyKind: 'alliance',
-        content: buildTreatyTemplate('alliance', [target]),
+        content: buildTreatyTemplate('alliance', [target], metaById),
       }
     }
 
@@ -97,7 +103,7 @@ function getShortcut(
         mode: 'treaty',
         targets: [target],
         treatyKind: 'trade',
-        content: buildTreatyTemplate('trade', [target]),
+        content: buildTreatyTemplate('trade', [target], metaById),
       }
     }
 
@@ -105,14 +111,14 @@ function getShortcut(
       return {
         mode: 'intel',
         targets: [target],
-        content: `请求获取${factionById[target].name}在本回合的兵力调动、贸易线路与外交弱点。`,
+        content: `请求获取${metaById[target]?.name ?? target}在本回合的兵力调动、贸易线路与外交弱点。`,
       }
     }
 
     return {
       mode: 'speech',
       targets: [],
-      content: `我们正式警告${factionById[target].name}：停止扩张，否则将视为宣战信号。`,
+      content: `我们正式警告${metaById[target]?.name ?? target}：停止扩张，否则将视为宣战信号。`,
     }
   }
 
@@ -140,6 +146,7 @@ export function CommandTerminal() {
   const selectedFactionId = useGameStore((state) => state.selectedFactionId)
   const factionStates = useGameStore((state) => state.factions)
   const regions = useGameStore((state) => state.regions)
+  const factionMetaById = factionMetaStore((state) => state.byId)
   const factions = useMemo(() => factionStates.map((faction) => faction.id), [factionStates])
   const actorId = selectedFactionId ?? 'starlight'
   const [mode, setMode] = useState<CommandMode>('speech')
@@ -199,10 +206,10 @@ export function CommandTerminal() {
       }
 
       if (nextMode === 'treaty' && !content.trim()) {
-        setContent(buildTreatyTemplate(treatyKind, targets.slice(0, 3)))
+        setContent(buildTreatyTemplate(treatyKind, targets.slice(0, 3), factionMetaById))
       }
     },
-    [content, targets, treatyKind],
+    [content, factionMetaById, targets, treatyKind],
   )
 
   useEffect(() => {
@@ -246,7 +253,7 @@ export function CommandTerminal() {
 
   const handleContentChange = useCallback(
     (value: string) => {
-      const shortcut = getShortcut(value, factions)
+      const shortcut = getShortcut(value, factions, factionMetaById)
 
       if (shortcut) {
         setMode(shortcut.mode)
@@ -264,7 +271,7 @@ export function CommandTerminal() {
       setContent(value)
       setError('')
     },
-    [factions],
+    [factionMetaById, factions],
   )
 
   const handleTreatyKindChange = useCallback(
@@ -272,10 +279,10 @@ export function CommandTerminal() {
       setTreatyKind(kind)
 
       if (mode === 'treaty' && (!content.trim() || Object.values(treatyKindLabels).some((label) => content.includes(label)))) {
-        setContent(buildTreatyTemplate(kind, targets))
+        setContent(buildTreatyTemplate(kind, targets, factionMetaById))
       }
     },
-    [content, mode, targets],
+    [content, factionMetaById, mode, targets],
   )
 
   const handleMilitaryChange = useCallback(

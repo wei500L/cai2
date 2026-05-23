@@ -1,22 +1,18 @@
-import { useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { factionById } from '@/mock/factions'
+import { factionMetaStore } from '@/store/factionMetaStore'
 import { useGameStore } from '@/store/gameStore'
 
-function factionName(id?: string) {
-  return id && id in factionById ? factionById[id as keyof typeof factionById].name : '未知目标'
+function factionName(id: string | undefined | null, metaById: ReturnType<typeof factionMetaStore.getState>['byId']) {
+  return id ? metaById[id as keyof typeof metaById]?.name ?? id : '未知目标'
 }
 
 export function KeyBetrayals() {
   const epochId = useGameStore((state) => state.epoch.id)
   const events = useGameStore((state) => state.events)
-  const betrayals = useMemo(
-    () =>
-      events
-        .filter((event) => event.epoch === epochId && event.kind === 'betrayal')
-        .sort((a, b) => a.createdAt - b.createdAt),
-    [epochId, events],
-  )
+  const factionMetaById = factionMetaStore((state) => state.byId)
+  const betrayals = events
+    .filter((event) => event.epoch === epochId && event.kind === 'betrayal')
+    .sort((a, b) => a.createdAt - b.createdAt)
 
   return (
     <motion.section
@@ -38,7 +34,7 @@ export function KeyBetrayals() {
           betrayals.map((event) => (
             <article key={event.id} className="border border-[color:rgba(255,231,184,0.12)] bg-[color:rgba(6,4,2,0.42)] p-2">
               <div className="font-hud text-[0.58rem] tracking-[0.14em] text-[color:rgba(255,204,102,0.78)]">
-                {factionName(event.actor)} / {factionName(event.target)}
+                {factionName(event.actor, factionMetaById)} / {factionName(event.target, factionMetaById)}
               </div>
               <p className="mt-1 font-sans text-[0.78rem] leading-5 text-[color:rgba(255,242,218,0.86)]">
                 {event.narration}

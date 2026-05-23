@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import type { EventPriority } from '@/mock/types'
+import type { EventPriority } from '@/types'
 
 type EventBadgeProps = {
   priority: EventPriority

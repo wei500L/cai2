@@ -13,6 +13,7 @@ class Settings(BaseModel):
     env: Literal["dev", "development", "test", "prod"] = "dev"
     log_level: str = "INFO"
     llm_provider: Literal["mock", "openai", "claude"] = "mock"
+    dev_banner_enabled: bool = True
     enable_persistence: bool = False
     cors_extra_origins: str = ""
     ws_path: str = "/ws"
@@ -63,6 +64,7 @@ def get_settings() -> Settings:
         env=_read_literal("ENV", "dev", {"dev", "development", "test", "prod"}),
         log_level=getenv("LOG_LEVEL", "INFO"),
         llm_provider=_read_literal("LLM_PROVIDER", "mock", {"mock", "openai", "claude"}),
+        dev_banner_enabled=_read_bool("DEV_BANNER_ENABLED", True),
         enable_persistence=_read_bool("ENABLE_PERSISTENCE", False),
         cors_extra_origins=getenv("EXTRA_CORS_ORIGINS", ""),
         ws_path=getenv("WS_PATH", "/ws"),

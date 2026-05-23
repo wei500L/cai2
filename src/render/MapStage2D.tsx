@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
-import { factionIds } from '@/components/hudTheme'
-import { factionById, type FactionId } from '@/mock/factions'
-import type { MapRegion, Relationship } from '@/mock/types'
+import { factionIds, factionTokens } from '@/components/hudTheme'
+import { factionMetaStore } from '@/store/factionMetaStore'
+import type { FactionId } from '@/types/faction'
+import type { MapRegion, Relationship } from '@/types'
 import { gameStoreApi } from '@/store/gameStore'
 import { useUIStore, type MapQuality } from '@/store/uiStore'
 import { getParticleDensityMultiplier } from '@/utils/particleDensity'
@@ -157,10 +158,11 @@ function buildPalette(): Palette {
   const styles = getComputedStyle(document.documentElement)
   return Object.fromEntries(
     factionIds.map((id) => {
-      const faction = factionById[id]
-      const primary = resolveColorToken(faction.primary, styles)
-      const glow = resolveColorToken(faction.glow, styles)
-      const shadow = resolveColorToken(faction.shadow, styles)
+      const meta = factionMetaStore.getState().byId[id]
+      const token = meta ?? factionTokens[id]
+      const primary = resolveColorToken(token.primary, styles)
+      const glow = resolveColorToken(token.glow, styles)
+      const shadow = resolveColorToken(token.shadow, styles)
 
       return [
         id,
@@ -705,6 +707,7 @@ export function MapStage2D({ qualityOverride, interactive = true }: MapStage2DPr
   const dragRef = useRef<{ active: boolean; x: number; y: number }>({ active: false, x: 0, y: 0 })
   const hoverIdRef = useRef<string | null>(null)
   const [hover, setHover] = useState<HoverState | null>(null)
+  const factionMetaLoadedAt = factionMetaStore((state) => state.loadedAt)
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -821,7 +824,7 @@ export function MapStage2D({ qualityOverride, interactive = true }: MapStage2DPr
 
         setHover({
           id: region.id,
-          owner: region.owner ? factionById[region.owner].name : '未占领',
+          owner: region.owner ? factionMetaStore.getState().byId[region.owner]?.name ?? region.owner : '未占领',
           development: region.developmentLevel,
           terrain: region.terrain,
         })
@@ -951,7 +954,7 @@ export function MapStage2D({ qualityOverride, interactive = true }: MapStage2DPr
         window.removeEventListener('diplomacy:map-reset', onMapReset)
       }
     }
-  }, [interactive, qualityOverride])
+  }, [factionMetaLoadedAt, interactive, qualityOverride])
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-black">

@@ -1,7 +1,8 @@
 import { useEffect } from 'react'
 import clsx from 'clsx'
 import { motion } from 'framer-motion'
-import { factionById, type FactionId } from '@/mock/factions'
+import { useFactionMeta } from '@/store/factionMetaStore'
+import type { FactionId } from '@/types/faction'
 import type { RegionAnimationParams } from '@/protocol/types'
 
 export type RegionInflowAnimationProps = {
@@ -30,12 +31,14 @@ export function RegionInflowAnimation({
   animation_params,
   onDone,
 }: RegionInflowAnimationProps) {
+  const ownerMeta = useFactionMeta(new_owner)
+
   useEffect(() => {
     const timer = window.setTimeout(() => onDone?.(region_id), 1200)
     return () => window.clearTimeout(timer)
   }, [onDone, region_id])
 
-  const ownerGlow = new_owner ? factionById[new_owner].glow : '#8fcaff'
+  const ownerGlow = ownerMeta?.glow ?? '#8fcaff'
 
   return (
     <motion.div

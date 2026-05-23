@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react'
 import { motion } from 'framer-motion'
 import { factionTokens } from '@/components/hudTheme'
-import type { ReplayData } from '@/mock/replay'
+import type { ReplayData } from '@/types/replay'
 import { createEventLookup, formatReplayTime, getEventFaction, getMarkerLabel } from './replayViewUtils'
 
 type ReplayTimelineProps = {

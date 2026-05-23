@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { useGameStore } from '@/store/gameStore'
 import { triggerBattleVisuals } from '../useEffectsBus'
-import type { GameEvent } from '@/mock/types'
+import type { GameEvent } from '@/types'
 
 describe('triggerBattleVisuals', () => {
   beforeEach(() => {

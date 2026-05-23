@@ -1,7 +1,6 @@
-import { useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { factionById } from '@/mock/factions'
-import type { GameEvent } from '@/mock/types'
+import { factionMetaStore } from '@/store/factionMetaStore'
+import type { GameEvent } from '@/types'
 import { useGameStore } from '@/store/gameStore'
 
 const fallbackGlyph: Record<GameEvent['kind'], string> = {
@@ -15,6 +14,12 @@ const fallbackGlyph: Record<GameEvent['kind'], string> = {
   ceasefire: '停',
   betrayal: '叛',
   battle: '战',
+  invasion: '侵',
+  siege: '围',
+  bombing: '轰',
+  naval_assault: '海',
+  uprising: '乱',
+  nuclear_strike: '核',
   economy: '财',
   intel: '情',
   ai_thinking: '思',
@@ -22,8 +27,8 @@ const fallbackGlyph: Record<GameEvent['kind'], string> = {
   phase_change: '更',
 }
 
-function getFactionName(id?: string) {
-  return id && id in factionById ? factionById[id as keyof typeof factionById].name : '未指定'
+function getFactionName(id: string | undefined | null, metaById: ReturnType<typeof factionMetaStore.getState>['byId']) {
+  return id ? metaById[id as keyof typeof metaById]?.name ?? id : '未指定'
 }
 
 function compactNarration(text: string) {
@@ -43,7 +48,8 @@ function selectMajorEvents(events: GameEvent[], epochId: number) {
 export function MajorEvents() {
   const epochId = useGameStore((state) => state.epoch.id)
   const events = useGameStore((state) => state.events)
-  const majorEvents = useMemo(() => selectMajorEvents(events, epochId), [epochId, events])
+  const factionMetaById = factionMetaStore((state) => state.byId)
+  const majorEvents = selectMajorEvents(events, epochId)
 
   return (
     <motion.section
@@ -74,9 +80,9 @@ export function MajorEvents() {
                 <div className="flex min-w-0 items-center gap-2 font-hud text-[0.58rem] tracking-[0.14em] text-[color:rgba(255,231,184,0.54)]">
                   <span>T{event.turn}</span>
                   <span className="text-[color:rgba(255,204,102,0.84)]">{event.priority}</span>
-                  <span className="truncate">{getFactionName(event.actor)}</span>
+                  <span className="truncate">{getFactionName(event.actor, factionMetaById)}</span>
                   <span className="text-[color:rgba(255,231,184,0.28)]">/</span>
-                  <span className="truncate">{getFactionName(event.target)}</span>
+                  <span className="truncate">{getFactionName(event.target, factionMetaById)}</span>
                 </div>
                 <p className="mt-1 font-sans text-[0.78rem] leading-5 text-[color:rgba(255,242,218,0.86)]">
                   {compactNarration(event.narration)}

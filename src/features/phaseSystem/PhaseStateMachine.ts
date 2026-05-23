@@ -1,4 +1,4 @@
-import type { ArbitratePhase, Epoch, GameEvent, GamePhase } from '@/mock/types'
+import type { ArbitratePhase, Epoch, GameEvent, GamePhase } from '@/types'
 import { getRemainingMs } from '@/utils/serverClock'
 
 export type HudMode =
@@ -202,6 +202,12 @@ export function isKeyResolveEvent(event: GameEvent) {
     event.priority === 'P0' ||
     event.priority === 'P1' ||
     event.kind === 'battle' ||
+    event.kind === 'invasion' ||
+    event.kind === 'siege' ||
+    event.kind === 'bombing' ||
+    event.kind === 'naval_assault' ||
+    event.kind === 'uprising' ||
+    event.kind === 'nuclear_strike' ||
     event.kind === 'declare_war' ||
     event.kind === 'alliance' ||
     event.kind === 'betrayal' ||

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
+import { FactionMetaPlaceholder } from '@/components/FactionMetaPlaceholder'
 import { Scanlines } from '@/components/Scanlines'
 import { ConfirmBar } from '@/features/factionSelect/ConfirmBar'
 import { FactionDetailPanel } from '@/features/factionSelect/FactionDetailPanel'
 import { FactionSelectGrid } from '@/features/factionSelect/FactionSelectGrid'
-import { FACTIONS, factionById, type FactionMeta } from '@/mock/factions'
+import { useAllFactionMeta, factionMetaStore } from '@/store/factionMetaStore'
+import { FACTION_IDS, type FactionMeta } from '@/types/faction'
 import { ActionDispatcher } from '@/protocol/dispatcher'
 import { useGameStore } from '@/store/gameStore'
 
@@ -18,29 +20,36 @@ function getColumnsCount() {
   return window.matchMedia('(min-width: 640px)').matches ? GRID_COLUMNS_DESKTOP : 1
 }
 
-function getFactionIndex(factionId: string | null) {
+function getFactionIndex(factionId: string | null, factions: FactionMeta[]) {
   if (!factionId) {
     return 0
   }
 
-  const index = FACTIONS.findIndex((faction) => faction.id === factionId)
+  const index = factions.findIndex((faction) => faction.id === factionId)
   return index >= 0 ? index : 0
 }
 
 function getFactionLabel(factionId: string | null) {
-  return factionId && factionId in factionById ? factionById[factionId as keyof typeof factionById].name : '未选择'
+  const meta = factionId ? factionMetaStore.getState().byId[factionId as FactionMeta['id']] : null
+  return meta?.name ?? factionId ?? '未选择'
 }
 
 export default function FactionSelectPage() {
+  const factions = useAllFactionMeta()
   const selectedFactionId = useGameStore((state) => state.selectedFactionId)
   const currentRoomId = useGameStore((state) => state.currentRoomId)
   const currentPlayerId = useGameStore((state) => state.currentPlayerId)
   const roomPlayers = useGameStore((state) => state.roomPlayers)
   const selectFaction = useGameStore((state) => state.selectFaction)
   const clearFaction = useGameStore((state) => state.clearFaction)
-  const selectedFaction = useMemo(
-    () => FACTIONS.find((faction) => faction.id === selectedFactionId) ?? null,
-    [selectedFactionId],
+  const selectedFaction = useMemo(() => factions.find((faction) => faction.id === selectedFactionId) ?? null, [
+    factions,
+    selectedFactionId,
+  ])
+  const factionsKey = useMemo(() => factions.map((faction) => faction.id).join('|'), [factions])
+  const selectedFactionIndex = useMemo(
+    () => getFactionIndex(selectedFactionId, factions),
+    [factions, selectedFactionId],
   )
   const otherRoomPlayers = useMemo(
     () =>
@@ -49,7 +58,22 @@ export default function FactionSelectPage() {
         : roomPlayers,
     [currentPlayerId, roomPlayers],
   )
-  const [activeIndex, setActiveIndex] = useState(() => getFactionIndex(selectedFactionId))
+  const [activeIndexState, setActiveIndexState] = useState(() => ({
+    factionsKey,
+    index: selectedFactionIndex,
+    selectedFactionId,
+  }))
+  const rawActiveIndex =
+    activeIndexState.selectedFactionId === selectedFactionId && activeIndexState.factionsKey === factionsKey
+      ? activeIndexState.index
+      : selectedFactionIndex
+  const activeIndex = Math.min(Math.max(rawActiveIndex, 0), Math.max(factions.length - 1, 0))
+  const setActiveIndex = useCallback(
+    (index: number) => {
+      setActiveIndexState({ factionsKey, index, selectedFactionId })
+    },
+    [factionsKey, selectedFactionId],
+  )
   const cardRefs = useRef<Array<HTMLButtonElement | null>>([])
 
   const commitFactionSelection = useCallback(
@@ -85,7 +109,10 @@ export default function FactionSelectPage() {
 
       const columns = getColumnsCount()
       const currentIndex = activeIndex
-      const lastIndex = FACTIONS.length - 1
+      const lastIndex = factions.length - 1
+      if (lastIndex < 0) {
+        return
+      }
 
       if (event.key === 'ArrowLeft' && columns > 1) {
         event.preventDefault()
@@ -128,13 +155,16 @@ export default function FactionSelectPage() {
 
       if (event.key === 'Enter') {
         event.preventDefault()
-        commitFactionSelection(FACTIONS[currentIndex].id)
+        const faction = factions[currentIndex]
+        if (faction) {
+          commitFactionSelection(faction.id)
+        }
       }
     }
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [activeIndex, clearFaction, commitFactionSelection])
+  }, [activeIndex, clearFaction, commitFactionSelection, factions, setActiveIndex])
 
   const registerCardRef =
     (index: number) =>
@@ -143,7 +173,7 @@ export default function FactionSelectPage() {
     }
 
   const handleSelectFaction = (faction: FactionMeta) => {
-    const index = FACTIONS.findIndex((item) => item.id === faction.id)
+    const index = factions.findIndex((item) => item.id === faction.id)
     if (index >= 0) {
       setActiveIndex(index)
     }
@@ -188,14 +218,22 @@ export default function FactionSelectPage() {
 
         <div className="grid flex-1 gap-4 py-4 xl:grid-cols-[minmax(0,1.7fr)_minmax(20rem,1fr)]">
           <div className="grid gap-4">
-            <FactionSelectGrid
-              factions={FACTIONS}
-              selectedFactionId={selectedFactionId}
-              activeIndex={activeIndex}
-              onActiveIndexChange={setActiveIndex}
-              onSelectFaction={handleSelectFaction}
-              registerCardRef={registerCardRef}
-            />
+            {factions.length === 0 ? (
+              <div aria-label="势力列表载入中" className="grid gap-4 sm:grid-cols-2">
+                {FACTION_IDS.map((factionId) => (
+                  <FactionMetaPlaceholder key={factionId} factionId={factionId} className="min-h-[18rem]" />
+                ))}
+              </div>
+            ) : (
+              <FactionSelectGrid
+                factions={factions}
+                selectedFactionId={selectedFactionId}
+                activeIndex={activeIndex}
+                onActiveIndexChange={setActiveIndex}
+                onSelectFaction={handleSelectFaction}
+                registerCardRef={registerCardRef}
+              />
+            )}
           </div>
 
           <div className="grid content-start gap-4 xl:sticky xl:top-4">

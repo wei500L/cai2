@@ -1,5 +1,6 @@
 import { factionIds } from '@/components/hudTheme'
-import { factionById, type FactionId } from '@/mock/factions'
+import { factionById } from '@/mock/factions'
+import type { FactionId } from '@/types/faction'
 import {
   AI_PRIVATE_TEMPLATES,
   AI_REACTION_TEMPLATES,
@@ -7,7 +8,7 @@ import {
   SYSTEM_NARRATION_TEMPLATES,
   type AITemplateParams,
 } from '@/mock/aiTemplates'
-import type { EventKind, EventPriority, GameEvent, GamePhase, PrivateMessage } from '@/mock/types'
+import type { EventKind, EventPriority, GameEvent, GamePhase, PrivateMessage } from '@/types'
 import type { MockTransport } from '@/protocol/transport'
 import { gameStoreApi } from '@/store/gameStore'
 import { pickOne, randomInt } from '@/utils/random'

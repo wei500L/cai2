@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { FactionId } from '@/mock/factions'
+import type { FactionId } from '@/types/faction'
 import { useGameStore } from '@/store/gameStore'
 import { getRelationStatus } from './relationVisuals'
 import type { RelationDelta } from './types'

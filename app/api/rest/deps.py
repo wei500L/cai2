@@ -17,6 +17,7 @@ from app.llm.output_parser import ModelOutputParser
 from app.llm.prompt_builder import PromptBuilder
 from app.repositories.factory import Repositories, make_repositories
 from app.services.action_service import ActionService
+from app.services.factions_meta_service import FactionsMetaService
 from app.services.phase_scheduler import PhaseScheduler
 from app.services.phase_service import PhaseService
 from app.services.replay_service import ReplayService
@@ -42,7 +43,18 @@ def get_connection_manager() -> ConnectionManager:
 
 @lru_cache(maxsize=1)
 def get_outbound_dispatcher() -> OutboundDispatcher:
-    return OutboundDispatcher(get_connection_manager(), get_repositories(), get_clock())
+    return OutboundDispatcher(
+        get_connection_manager(),
+        get_repositories(),
+        get_clock(),
+        get_factions_meta_service(get_repositories()),
+    )
+
+
+def get_factions_meta_service(
+    repos: Annotated[Repositories, Depends(get_repositories)],
+) -> FactionsMetaService:
+    return FactionsMetaService(repos)
 
 
 @lru_cache(maxsize=1)

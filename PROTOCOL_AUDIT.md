@@ -1,5 +1,13 @@
 # Protocol Audit
 
+## v1.0-mock-to-real
+
+- 新增 `room.factions_meta` 事件，后端成为势力静态元数据 source of truth。
+- 下发时机：`room.start` 后立即广播；`reconnect.snapshot` / `reconnect.catchup` 前会先单独复发。
+- Payload 字段：`room_id`、`schema_version`、`factions`。
+- `factions[]` 字段：`id`、`name`、`short_name`、`primary_color`、`glow_color`、`shadow_color`、`speech_style`、`speech_style_label`、`speech_style_description`、`civilization_traits`、`ai_archetype`、`capital_hex_id`。
+- Debug REST 兜底：`GET /debug/v1/rooms/{room_id}/factions_meta` 返回当前房间 8 势力元数据列表。
+
 ## 球体地图扩展
 
 - `RegionEntryOut` / `resolve.map_diff.previous` 中的 `lat`、`lng`、`hex_id` 已升级为 required。

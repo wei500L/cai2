@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import json
+
 import pytest
 
+from app.api.websocket.connection import ConnectionManager
+from app.api.websocket.dispatcher import OutboundDispatcher
 from app.core.clock import FrozenClock
 from app.core.errors import (
     FactionAlreadyTakenError,
@@ -13,6 +17,14 @@ from app.core.errors import (
 from app.domain.enums import FactionId, RoomStatus
 from app.repositories.factory import Repositories, make_repositories
 from app.services.room_service import RoomService
+
+
+class FakeSocket:
+    def __init__(self) -> None:
+        self.sent_texts: list[str] = []
+
+    async def send_text(self, text: str) -> None:
+        self.sent_texts.append(text)
 
 
 @pytest.fixture()
@@ -240,6 +252,69 @@ async def test_start_game_solo_assigns_seven_ai_factions(
     assert len(room.players) == 1
     assert len(room.ai_factions) == 7
     assert set(room.ai_factions) == set(FactionId) - {FactionId.ironCrown}
+
+
+@pytest.mark.asyncio
+async def test_start_game_dispatches_factions_meta_after_room_start(
+    service: RoomService,
+    repos: Repositories,
+) -> None:
+    room, host = await service.create_room(mode="solo_1v7", host_display_name="host")
+    room = await service.select_faction(
+        room_id=room.id,
+        player_id=host.id,
+        faction_id=FactionId.ironCrown,
+    )
+    room = await service.set_ready(room_id=room.id, player_id=host.id, ready=True)
+    room = await service.start_game(room_id=room.id, requester_player_id=host.id)
+    manager = ConnectionManager()
+    socket = FakeSocket()
+    await manager.register(host.id, socket)
+    await manager.attach_to_room(host.id, room.id)
+    dispatcher = OutboundDispatcher(manager, repos)
+
+    await dispatcher.dispatch_room_start(room.id)
+
+    messages = [json.loads(text) for text in socket.sent_texts]
+    assert [message["t"] for message in messages[:3]] == [
+        "room.start",
+        "room.factions_meta",
+        "room.world_geometry",
+    ]
+    factions_meta = messages[1]["p"]
+    assert factions_meta["schema_version"] == "1.0"
+    assert len(factions_meta["factions"]) == 8
+    assert factions_meta["factions"][0]["capital_hex_id"]
+
+
+@pytest.mark.asyncio
+async def test_reconnect_catchup_dispatches_factions_meta_before_catchup(
+    repos: Repositories,
+) -> None:
+    manager = ConnectionManager()
+    socket = FakeSocket()
+    await manager.register("player-1", socket)
+    dispatcher = OutboundDispatcher(manager, repos)
+    factions_meta = await dispatcher.build_factions_meta_payload("room-1")
+
+    await dispatcher.dispatch_reconnect_catchup(
+        "player-1",
+        {
+            "room_id": "room-1",
+            "from_seq": 1,
+            "to_seq": 1,
+            "server_time_ms": 1_000,
+            "messages": [],
+            "factions_meta": factions_meta.model_dump(mode="json"),
+        },
+    )
+
+    messages = [json.loads(text) for text in socket.sent_texts]
+    assert [message["t"] for message in messages] == [
+        "room.factions_meta",
+        "reconnect.catchup",
+    ]
+    assert "factions_meta" not in messages[1]["p"]
 
 
 @pytest.mark.asyncio

@@ -1,4 +1,4 @@
-import type { ArbitratePhase, GamePhase } from '@/mock/types'
+import type { ArbitratePhase, GamePhase } from '@/types'
 
 export const MAX_EPOCHS = 8
 export const TURNS_PER_EPOCH = 3

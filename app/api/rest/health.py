@@ -1,3 +1,4 @@
+from time import time
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends
@@ -24,15 +25,13 @@ _REPOSITORY_FIELDS = (
 
 
 @router.get("/healthz")
-async def healthz() -> dict[str, str]:
+async def healthz() -> dict[str, Any]:
     settings = get_settings()
     return {
-        "status": "ok",
-        "service": _SERVICE_NAME,
-        "env": settings.env,
-        "ws_path": settings.ws_path,
-        "llm_provider": settings.llm_provider,
+        "ok": True,
+        "ts": int(time() * 1000),
         "version": _VERSION,
+        "mode": "prod" if settings.env == "prod" else "dev",
     }
 
 

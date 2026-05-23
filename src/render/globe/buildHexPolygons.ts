@@ -1,5 +1,5 @@
-import type { FactionId } from '@/mock/factions'
-import type { MapRegion } from '@/mock/types'
+import type { FactionId } from '@/types/faction'
+import type { MapRegion } from '@/types'
 import { hexPolygonColor as resolveHexPolygonColor } from '@/render/globe/stylePresets'
 
 export type HexPolygonInput = {
@@ -68,18 +68,20 @@ function getFactionId(region: HexPolygonRegion) {
   return region.factionId ?? region.owner ?? region.faction ?? null
 }
 
-function wrapLongitude(lng: number) {
-  return ((((lng + 180) % 360) + 360) % 360) - 180
-}
-
 function buildGeometry(lat: number, lng: number) {
   // Delta was a typo (0.08 instead of 8.0), which resulted in 17km squares instead of 1700km squares,
   // causing h3.polyfill to drop them or render sparse dots instead of a continuous mosaic.
   const delta = 8.0
   const north = clamp(lat + delta, -89.9, 89.9)
   const south = clamp(lat - delta, -89.9, 89.9)
-  const east = wrapLongitude(lng + delta)
-  const west = wrapLongitude(lng - delta)
+  
+  // DO NOT use wrapLongitude here! If the polygon crosses the antimeridian, 
+  // wrapping it back to -180 causes h3.polyfill to interpret the polygon as 
+  // wrapping the LONG way around the globe (344 degrees instead of 16 degrees).
+  // This generates millions of hexes and crashes the renderer, resulting in a black globe.
+  // h3-js and three-globe natively support longitudes > 180 or < -180 for this exact reason.
+  const east = lng + delta
+  const west = lng - delta
 
   return {
     type: 'Polygon' as const,

@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 import { factionIds, factionTokens } from '@/components/hudTheme'
-import type { RelationshipSnapshot, ReplayTimelineNode } from '@/mock/replay'
+import type { RelationshipSnapshot, ReplayTimelineNode } from '@/types/replay'
 import { getFactionName, relationshipColors, relationshipLabels } from './replayViewUtils'
 
 type RelationshipNetworkProps = {

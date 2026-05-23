@@ -15,9 +15,11 @@ from app.core.errors import (
     RateLimitedError,
     RoomNotFoundError,
 )
+from app.core.logging import get_logger
 
 settings = get_settings()
 app = FastAPI(title="Diplomacy Backend", version="0.1.0")
+logger = get_logger(__name__)
 
 if settings.env == "dev":
     app.add_middleware(
@@ -35,6 +37,8 @@ app.include_router(websocket_router)
 
 @app.on_event("startup")
 async def startup() -> None:
+    if settings.env != "prod" and settings.dev_banner_enabled:
+        logger.info("DEV MODE · LLM_PROVIDER=mock · MOCK NARRATION FALLBACK ENABLED")
     await gateway.startup()
 
 

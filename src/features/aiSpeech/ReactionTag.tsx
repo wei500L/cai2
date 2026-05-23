@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { factionTokens } from '@/components/hudTheme'
-import { factionById, type FactionId } from '@/mock/factions'
+import { useFactionMeta } from '@/store/factionMetaStore'
+import type { FactionId } from '@/types/faction'
 
 type ReactionTagProps = {
   actor: FactionId
@@ -11,6 +12,7 @@ type ReactionTagProps = {
 
 export function ReactionTag({ actor, label }: ReactionTagProps) {
   const [visible, setVisible] = useState(true)
+  const faction = useFactionMeta(actor)
   const token = factionTokens[actor]
   const style = {
     '--reaction-border': token.glow,
@@ -38,7 +40,7 @@ export function ReactionTag({ actor, label }: ReactionTagProps) {
             boxShadow: '0 0 18px color-mix(in srgb, var(--reaction-border) 36%, transparent)',
           }}
         >
-          {factionById[actor].name} · {label}
+          {faction?.name ?? actor} · {label}
         </motion.div>
       ) : null}
     </AnimatePresence>

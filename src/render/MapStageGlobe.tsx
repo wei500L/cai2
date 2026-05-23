@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import Globe from 'globe.gl'
 import type { GlobeInstance } from 'globe.gl'
 import { AmbientLight, DirectionalLight, type Camera, type Scene, type WebGLRenderer } from 'three'
-import type { MapRegion } from '@/mock/types'
+import type { MapRegion } from '@/types'
 import {
   buildHexPolygons,
   type HexPolygonInput,

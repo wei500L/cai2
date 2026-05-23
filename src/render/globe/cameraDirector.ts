@@ -1,6 +1,6 @@
 import type { GlobeInstance } from 'globe.gl'
 import type { ExplosionEvent } from '@/protocol/types'
-import type { GameEvent } from '@/mock/types'
+import type { GameEvent } from '@/types'
 
 export type CameraPose = {
   lat: number

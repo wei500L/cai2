@@ -1,5 +1,6 @@
 import { useUIStore } from '@/store/uiStore'
 import type { GameStoreState } from '@/store/gameStore'
+import { factionMetaStore } from '@/store/factionMetaStore'
 import type { IncomingMessage } from './types'
 import type { Transport } from './transport'
 
@@ -35,6 +36,9 @@ export function attachAdapter(transport: Transport, gameStore: GameStoreApiLike)
         break
       case 'room.snapshot':
         store._applyRoomSnapshot(message.p)
+        break
+      case 'room.factions_meta':
+        factionMetaStore.getState().applyFactionsMeta(message.p)
         break
       case 'room.finished':
         store._applyRoomFinished(message.p)

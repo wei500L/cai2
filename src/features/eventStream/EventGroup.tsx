@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import type { GameEvent } from '@/mock/types'
+import type { GameEvent } from '@/types'
 import { EventItem } from './EventItem'
 
 type EventGroupProps = {

@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import clsx from 'clsx'
 import { AnimatePresence, motion } from 'framer-motion'
 import { ScrollNumber } from '@/components/ScrollNumber'
-import { factionById, type FactionId } from '@/mock/factions'
-import type { GameEvent } from '@/mock/types'
+import { useFactionMeta } from '@/store/factionMetaStore'
+import type { FactionId } from '@/types/faction'
+import type { GameEvent } from '@/types'
 
 export type BattleResultCardData = {
   id: string
@@ -56,21 +57,26 @@ function RollingStat({
 }
 
 function Avatar({ factionId }: { factionId: FactionId }) {
-  const faction = factionById[factionId]
+  const faction = useFactionMeta(factionId)
+  const glow = faction?.glow ?? '#8fcaff'
+  const name = faction?.name ?? factionId
   return (
     <div
       className="relative grid h-12 w-12 shrink-0 place-items-center border bg-[color:rgba(0,0,0,0.62)] font-hud text-lg font-bold"
-      style={{ borderColor: faction.glow, color: faction.glow, boxShadow: `0 0 22px ${faction.glow}` }}
+      style={{ borderColor: glow, color: glow, boxShadow: `0 0 22px ${glow}` }}
     >
-      {faction.name.slice(0, 1)}
+      {name.slice(0, 1)}
       <span className="absolute -bottom-4 left-1/2 w-24 -translate-x-1/2 truncate text-center text-[0.48rem] uppercase tracking-[0.12em] text-[color:rgba(244,251,255,0.64)]">
-        {faction.name}
+        {name}
       </span>
     </div>
   )
 }
 
 export function BattleResultCard({ card, onClose }: BattleResultCardProps) {
+  const attackerMeta = useFactionMeta(card?.attacker)
+  const defenderMeta = useFactionMeta(card?.defender)
+
   useEffect(() => {
     if (!card) {
       return undefined
@@ -84,8 +90,8 @@ export function BattleResultCard({ card, onClose }: BattleResultCardProps) {
     return <AnimatePresence />
   }
 
-  const attackerGlow = factionById[card.attacker].glow
-  const defenderGlow = factionById[card.defender].glow
+  const attackerGlow = attackerMeta?.glow ?? '#8fcaff'
+  const defenderGlow = defenderMeta?.glow ?? '#8fcaff'
 
   return (
     <AnimatePresence mode="wait">
@@ -127,7 +133,7 @@ export function BattleResultCard({ card, onClose }: BattleResultCardProps) {
                 BATTLE RESULT
               </div>
               <h3 className="mt-1 text-lg font-bold tracking-0 text-[color:var(--text-primary)]">
-                {factionById[card.attacker].name} / {factionById[card.defender].name}
+                {attackerMeta?.name ?? card.attacker} / {defenderMeta?.name ?? card.defender}
               </h3>
               <div className="mt-1 text-[0.62rem] uppercase tracking-[0.16em] text-[color:rgba(196,228,255,0.58)]">
                 REGION / {card.regionId ?? 'BORDER'}

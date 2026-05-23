@@ -1,7 +1,6 @@
-import { useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { factionById } from '@/mock/factions'
-import type { FactionId, FactionState, GameEvent } from '@/mock/types'
+import { factionMetaStore } from '@/store/factionMetaStore'
+import type { FactionId, FactionState, GameEvent } from '@/types'
 import { useGameStore } from '@/store/gameStore'
 
 type RankingRow = {
@@ -76,7 +75,12 @@ function rankByPower(items: Array<{ id: FactionId; totalPower: number }>) {
   )
 }
 
-function createRankingRows(factions: FactionState[], events: GameEvent[], epochId: number): RankingRow[] {
+function createRankingRows(
+  factions: FactionState[],
+  events: GameEvent[],
+  epochId: number,
+  metaById: ReturnType<typeof factionMetaStore.getState>['byId'],
+): RankingRow[] {
   const epochEvents = events.filter((event) => event.epoch === epochId)
   const currentRanks = rankByPower(factions)
   const previousPowers = factions.map((faction) => ({
@@ -93,7 +97,7 @@ function createRankingRows(factions: FactionState[], events: GameEvent[], epochI
 
       return {
         id: faction.id,
-        name: factionById[faction.id].name,
+        name: metaById[faction.id]?.name ?? faction.id,
         totalPower: faction.totalPower,
         previousRank,
         currentRank,
@@ -108,7 +112,8 @@ export function RankingDelta() {
   const epochId = useGameStore((state) => state.epoch.id)
   const factions = useGameStore((state) => state.factions)
   const events = useGameStore((state) => state.events)
-  const rows = useMemo(() => createRankingRows(factions, events, epochId), [epochId, events, factions])
+  const factionMetaById = factionMetaStore((state) => state.byId)
+  const rows = createRankingRows(factions, events, epochId, factionMetaById)
   const maxPower = Math.max(1, ...rows.map((row) => row.totalPower))
 
   return (

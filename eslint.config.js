@@ -19,4 +19,23 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: ['src/mock/**', 'src/types/**', 'src/**/__tests__/**'],
+    rules: {
+      'no-restricted-imports': ['warn', {
+        paths: [
+          {
+            name: '@/mock/types',
+            message: "Types moved to '@/types'.",
+          },
+          {
+            name: '@/mock/factions',
+            importNames: ['FactionId', 'FactionMeta', 'SpeechStyle', 'SpeechStyleId'],
+            message: "Faction types moved to '@/types/faction'. Keep only fixture data imports from '@/mock/factions'.",
+          },
+        ],
+      }],
+    },
+  },
 ])

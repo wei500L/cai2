@@ -1,8 +1,9 @@
 import type { CSSProperties } from 'react'
 import clsx from 'clsx'
 import { motion } from 'framer-motion'
-import { factionById, type FactionId } from '@/mock/factions'
-import type { EventKind, GameEvent } from '@/mock/types'
+import { factionMetaStore } from '@/store/factionMetaStore'
+import type { FactionId } from '@/types/faction'
+import type { EventKind, GameEvent } from '@/types'
 import { factionTokens, resolveFactionId } from '@/components/hudTheme'
 import { EventBadge } from './EventBadge'
 
@@ -24,6 +25,12 @@ const kindLabels: Record<EventKind, string> = {
   ceasefire: '停火',
   betrayal: '背叛',
   battle: '战斗',
+  invasion: '入侵',
+  siege: '围城',
+  bombing: '轰炸',
+  naval_assault: '海袭',
+  uprising: '起义',
+  nuclear_strike: '核打击',
   economy: '经济',
   intel: '情报',
   ai_thinking: '思考',
@@ -42,6 +49,12 @@ const kindIcons: Record<EventKind, string> = {
   ceasefire: 'C',
   betrayal: 'X',
   battle: 'B',
+  invasion: 'V',
+  siege: 'G',
+  bombing: '*',
+  naval_assault: 'W',
+  uprising: 'U',
+  nuclear_strike: 'K',
   economy: 'E',
   intel: 'I',
   ai_thinking: 'H',
@@ -49,12 +62,12 @@ const kindIcons: Record<EventKind, string> = {
   phase_change: 'P',
 }
 
-function getFactionLabel(id?: FactionId) {
-  return id ? factionById[id].name : null
+function getFactionLabel(id: FactionId | undefined | null, metaById: ReturnType<typeof factionMetaStore.getState>['byId']) {
+  return id ? metaById[id]?.name ?? id : null
 }
 
-function getFactionShortName(id?: FactionId) {
-  const label = getFactionLabel(id)
+function getFactionShortName(id: FactionId | undefined | null, metaById: ReturnType<typeof factionMetaStore.getState>['byId']) {
+  const label = getFactionLabel(id, metaById)
   return label ? label.slice(0, 1) : 'SYS'
 }
 
@@ -87,8 +100,9 @@ function getPriorityFrame(event: GameEvent, factionGlow: string, factionShadow: 
 export function EventItem({ event, selected, relativeTime, onFocus }: EventItemProps) {
   const factionId = getEventFaction(event)
   const faction = factionTokens[factionId]
-  const actorName = getFactionLabel(event.actor)
-  const targetName = getFactionLabel(event.target)
+  const factionMetaById = factionMetaStore((state) => state.byId)
+  const actorName = getFactionLabel(event.actor, factionMetaById)
+  const targetName = getFactionLabel(event.target, factionMetaById)
   const narrativeHint =
     typeof event.payload.narrative_hint === 'string' ? event.payload.narrative_hint.trim() : ''
   const frame = getPriorityFrame(event, faction.glow, faction.shadow)
@@ -164,7 +178,7 @@ export function EventItem({ event, selected, relativeTime, onFocus }: EventItemP
               }}
               title={actorName ?? targetName ?? '系统'}
             >
-              {getFactionShortName(event.actor ?? event.target)}
+              {getFactionShortName(event.actor ?? event.target, factionMetaById)}
             </div>
             <span className="border border-[color:rgba(255,255,255,0.13)] bg-[color:rgba(0,0,0,0.42)] px-1.5 py-0.5 font-hud text-[0.52rem] uppercase tracking-[0.14em] text-[color:rgba(196,228,255,0.78)]">
               {kindLabels[event.kind]}

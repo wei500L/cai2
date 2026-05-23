@@ -4,12 +4,14 @@ export type ConnectionDebugSnapshot = {
   lastInboundSeq: number
   queueDepth: number
   wsUrl: string
+  mockEventEmittedCount: number
 }
 
 let snapshot: ConnectionDebugSnapshot = {
   lastInboundSeq: 0,
   queueDepth: 0,
   wsUrl: '',
+  mockEventEmittedCount: 0,
 }
 
 const listeners = new Set<() => void>()
@@ -17,6 +19,12 @@ const listeners = new Set<() => void>()
 export function setConnectionDebugSnapshot(next: Partial<ConnectionDebugSnapshot>) {
   snapshot = { ...snapshot, ...next }
   listeners.forEach((listener) => listener())
+}
+
+export function incrementMockEventEmittedCount() {
+  setConnectionDebugSnapshot({
+    mockEventEmittedCount: snapshot.mockEventEmittedCount + 1,
+  })
 }
 
 export function useConnectionDebugSnapshot() {

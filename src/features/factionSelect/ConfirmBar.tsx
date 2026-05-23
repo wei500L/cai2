@@ -2,7 +2,7 @@ import { GlowPanel } from '@/components/GlowPanel'
 import { PixelButton } from '@/components/PixelButton'
 import { ActionDispatcher } from '@/protocol/dispatcher'
 import { useGameStore } from '@/store/gameStore'
-import type { FactionMeta } from '@/mock/factions'
+import type { FactionMeta } from '@/types/faction'
 
 type ConfirmBarProps = {
   selectedFaction: FactionMeta | null

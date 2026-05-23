@@ -1,4 +1,4 @@
-import type { MapRegion } from '@/mock/types'
+import type { MapRegion } from '@/types'
 
 export function haversineDistance(
   origin: [number, number],

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import type { GameEvent } from '@/mock/types'
+import type { GameEvent } from '@/types'
 import { useGameStore } from '@/store/gameStore'
 
 const narrationKinds = new Set<GameEvent['kind']>([

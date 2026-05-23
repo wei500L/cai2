@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
-import { factionById } from '@/mock/factions'
 import { SYSTEM_NARRATION_TEMPLATES } from '@/mock/aiTemplates'
-import type { FactionId, FactionState, GameEvent } from '@/mock/types'
+import type { FactionId, FactionState, GameEvent } from '@/types'
+import { factionMetaStore } from '@/store/factionMetaStore'
 import { useGameStore } from '@/store/gameStore'
 
 const romanNumerals = ['', 'I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII', 'IX', 'X']
@@ -11,8 +11,8 @@ function toRoman(value: number) {
   return romanNumerals[value] ?? String(value)
 }
 
-function getFactionName(id?: FactionId) {
-  return id ? factionById[id].name : '无名势力'
+function getFactionName(id: FactionId | undefined, metaById: ReturnType<typeof factionMetaStore.getState>['byId']) {
+  return id ? metaById[id]?.name ?? id : '无名势力'
 }
 
 function weakestFaction(factions: FactionState[]) {
@@ -27,7 +27,12 @@ function getTemplateIndex(epochId: number, eventCount: number, warCount: number,
   return Math.abs(epochId * 17 + eventCount * 7 + warCount * 5 + betrayalCount * 3)
 }
 
-function buildNarration(epochId: number, factions: FactionState[], events: GameEvent[]) {
+function buildNarration(
+  epochId: number,
+  factions: FactionState[],
+  events: GameEvent[],
+  metaById: ReturnType<typeof factionMetaStore.getState>['byId'],
+) {
   const epochEvents = events.filter((event) => event.epoch === epochId)
   const warCount = epochEvents.filter((event) => event.kind === 'battle').length
   const betrayalCount = epochEvents.filter((event) => event.kind === 'betrayal').length
@@ -40,8 +45,8 @@ function buildNarration(epochId: number, factions: FactionState[], events: GameE
   return template
     .replaceAll('{epoch}', String(epochId))
     .replaceAll('{epochRoman}', toRoman(epochId))
-    .replaceAll('{fallenName}', getFactionName(weakest?.id))
-    .replaceAll('{topFactionName}', getFactionName(strongest?.id))
+    .replaceAll('{fallenName}', getFactionName(weakest?.id, metaById))
+    .replaceAll('{topFactionName}', getFactionName(strongest?.id, metaById))
     .replaceAll('{warCount}', String(warCount))
     .replaceAll('{betrayalCount}', String(betrayalCount))
     .replaceAll('{majorEvent}', majorEvent?.narration ?? '沉默的边境仍在等待下一次裁决')
@@ -51,7 +56,8 @@ export function AINarration() {
   const epochId = useGameStore((state) => state.epoch.id)
   const factions = useGameStore((state) => state.factions)
   const events = useGameStore((state) => state.events)
-  const narration = useMemo(() => buildNarration(epochId, factions, events), [epochId, events, factions])
+  const factionMetaById = factionMetaStore((state) => state.byId)
+  const narration = buildNarration(epochId, factions, events, factionMetaById)
 
   return <TypewriterNarration key={narration} narration={narration} />
 }

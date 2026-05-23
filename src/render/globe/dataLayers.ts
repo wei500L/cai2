@@ -1,4 +1,4 @@
-import type { FactionId } from '@/mock/factions'
+import type { FactionId } from '@/types/faction'
 import type { DiplomaticArc, Ripple } from '@/protocol/types'
 import styles from './labels.module.css'
 

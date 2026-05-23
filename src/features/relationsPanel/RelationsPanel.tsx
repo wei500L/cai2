@@ -8,8 +8,9 @@ import { HoloDivider } from '@/components/HoloDivider'
 import { LoadingHologram } from '@/components/LoadingHologram'
 import { PixelButton } from '@/components/PixelButton'
 import { FactionDetailPanel } from '@/features/factionSelect/FactionDetailPanel'
-import { factionById, type FactionId } from '@/mock/factions'
-import type { TreatyKind } from '@/mock/types'
+import { factionMetaStore } from '@/store/factionMetaStore'
+import type { FactionId } from '@/types/faction'
+import type { TreatyKind } from '@/types'
 import { useGameStore } from '@/store/gameStore'
 import { useUIStore } from '@/store/uiStore'
 import { getPhaseLabel, getPhaseUIConfig } from '@/features/phaseSystem/PhaseStateMachine'
@@ -82,6 +83,7 @@ export function RelationsPanel({
   const factions = useGameStore((state) => state.factions)
   const relationships = useGameStore((state) => state.relationships)
   const actorId = selectedFactionId ?? 'starlight'
+  const factionMetaById = factionMetaStore((state) => state.byId)
   const setMapFocus = useUIStore((state) => state.setMapFocus)
   const setFocusedPanel = useUIStore((state) => state.setFocusedPanel)
   const setFocusToast = useUIStore((state) => state.setFocusToast)
@@ -127,14 +129,14 @@ export function RelationsPanel({
   const focusFaction = useCallback(
     (factionId: FactionId) => {
       setMapFocus({ factionId })
-      setFocusToast(`已聚焦 ${factionById[factionId].name}`)
+      setFocusToast(`已聚焦 ${factionMetaById[factionId]?.name ?? factionId}`)
     },
-    [setFocusToast, setMapFocus],
+    [factionMetaById, setFocusToast, setMapFocus],
   )
 
   const runMenuAction = useCallback(
     (kind: 'speech' | 'private' | 'treaty' | 'intel', factionId: FactionId) => {
-      const factionName = factionById[factionId].name
+      const factionName = factionMetaById[factionId]?.name ?? factionId
 
       setFocusedPanel('bottom')
       setCommandTerminalDraft({
@@ -153,10 +155,10 @@ export function RelationsPanel({
       })
       setMenu(null)
     },
-    [setCommandTerminalDraft, setFocusedPanel],
+    [factionMetaById, setCommandTerminalDraft, setFocusedPanel],
   )
 
-  const modalFaction = modalFactionId ? factionById[modalFactionId] : null
+  const modalFaction = modalFactionId ? factionMetaById[modalFactionId] ?? null : null
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -200,7 +202,7 @@ export function RelationsPanel({
                   onClick={() => focusFaction(row.factionId)}
                 >
                   <div className="truncate font-hud text-[0.54rem] tracking-[0.08em] text-[color:rgba(196,228,255,0.72)]">
-                    {factionById[row.factionId].name}
+                    {factionMetaById[row.factionId]?.name ?? row.factionId}
                   </div>
                   <div className="mt-1 h-1 bg-[color:rgba(255,255,255,0.08)]">
                     <div
@@ -227,7 +229,7 @@ export function RelationsPanel({
               势力关系
             </div>
             <div className="mt-1 truncate text-[0.56rem] tracking-[0.14em] text-[color:rgba(196,228,255,0.42)]">
-              {factionById[actorId].name} 视角
+              {factionMetaById[actorId]?.name ?? actorId} 视角
             </div>
           </div>
           <div className="flex flex-none items-center gap-2">

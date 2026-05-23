@@ -62,23 +62,31 @@
 | reconnect.snapshot | `ReconnectSnapshotMessage.p`: `room_id`, `server_time_ms`, `full_state{room,current_turn,factions,regions(neighbors),relationships,treaties,recent_events,recent_messages,ai_thinking_state,border_tension,winner,final_narration}`, `seq` | `ReconnectSnapshotPayload`: `room_id`, `server_time_ms`, `full_state`, `seq` | 无；后端以 `dict[str, Any]` 承载完整状态，`recent_events` 近 100 条，`recent_messages` 近 50 条，snapshot 清洗 `internal_thought`，`border_tension.visual_state` 支持 `calm/watch/tense/critical` | 是 |
 | error.message | `ErrorMessage.p`: `reason`, `error_code`, `request_id?` | `ErrorMessagePayload`: `reason`, `error_code`, `request_id=None` | 无 | 是 |
 
-## 4. 枚举字面量对齐
+## 4. v1.0-mock-to-real 类型抽离差异表
 
-| 枚举 | 前端字面量 | 后端字面量 | 是否一致 | 备注 |
+说明：前端业务消费类型已抽到 `src/types/`，`src/mock/types.ts` 仅做兼容 re-export。以下按“后端为准、前端跟进”原则做字面量审计。
+
+| 枚举名 | 后端字面量 | 前端 src/types 字面量 | 是否一致 | 修复方向 |
 | --- | --- | --- | --- | --- |
-| FactionId | `ironCrown`, `starlight`, `emerald`, `ashen`, `voidChurch`, `aurora`, `magma`, `darkTide` | `ironCrown`, `starlight`, `emerald`, `ashen`, `voidChurch`, `aurora`, `magma`, `darkTide` | 是 | 八势力一致。 |
-| GamePhase | `observe`, `action`, `resolve`, `arbitrate` | `observe`, `action`, `resolve`, `arbitrate` | 是 | 四阶段一致。 |
-| ArbitratePhase | `battle`, `epic`, `summary` | `battle`, `epic`, `summary` | 是 | 三仲裁阶段一致。 |
-| TreatyKind | `non_aggression`, `trade`, `alliance`, `ceasefire` | `non_aggression`, `trade`, `alliance`, `ceasefire` | 是 | 四条约类型一致。 |
-| EventPriority | `P0`, `P1`, `P2` | `P0`, `P1`, `P2` | 是 | 三优先级一致。 |
-| EventKind | `speech`, `private`, `declare_war`, `alliance`, `trade`, `non_aggression`, `ceasefire`, `betrayal`, `battle`, `invasion`, `siege`, `bombing`, `naval_assault`, `uprising`, `nuclear_strike`, `economy`, `intel`, `phase_change`, `ai_thinking`, `ai_reaction`, `narration` | `speech`, `private`, `declare_war`, `alliance`, `trade`, `non_aggression`, `ceasefire`, `betrayal`, `battle`, `invasion`, `siege`, `bombing`, `naval_assault`, `uprising`, `nuclear_strike`, `economy`, `intel`, `phase_change`, `ai_thinking`, `ai_reaction`, `narration` | 部分 | 后端先补军事子类用于 resolve.event.explosion 分流；前端 union 仍待同步。 |
-| RelationshipStatus | `hostile`, `wary`, `neutral`, `friendly`, `allied` | `hostile`, `wary`, `neutral`, `friendly`, `allied` | 是 | 五关系状态一致。 |
+| FactionId | `ironCrown`, `starlight`, `emerald`, `ashen`, `voidChurch`, `aurora`, `magma`, `darkTide` | `ironCrown`, `starlight`, `emerald`, `ashen`, `voidChurch`, `aurora`, `magma`, `darkTide` | 是 | 无。 |
+| GamePhase | `observe`, `action`, `resolve`, `arbitrate` | `observe`, `action`, `resolve`, `arbitrate` | 是 | 无。 |
+| ArbitratePhase | `battle`, `epic`, `summary` | `battle`, `epic`, `summary` | 是 | 无。 |
+| TreatyKind | `non_aggression`, `trade`, `alliance`, `ceasefire` | `non_aggression`, `trade`, `alliance`, `ceasefire` | 是 | 无。 |
+| RelationshipStatus | `hostile`, `wary`, `neutral`, `friendly`, `allied` | `hostile`, `wary`, `neutral`, `friendly`, `allied` | 是 | 无。 |
+| EventPriority | `P0`, `P1`, `P2` | `P0`, `P1`, `P2` | 是 | 无。 |
+| EventKind | `speech`, `private`, `declare_war`, `alliance`, `trade`, `non_aggression`, `ceasefire`, `betrayal`, `battle`, `invasion`, `siege`, `bombing`, `naval_assault`, `uprising`, `nuclear_strike`, `economy`, `intel`, `phase_change`, `ai_thinking`, `ai_reaction`, `narration` | `speech`, `private`, `declare_war`, `alliance`, `trade`, `non_aggression`, `ceasefire`, `betrayal`, `battle`, `invasion`, `siege`, `bombing`, `naval_assault`, `uprising`, `nuclear_strike`, `economy`, `intel`, `phase_change`, `ai_thinking`, `ai_reaction`, `narration` | 是 | 已按后端补齐战争事件字面量，不做 alias。 |
+
+### 协议载荷补充
+
+| 载荷 | 后端 phase 字面量 | 前端 phase 字面量 | 是否一致 | 修复方向 |
+| --- | --- | --- | --- | --- |
+| PhaseChangePayload.phase | `observe`, `action`, `resolve`, `arbitrate` | `observe`, `action`, `resolve`, `arbitrate` | 是 | 无。 |
 
 ## 5. 差异清单
 
 | # | 文件名 + 行号 | 前端值 | 后端值 | 推荐修复方向 | 状态 |
 | --- | --- | --- | --- | --- | --- |
-| 1 | `src/protocol/types.ts:227` / `app/protocol/outgoing.py:150` | `AIReactionMessage.p` 包含 `room_id`, `event`, `private_message?`, `faction_id`, `reaction`, `target_faction?` | `AIReactionPayload` 原先缺少 `event` 与 `private_message`，只有 `room_id`, `faction_id`, `reaction`, `target_faction?` | 后端跟前端；`ai.reaction` 应携带可进入事件流的 `event`，并允许通用事件载荷的可选 `private_message` | 已修复，后端新增 `event: dict[str, Any]`、`private_message: dict[str, Any] \| None` 并补协议测试 |
+| 1 | `src/types/event.ts` / `app/domain/enums.py:49` | 抽离前 `EventKind` 只有 `speech`, `private`, `declare_war`, `alliance`, `trade`, `non_aggression`, `ceasefire`, `betrayal`, `battle`, `economy`, `intel`, `phase_change`, `ai_thinking`, `ai_reaction`, `narration` | 后端 `EventKind` 还包括 `invasion`, `siege`, `bombing`, `naval_assault`, `uprising`, `nuclear_strike` | 以后端为准，前端补齐缺失字面量，不新增后端值，不做别名 | 已修复 |
 
 ## 6. 修复 PR 摘要（待执行）
 
@@ -160,3 +168,8 @@
 | `severity` | `number` | `float` | 否 | 视觉强度，可由后端补充。 |
 
 说明：前端 `mapStore.scorchedRegions` 以 `Map<hex_id, ScorchedEntry>` 形式消费该增量，并在 `turn.begin` 通过 `advanceScorched(turn)` 清理到期条目。
+
+## 11. Dev 连接诊断
+
+- 前端 dev 运行态新增 `REAL WS` / `MOCK MODE` 横幅与连接失败面板；真实 ws 失败不自动回退 mock。
+- `mockEventEmittedCount` 是前端 dev-only 诊断计数，不进入 WebSocket wire envelope，也不要求后端新增字段。

@@ -3,4 +3,4 @@ export type {
   RelationshipStatus,
   RelationshipValue,
   TreatyKind,
-} from '@/mock/types'
+} from '@/types'

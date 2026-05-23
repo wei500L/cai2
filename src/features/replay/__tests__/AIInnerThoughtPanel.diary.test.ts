@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import type { ReplayTimelineNode, AIInnerThought } from '@/mock/replay'
-import type { FactionId } from '@/mock/factions'
+import type { ReplayTimelineNode, AIInnerThought } from '@/types/replay'
+import type { FactionId } from '@/types/faction'
 import type { DiaryEntry } from '@/protocol/types'
 import { selectReplayThoughts } from '../AIInnerThoughtPanel'
 

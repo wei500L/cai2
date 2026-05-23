@@ -1,6 +1,6 @@
 import { create } from 'zustand'
-import type { FactionId } from '@/mock/factions'
-import type { TreatyKind } from '@/mock/types'
+import type { FactionId } from '@/types/faction'
+import type { TreatyKind } from '@/types'
 import type { CommandMode } from '@/features/commandTerminal/types'
 import type { HudMode } from '@/features/phaseSystem/PhaseStateMachine'
 import { globeQualityPresets } from '@/render/globe/stylePresets'
@@ -52,6 +52,7 @@ type UIStoreState = {
   eventStreamScrollMode: EventStreamScrollMode
   connectionStatus: TransportStatus
   lastSyncAt: number
+  lastHeartbeatTs: number
   connectionFailureReason: string | null
   gameFinishedBanner: GameFinishedBanner | null
   gameFinishedRedirectAtMs: number | null
@@ -89,6 +90,7 @@ type UIStoreState = {
   setEventStreamScrollMode: (mode: EventStreamScrollMode) => void
   setConnectionStatus: (status: TransportStatus) => void
   setLastSyncAt: (value: number) => void
+  setLastHeartbeatTs: (value: number) => void
   setConnectionFailureReason: (reason: string | null) => void
   setGameFinishedBanner: (banner: GameFinishedBanner) => void
   clearGameFinishedBanner: () => void
@@ -143,6 +145,7 @@ export const useUIStore = create<UIStoreState>((set) => ({
   eventStreamScrollMode: 'auto',
   connectionStatus: 'idle',
   lastSyncAt: 0,
+  lastHeartbeatTs: 0,
   connectionFailureReason: null,
   gameFinishedBanner: null,
   gameFinishedRedirectAtMs: null,
@@ -272,6 +275,9 @@ export const useUIStore = create<UIStoreState>((set) => ({
   },
   setLastSyncAt: (lastSyncAt) => {
     set({ lastSyncAt })
+  },
+  setLastHeartbeatTs: (lastHeartbeatTs) => {
+    set({ lastHeartbeatTs })
   },
   setConnectionFailureReason: (connectionFailureReason) => {
     set({ connectionFailureReason })

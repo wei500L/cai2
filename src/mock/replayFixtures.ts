@@ -1,6 +1,7 @@
-import { buildReplay, type ReplayData } from '@/mock/replay'
+import { buildReplay } from '@/mock/replay'
+import type { ReplayData } from '@/types/replay'
 import { createInitialState } from '@/mock/initialState'
-import type { GameEvent, PrivateMessage } from '@/mock/types'
+import type { GameEvent, PrivateMessage } from '@/types'
 
 const fixtureNow = 1_820_000_000_000
 

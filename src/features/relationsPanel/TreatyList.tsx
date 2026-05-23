@@ -1,6 +1,7 @@
 import { useMemo } from 'react'
-import { factionById, type FactionId } from '@/mock/factions'
-import type { TreatyKind } from '@/mock/types'
+import { factionMetaStore } from '@/store/factionMetaStore'
+import type { FactionId } from '@/types/faction'
+import type { TreatyKind } from '@/types'
 import { useGameStore } from '@/store/gameStore'
 import { getTreatyTurnsLeft, treatyIcons, treatyLabels } from './relationVisuals'
 
@@ -21,6 +22,7 @@ function pairKey(from: FactionId, to: FactionId, kind: TreatyKind) {
 export function TreatyList() {
   const relationships = useGameStore((state) => state.relationships)
   const turn = useGameStore((state) => state.epoch.turn)
+  const factionMetaById = factionMetaStore((state) => state.byId)
   const groups = useMemo(() => {
     const unique = new Map<string, TreatyEntry>()
 
@@ -72,7 +74,7 @@ export function TreatyList() {
                   className="grid grid-cols-[minmax(0,1fr)_3.3rem] items-center gap-2 border border-[color:rgba(255,255,255,0.07)] bg-black/20 px-2 py-2"
                 >
                   <div className="min-w-0 truncate text-[0.68rem] text-[color:var(--text-primary)]">
-                    {factionById[entry.from].name} / {factionById[entry.to].name}
+                    {factionMetaById[entry.from]?.name ?? entry.from} / {factionMetaById[entry.to]?.name ?? entry.to}
                   </div>
                   <div className="text-right font-hud text-[0.58rem] tracking-[0.1em] text-[color:var(--text-warn)]">
                     {entry.turnsLeft} 回合

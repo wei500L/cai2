@@ -1,5 +1,6 @@
 import { AI_PRIVATE_TEMPLATES, AI_SPEECH_TEMPLATES } from '@/mock/aiTemplates'
-import { factionById, type FactionId } from '@/mock/factions'
+import { factionById } from '@/mock/factions'
+import type { FactionId } from '@/types/faction'
 import { TURNS_PER_EPOCH } from '@/mock/gameState'
 import type {
   EventKind,
@@ -10,70 +11,43 @@ import type {
   MockGameWorldState,
   PrivateMessage,
   RelationshipStatus,
-} from '@/mock/types'
+} from '@/types'
+import type {
+  AIInnerThought,
+  DeceptionStat,
+  FactionCurve,
+  KeyMoment,
+  RelationshipMatrix,
+  RelationshipSnapshot,
+  ReplayData,
+  ReplayTimelineNode,
+} from '@/types/replay'
 import { factionIds } from '@/components/hudTheme'
 
 type ReplaySourceState = MockGameWorldState & { selectedFactionId?: FactionId | null }
 
-export type ReplayTimelineNode = {
-  epoch: number
-  turn: number
-  phase: GamePhase
-  keyEventIds: string[]
-}
-
-export type AIInnerThought = {
-  factionId: FactionId
-  epoch: number
-  turn: number
-  text: string
-}
-
-export type FactionCurve = {
-  factionId: FactionId
-  points: Array<{ epoch: number; turn: number; totalPower: number }>
-}
-
-export type RelationshipMatrix = Record<FactionId, Record<FactionId, RelationshipStatus>>
-
-export type RelationshipSnapshot = {
-  epoch: number
-  matrix: RelationshipMatrix
-}
-
-export type DeceptionStat = {
-  factionId: FactionId
-  lies: number
-  exposed: number
-  successRate: number
-}
-
-export type KeyMoment = {
-  id: string
-  epoch: number
-  turn: number
-  title: string
-  caption: string
-  eventId: string
-  factionId?: FactionId
-}
-
-export type ReplayData = {
-  timeline: ReplayTimelineNode[]
-  privateMessages: PrivateMessage[]
-  aiInnerThoughts: AIInnerThought[]
-  factionCurves: FactionCurve[]
-  relationshipSnapshots: RelationshipSnapshot[]
-  deceptionStats: DeceptionStat[]
-  events: GameEvent[]
-  keyMoments: KeyMoment[]
-}
+export type {
+  AIInnerThought,
+  DeceptionStat,
+  FactionCurve,
+  KeyMoment,
+  RelationshipMatrix,
+  RelationshipSnapshot,
+  ReplayData,
+  ReplayTimelineNode,
+} from '@/types/replay'
 
 type ReplayEventCategory = 'declare_war' | 'elimination' | 'betrayal' | 'alliance'
 
 const keyKinds = new Set<EventKind>([
   'declare_war',
   'battle',
+  'invasion',
+  'siege',
+  'bombing',
+  'naval_assault',
+  'uprising',
+  'nuclear_strike',
   'betrayal',
   'alliance',
   'trade',
@@ -412,7 +386,7 @@ function buildKeyMoments(events: GameEvent[]): KeyMoment[] {
       epoch: event.epoch,
       turn: event.turn,
       eventId: event.id,
-      factionId: event.actor,
+      factionId: event.actor ?? undefined,
       title: `名场面 ${String(index + 1).padStart(2, '0')}`,
       caption: event.narration,
     }))

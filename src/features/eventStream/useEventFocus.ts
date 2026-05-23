@@ -1,6 +1,6 @@
 import { useCallback } from 'react'
-import type { FactionId } from '@/mock/factions'
-import type { GameEvent } from '@/mock/types'
+import type { FactionId } from '@/types/faction'
+import type { GameEvent } from '@/types'
 import { useUIStore } from '@/store/uiStore'
 
 function getPayloadRegionId(payload: Record<string, unknown>) {

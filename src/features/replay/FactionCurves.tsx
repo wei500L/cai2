@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 import { factionTokens } from '@/components/hudTheme'
-import type { FactionCurve } from '@/mock/replay'
+import type { FactionCurve } from '@/types/replay'
 import { getFactionName } from './replayViewUtils'
 
 type FactionCurvesProps = {

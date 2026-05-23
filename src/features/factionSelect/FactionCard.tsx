@@ -2,7 +2,7 @@ import { forwardRef, useMemo, useState } from 'react'
 import type { ButtonHTMLAttributes, CSSProperties } from 'react'
 import clsx from 'clsx'
 import { motion } from 'framer-motion'
-import type { FactionMeta } from '@/mock/factions'
+import type { FactionMeta } from '@/types/faction'
 
 type FactionCardProps = Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onClick'> & {
   faction: FactionMeta
@@ -255,7 +255,7 @@ export const FactionCard = forwardRef<HTMLButtonElement, FactionCardProps>(funct
         </div>
 
         <div className="mt-auto flex flex-wrap gap-2">
-          {faction.triggerWords.map((word) => (
+          {faction.trigger_words.map((word) => (
             <span
               key={word}
               className="border px-2 py-1 font-hud text-[0.62rem] uppercase tracking-[0.18em]"

@@ -1,5 +1,5 @@
-import type { FactionId } from '@/mock/factions'
-import type { TreatyKind } from '@/mock/types'
+import type { FactionId } from '@/types/faction'
+import type { TreatyKind } from '@/types'
 
 export type CommandMode = 'speech' | 'private' | 'treaty' | 'military' | 'intel'
 

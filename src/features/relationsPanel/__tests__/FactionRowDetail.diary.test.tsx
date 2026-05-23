@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { renderToStaticMarkup } from 'react-dom/server'
-import { factionById } from '@/mock/factions'
-import type { FactionId } from '@/mock/factions'
-import type { FactionState } from '@/mock/types'
+import { factionMetaFixtures } from '@/mock/factions'
+import type { FactionId } from '@/types/faction'
+import type { FactionState } from '@/types'
 import type { DiaryEntry } from '@/protocol/types'
 import { gameStoreApi, useGameStore } from '@/store/gameStore'
 import { FactionRowDetail, formatDiaryPreview } from '../FactionRowDetail'
@@ -21,6 +21,8 @@ function factionState(): FactionState {
 }
 
 describe('FactionRowDetail diary reveal', () => {
+  const ironCrownMeta = factionMetaFixtures.find((faction) => faction.id === 'ironCrown')
+
   beforeEach(() => {
     useGameStore.getState().initGame()
     gameStoreApi.setState({
@@ -32,7 +34,7 @@ describe('FactionRowDetail diary reveal', () => {
   it('shows the fog placeholder before reveal', () => {
     const markup = renderToStaticMarkup(
       <FactionRowDetail
-        faction={factionById.ironCrown}
+        faction={ironCrownMeta ?? factionMetaFixtures[0]}
         factionState={factionState()}
         treaties={[]}
         isSelf={false}

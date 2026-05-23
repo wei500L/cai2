@@ -1,5 +1,5 @@
 import type { CommandSubmission, SubmitSpeechResult } from '@/features/commandTerminal/types'
-import type { FactionId } from '@/mock/factions'
+import type { FactionId } from '@/types/faction'
 import { gameStoreApi } from '@/store/gameStore'
 import type { OutgoingMessage } from './types'
 import type { Transport } from './transport'

@@ -1,4 +1,4 @@
-import type { FactionId } from '@/mock/factions'
+import type { FactionId } from '@/types/faction'
 
 export type AITemplateParams = {
   actorName: string

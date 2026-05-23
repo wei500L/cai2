@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 import { factionTokens } from '@/components/hudTheme'
-import type { KeyMoment } from '@/mock/replay'
+import type { KeyMoment } from '@/types/replay'
 import { formatReplayTime, getFactionName } from './replayViewUtils'
 
 type KeyMomentsProps = {

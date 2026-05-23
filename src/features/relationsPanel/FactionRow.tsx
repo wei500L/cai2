@@ -2,10 +2,12 @@ import { memo, useMemo, useState } from 'react'
 import type { CSSProperties, MouseEvent } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import clsx from 'clsx'
+import { FactionMetaPlaceholder } from '@/components/FactionMetaPlaceholder'
 import { ScrollNumber } from '@/components/ScrollNumber'
 import { StatusBadge } from '@/components/StatusBadge'
-import { factionById, type FactionId } from '@/mock/factions'
-import type { Relationship, TreatyKind } from '@/mock/types'
+import { useFactionMeta } from '@/store/factionMetaStore'
+import type { FactionId } from '@/types/faction'
+import type { Relationship, TreatyKind } from '@/types'
 import { useGameStore } from '@/store/gameStore'
 import {
   getRelationStatus,
@@ -70,19 +72,13 @@ function FactionRowComponent({
   const turn = useGameStore((state) => state.epoch.turn)
   const [hovered, setHovered] = useState(false)
   const [pinned, setPinned] = useState(false)
-  const faction = factionById[factionId]
+  const faction = useFactionMeta(factionId)
   const status = getRelationStatus(relationship.value)
   const detailOpen = hovered || pinned
   const treaties = useMemo(
     () => treatyDisplay(relationship.treaties, actorId, factionId, turn),
     [actorId, factionId, relationship.treaties, turn],
   )
-
-  const rowStyle = {
-    '--row-glow': faction.glow,
-    '--row-shadow': faction.shadow,
-    '--row-primary': faction.primary,
-  } as CSSProperties
 
   const handleContextMenu = (event: MouseEvent<HTMLDivElement>) => {
     event.preventDefault()
@@ -96,6 +92,16 @@ function FactionRowComponent({
   if (!factionState) {
     return null
   }
+
+  if (!faction) {
+    return <FactionMetaPlaceholder factionId={factionId} className="min-h-16" />
+  }
+
+  const rowStyle = {
+    '--row-glow': faction.glow,
+    '--row-shadow': faction.shadow,
+    '--row-primary': faction.primary,
+  } as CSSProperties
 
   return (
     <motion.div

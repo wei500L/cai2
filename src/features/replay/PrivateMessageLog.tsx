@@ -1,5 +1,5 @@
 import { factionTokens } from '@/components/hudTheme'
-import type { PrivateMessage } from '@/mock/types'
+import type { PrivateMessage } from '@/types'
 import { formatReplayTime, getFactionName } from './replayViewUtils'
 
 type PrivateMessageLogProps = {

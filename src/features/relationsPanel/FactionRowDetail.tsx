@@ -1,7 +1,6 @@
 import { motion } from 'framer-motion'
-import type { FactionMeta } from '@/mock/factions'
-import { speechStyleDescriptions } from '@/mock/factions'
-import type { FactionState } from '@/mock/types'
+import type { FactionMeta } from '@/types/faction'
+import type { FactionState } from '@/types'
 import type { DiaryEntry } from '@/protocol/types'
 import { useGameStore } from '@/store/gameStore'
 import { metricLabels, treatyIcons, treatyLabels } from './relationVisuals'
@@ -118,7 +117,7 @@ export function FactionRowDetail({
           </span>
           <span className="text-[color:var(--text-primary)]">{faction.archetype}</span>
         </div>
-        <p className="line-clamp-2">{speechStyleDescriptions[faction.speechStyle]}</p>
+        <p className="line-clamp-2">{faction.speech_style_description}</p>
       </div>
 
       <div className="border-t border-[color:rgba(153,51,255,0.16)] pt-2">

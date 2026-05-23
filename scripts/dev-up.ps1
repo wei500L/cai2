@@ -48,16 +48,16 @@ try {
         uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
     }
 
-    Write-Host "Waiting for backend readyz at $BackendUrl/readyz ..."
+    Write-Host "Waiting for backend healthz at $BackendUrl/healthz ..."
     $ready = $false
     for ($i = 0; $i -lt 40; $i++) {
         if ($backendJob.State -ne "Running") {
             Receive-Job $backendJob
-            throw "Backend job exited before readyz passed."
+            throw "Backend job exited before healthz passed."
         }
 
         try {
-            $response = Invoke-WebRequest -Uri "$BackendUrl/readyz" -UseBasicParsing -TimeoutSec 2
+            $response = Invoke-WebRequest -Uri "$BackendUrl/healthz" -UseBasicParsing -TimeoutSec 2
             if ($response.StatusCode -eq 200) {
                 $ready = $true
                 break
@@ -71,10 +71,10 @@ try {
     }
 
     if (-not $ready) {
-        throw "Timed out waiting for backend readyz after 20s."
+        throw "Timed out waiting for backend healthz after 20s."
     }
 
-    Write-Host "Backend ready: $BackendUrl"
+    Write-Host "Backend ready · Frontend will use REAL WS"
     Write-Host "Starting frontend: npm run dev -- --host=127.0.0.1"
     $frontendJob = Start-Job -Name "diplomacy-frontend-dev" -ArgumentList $RootDir -ScriptBlock {
         param($RepoRoot)

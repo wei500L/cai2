@@ -3,14 +3,10 @@ def test_healthz(client) -> None:
 
     assert response.status_code == 200
     body = response.json()
-    assert body == {
-        "status": "ok",
-        "service": "diplomacy-backend",
-        "env": "dev",
-        "ws_path": "/ws",
-        "llm_provider": "mock",
-        "version": "0.1.0",
-    }
+    assert body["ok"] is True
+    assert body["mode"] == "dev"
+    assert body["version"] == "0.1.0"
+    assert isinstance(body["ts"], int)
 
 
 def test_readyz(client) -> None:

@@ -65,10 +65,10 @@ echo "Starting backend: uvicorn app.main:app --host 127.0.0.1 --port 8000 --relo
 uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload &
 BACKEND_PID=$!
 
-echo "Waiting for backend readyz at ${BACKEND_URL}/readyz ..."
+echo "Waiting for backend healthz at ${BACKEND_URL}/healthz ..."
 ready=false
 for _ in {1..40}; do
-  if curl -fsS "${BACKEND_URL}/readyz" >/dev/null 2>&1; then
+  if curl -fsS "${BACKEND_URL}/healthz" >/dev/null 2>&1; then
     ready=true
     break
   fi
@@ -80,11 +80,11 @@ for _ in {1..40}; do
 done
 
 if [ "$ready" != "true" ]; then
-  echo "Timed out waiting for backend readyz after 20s."
+  echo "Timed out waiting for backend healthz after 20s."
   exit 1
 fi
 
-echo "Backend ready: ${BACKEND_URL}"
+echo "Backend ready · Frontend will use REAL WS"
 echo "Starting frontend: npm run dev -- --host=127.0.0.1"
 npm run dev -- --host=127.0.0.1 &
 FRONTEND_PID=$!

@@ -2,8 +2,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import clsx from 'clsx'
 import type { CSSProperties } from 'react'
 import { GlowPanel } from '@/components/GlowPanel'
-import type { FactionMeta } from '@/mock/factions'
-import { speechStyleDescriptions } from '@/mock/factions'
+import type { FactionMeta } from '@/types/faction'
 
 type FactionDetailPanelProps = {
   faction: FactionMeta | null
@@ -122,11 +121,11 @@ export function FactionDetailPanel({ faction }: FactionDetailPanelProps) {
                     AI 发言风格
                   </div>
                   <ShardedText
-                    text={speechStyleDescriptions[faction.speechStyle]}
+                    text={faction.speech_style_description}
                     className="text-[0.9rem] leading-7 text-[color:var(--text-muted)]"
                   />
                   <div className="font-hud text-[0.58rem] uppercase tracking-[0.18em] text-[color:var(--faction-glow)]">
-                    {faction.speechStyle}
+                    {faction.speech_style}
                   </div>
                 </div>
 
@@ -156,7 +155,7 @@ export function FactionDetailPanel({ faction }: FactionDetailPanelProps) {
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <AnimatePresence mode="popLayout" initial={false}>
-                    {faction.triggerWords.map((word, index) => (
+                    {faction.trigger_words.map((word, index) => (
                       <motion.span
                         key={`${faction.id}-${word}`}
                         className="border px-2 py-1 font-hud text-[0.62rem] uppercase tracking-[0.18em] text-[color:var(--text-primary)]"

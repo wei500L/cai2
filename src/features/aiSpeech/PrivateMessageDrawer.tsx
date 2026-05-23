@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react'
 import clsx from 'clsx'
 import { AnimatePresence, motion } from 'framer-motion'
 import { factionTokens } from '@/components/hudTheme'
-import { factionById } from '@/mock/factions'
+import { factionMetaStore } from '@/store/factionMetaStore'
 import { useGameStore } from '@/store/gameStore'
 import { useUIStore } from '@/store/uiStore'
 
@@ -24,6 +24,7 @@ export function PrivateMessageDrawer() {
   const toggleDrawer = useUIStore((state) => state.togglePrivateDrawer)
   const incrementUnread = useUIStore((state) => state.incrementUnreadPrivateCount)
   const clearUnread = useUIStore((state) => state.clearUnreadPrivateCount)
+  const factionMetaById = factionMetaStore((state) => state.byId)
   const seenIds = useRef<Set<string> | null>(null)
   const playerId = selectedFactionId ?? 'starlight'
 
@@ -109,7 +110,7 @@ export function PrivateMessageDrawer() {
                 ) : (
                   visibleMessages.map((message) => {
                     const own = message.from === playerId
-                    const faction = factionById[message.from]
+                    const faction = factionMetaById[message.from]
                     const token = factionTokens[message.from]
                     const style = {
                       '--private-border': token.glow,
@@ -129,7 +130,7 @@ export function PrivateMessageDrawer() {
                           }}
                         >
                           <div className="mb-1 flex items-center justify-between gap-3 text-[0.52rem] uppercase tracking-[0.16em] text-[color:rgba(234,216,255,0.55)]">
-                            <span>{own ? '我方' : faction.name}</span>
+                            <span>{own ? '我方' : faction?.name ?? message.from}</span>
                             <span>{formatTime(message.createdAt)}</span>
                           </div>
                           <p className="break-words text-[0.72rem] leading-5">{message.body}</p>

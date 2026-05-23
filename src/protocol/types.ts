@@ -2,14 +2,18 @@ import type { CommandMode, MilitaryAction, ToneAnalysis } from '@/features/comma
 import type {
   ArbitratePhase,
   FactionId,
+  FactionMeta,
   GameEvent,
   GamePhase,
   MapRegion,
   MockGameWorldState,
   PrivateMessage,
+  RegionEntry,
   Treaty,
   TreatyKind,
-} from '@/mock/types'
+} from '@/types'
+
+export type { RegionEntry } from '@/types'
 
 export type ProtocolVersion = 1
 export type RoomMode = 'solo_1v7' | 'multi_4v4'
@@ -119,24 +123,6 @@ export type ReconnectFullState = {
   border_tension: BorderTensionEntry[]
   winner: FactionId | null
   final_narration: string | null
-}
-
-export type RegionEntry = {
-  id: string
-  owner: FactionId | null
-  resourceValue: number
-  developmentLevel: number
-  elevation: number
-  resistance: number
-  capturedAtTurn: number | null
-  centerLatLng: MapRegion['centerLatLng']
-  lat: number
-  lng: number
-  hex_id: string
-  terrain: MapRegion['terrain']
-  minGarrison: number
-  supplyLines: number
-  neighbors: string[]
 }
 
 export interface WorldGeometryPayload {
@@ -314,6 +300,12 @@ export type RoomSnapshotMessage = Envelope<'room.snapshot', {
   players: RoomPlayerSnapshot[]
   ai_factions: FactionId[]
 }>
+export interface FactionMetaPayload {
+  room_id?: string
+  schema_version?: string
+  factions_meta: FactionMeta[]
+}
+export type RoomFactionsMetaMessage = Envelope<'room.factions_meta', FactionMetaPayload>
 export type RoomPlayerJoinMessage = Envelope<'room.player_join', {
   room_id: string
   player_id: string
@@ -563,6 +555,7 @@ export type IncomingMessage =
   | RoomPlayerJoinMessage
   | RoomPlayerLeaveMessage
   | RoomSnapshotMessage
+  | RoomFactionsMetaMessage
   | RoomPlayerTakeoverMessage
   | RoomPlayerResumeMessage
   | RoomStartMessage

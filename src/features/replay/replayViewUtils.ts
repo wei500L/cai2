@@ -1,6 +1,7 @@
-import { factionById, type FactionId } from '@/mock/factions'
+import { factionMetaStore } from '@/store/factionMetaStore'
+import type { FactionId } from '@/types/faction'
 import { getReplayEventCategory } from '@/mock/replay'
-import type { GameEvent, GamePhase, RelationshipStatus } from '@/mock/types'
+import type { GameEvent, GamePhase, RelationshipStatus } from '@/types'
 
 export const phaseLabels: Record<GamePhase, string> = {
   observe: '观察',
@@ -38,7 +39,7 @@ export function getEventFaction(event?: GameEvent): FactionId {
 }
 
 export function getFactionName(factionId?: FactionId) {
-  return factionId ? factionById[factionId].name : '未知势力'
+  return factionId ? factionMetaStore.getState().byId[factionId]?.name ?? factionId : '未知势力'
 }
 
 export function getMarkerLabel(event?: GameEvent) {

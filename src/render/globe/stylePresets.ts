@@ -1,5 +1,6 @@
-import { factionById, type FactionId } from '@/mock/factions'
-import type { MapRegion } from '@/mock/types'
+import { factionMetaStore } from '@/store/factionMetaStore'
+import type { FactionId } from '@/types/faction'
+import type { MapRegion } from '@/types'
 import type { ScorchedRegionEntry } from '@/store/mapStore'
 import type { MapQuality } from '@/store/uiStore'
 
@@ -67,7 +68,7 @@ export const globeQualityPresets: Record<MapQuality, GlobeQualityPreset> = {
     hexResolution: 4,
     hexAltitudeScale: 1,
     bloomEnabled: true,
-    bloomPostprocessEnabled: false,
+    bloomPostprocessEnabled: true,
     bloomStrength: 1,
     bloomMipmapBlur: false,
     bloomRadius: 0.55,
@@ -84,7 +85,7 @@ export const globeQualityPresets: Record<MapQuality, GlobeQualityPreset> = {
     hexResolution: 4,
     hexAltitudeScale: 1,
     bloomEnabled: true,
-    bloomPostprocessEnabled: false,
+    bloomPostprocessEnabled: true,
     bloomStrength: 1.4,
     bloomMipmapBlur: false,
     bloomRadius: 0.6,
@@ -179,8 +180,8 @@ function resolveCssToken(token: string, fallback: string) {
 }
 
 function resolveFactionColors(factionId: FactionId) {
-  const faction = factionById[factionId]
   const fallback = FALLBACK_FACTION_TONES[factionId]
+  const faction = factionMetaStore.getState().byId[factionId] ?? fallback
   const primary = resolveCssToken(faction.primary, fallback.primary)
   const glow = resolveCssToken(faction.glow, fallback.glow)
   const shadow = resolveCssToken(faction.shadow, fallback.shadow)

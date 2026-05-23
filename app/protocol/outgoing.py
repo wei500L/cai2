@@ -5,6 +5,7 @@ from typing import Annotated, Any, Literal, TypeAlias
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.enums import ArbitratePhase, FactionId, GamePhase, TerrainKind
+from app.domain.faction_meta import FactionMeta
 from app.services.arc_builder import ArcSpec, RippleSpec
 
 
@@ -108,6 +109,18 @@ class RoomStartPayload(OutgoingPayloadModel):
     t: Literal["room.start"] = Field("room.start", exclude=True)
     room_id: str
     initial_state: dict[str, Any]
+
+
+class RoomFactionsMetaPayload(OutgoingPayloadModel):
+    t: Literal["room.factions_meta"] = Field("room.factions_meta", exclude=True)
+    room_id: str
+    schema_version: str = "1.0"
+    factions: list[FactionMeta]
+
+
+class RoomFactionsMetaEvent(BaseEnvelope):
+    t: Literal["room.factions_meta"] = Field("room.factions_meta", exclude=True)
+    p: RoomFactionsMetaPayload
 
 
 class WorldGeometryCellPayload(OutgoingPayloadModel):
@@ -367,6 +380,7 @@ OutgoingMessage: TypeAlias = Annotated[
     | RoomPlayerTakeoverPayload
     | RoomPlayerResumePayload
     | RoomStartPayload
+    | RoomFactionsMetaPayload
     | RoomFinishedPayload
     | PhaseChangePayload
     | TurnBeginPayload

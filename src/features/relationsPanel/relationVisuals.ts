@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
-import type { FactionId } from '@/mock/factions'
-import type { RelationshipStatus, TreatyKind } from '@/mock/types'
+import type { FactionId } from '@/types/faction'
+import type { RelationshipStatus, TreatyKind } from '@/types'
 
 export const statusLabels: Record<RelationshipStatus, string> = {
   hostile: '敌对',

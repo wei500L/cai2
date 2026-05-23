@@ -21,6 +21,8 @@ from app.protocol import (
     ResolveMapDiffPayload,
     RippleEvent,
     RipplePayload,
+    RoomFactionsMetaEvent,
+    RoomFactionsMetaPayload,
     WorldGeometryCellPayload,
     WorldGeometryEvent,
     WorldGeometryFactionPayload,
@@ -220,6 +222,7 @@ def test_outgoing_payload_route_table_covers_expected_types() -> None:
         "room.player_takeover",
         "room.player_resume",
         "room.start",
+        "room.factions_meta",
         "room.world_geometry",
         "room.finished",
         "phase.change",
@@ -272,6 +275,43 @@ def test_world_lighting_event_round_trip_is_stable() -> None:
     decoded = deserialize_json(raw, WorldLightingEvent)
 
     assert decoded == payload
+
+
+def test_room_factions_meta_event_round_trip_is_stable() -> None:
+    payload = RoomFactionsMetaEvent(
+        v=1,
+        id="msg_factions_meta",
+        t="room.factions_meta",
+        ts=321,
+        seq=16,
+        p=RoomFactionsMetaPayload(
+            room_id="room-1",
+            schema_version="1.0",
+            factions=[
+                {
+                    "id": FactionId.ironCrown,
+                    "name": "铁冠帝国",
+                    "short_name": "铁冠",
+                    "primary_color": "#8B1A1A",
+                    "glow_color": "#FF3333",
+                    "shadow_color": "#2D0A0A",
+                    "speech_style": "aggressive",
+                    "speech_style_label": "强硬征服",
+                    "speech_style_description": "语气短促有压迫感; 强调服从和军功。",
+                    "civilization_traits": ["军事工业化", "等级森严", "重装军团"],
+                    "ai_archetype": "铁血征服者。",
+                    "capital_hex_id": "hex-iron",
+                }
+            ],
+        ),
+    )
+
+    raw = serialize_json(payload)
+    decoded = deserialize_json(raw, RoomFactionsMetaEvent)
+
+    assert decoded == payload
+    assert decoded.p.schema_version == "1.0"
+    assert decoded.p.factions[0].capital_hex_id == "hex-iron"
     assert serialize_json(decoded) == raw
 
 

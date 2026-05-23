@@ -1,4 +1,5 @@
-import { factionById, type FactionId } from '@/mock/factions'
+import { factionById } from '@/mock/factions'
+import type { FactionId } from '@/types/faction'
 import type { DiplomaticArc, Ripple, WorldGeometryPayload } from '@/protocol/types'
 
 type Capital = WorldGeometryPayload['factions'][number]

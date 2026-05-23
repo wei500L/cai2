@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react'
 import { motion } from 'framer-motion'
 import { GlowPanel } from '@/components/GlowPanel'
 import { factionTokens } from '@/components/hudTheme'
-import type { ReplayData, ReplayTimelineNode } from '@/mock/replay'
+import type { ReplayData, ReplayTimelineNode } from '@/types/replay'
 import { createEventLookup, formatReplayTime, getEventFaction, getFactionName, getMarkerLabel } from './replayViewUtils'
 
 type ReplayStageProps = {

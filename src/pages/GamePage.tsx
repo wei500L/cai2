@@ -20,8 +20,8 @@ import { ResolveEventPlayer } from '@/features/phaseSystem/ResolveEventPlayer'
 import { getHudModeFromPhase, getPhaseUIConfig } from '@/features/phaseSystem/PhaseStateMachine'
 import { factionIds, factionTokens, resolveFactionId } from '@/components/hudTheme'
 import EpochSummaryPage from '@/pages/EpochSummaryPage'
-import { factionById } from '@/mock/factions'
 import { createMockWorldGeometry } from '@/mock/worldGeometry'
+import { useFactionMeta } from '@/store/factionMetaStore'
 import { useGameStore } from '@/store/gameStore'
 import { useMapStore } from '@/store/mapStore'
 import { useUIStore, type GameFinishedBanner as GameFinishedBannerState } from '@/store/uiStore'
@@ -433,7 +433,7 @@ export default function GamePage() {
   return (
     <main
       data-screen-shake-root
-      className="relative h-screen overflow-hidden bg-[color:var(--bg-space)] text-[color:var(--text-primary)]"
+      className="relative h-screen overflow-hidden bg-[color:var(--bg-space)] pt-6 text-[color:var(--text-primary)]"
       style={rootStyle}
     >
       <div
@@ -639,7 +639,8 @@ function GameFinishedRedirectBanner({
 }) {
   const remainingSeconds =
     redirectAtMs === null ? 0 : Math.max(0, Math.ceil((redirectAtMs - nowMs) / 1000))
-  const winnerName = banner.winner ? factionById[banner.winner].name : '胜者未定'
+  const winnerMeta = useFactionMeta(banner.winner)
+  const winnerName = banner.winner ? winnerMeta?.name ?? banner.winner : '胜者未定'
 
   return (
     <div className="fixed left-1/2 top-5 z-[135] w-[min(42rem,calc(100vw-2rem))] -translate-x-1/2 border border-[color:rgba(255,204,102,0.48)] bg-[linear-gradient(180deg,rgba(24,13,6,0.96),rgba(7,4,3,0.94))] p-3 shadow-[0_0_44px_rgba(255,204,102,0.18)]">

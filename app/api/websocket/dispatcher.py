@@ -15,6 +15,7 @@ from app.domain.world_geometry import WorldGeometry
 from app.protocol.outgoing import (
     AIThinkingPayload,
     ReplayAIDiaryRevealPayload,
+    RoomFactionsMetaPayload,
     RoomFinishedPayload,
     RoomPlayerResumePayload,
     RoomPlayerSnapshot,
@@ -26,6 +27,7 @@ from app.protocol.outgoing import (
     WorldGeometryPayload,
 )
 from app.repositories.factory import Repositories
+from app.services.factions_meta_service import FactionsMetaService
 from app.services.settlement_service import SettlementOutboundBundle
 
 VisibilityFilter = Callable[[dict[str, Any], PlayerSession], bool]
@@ -37,10 +39,12 @@ class OutboundDispatcher:
         connection_manager: ConnectionManager,
         repos: Repositories,
         clock: Clock | None = None,
+        factions_meta_service: FactionsMetaService | None = None,
     ) -> None:
         self._connection_manager = connection_manager
         self._repos = repos
         self._clock = clock or SystemClock()
+        self._factions_meta_service = factions_meta_service or FactionsMetaService(repos)
         self._diary_revealed_rooms: set[str] = set()
 
     async def dispatch_to_player(self, player_id: str, envelope_dict: dict[str, Any]) -> None:
@@ -178,6 +182,7 @@ class OutboundDispatcher:
             room_id,
             _envelope("room.start", payload.model_dump(mode="json")),
         )
+        await self.dispatch_factions_meta(room_id)
         if room.world_geometry is not None:
             await self._dispatch_world_geometry(room_id, room.world_geometry)
 
@@ -205,6 +210,7 @@ class OutboundDispatcher:
         player_id: str,
         payload: dict[str, Any],
     ) -> None:
+        await self._dispatch_factions_meta_if_present(player_id, payload)
         await self._dispatch_world_geometry_if_present(player_id, payload)
         await self.dispatch_to_player(
             player_id,
@@ -216,6 +222,7 @@ class OutboundDispatcher:
         player_id: str,
         payload: dict[str, Any],
     ) -> None:
+        await self._dispatch_factions_meta_if_present(player_id, payload)
         await self._dispatch_world_geometry_if_present(player_id, payload)
         await self.dispatch_to_player(
             player_id,
@@ -395,6 +402,30 @@ class OutboundDispatcher:
                             seq=bundle.seq_base + offset,
                         ),
                     )
+
+    async def dispatch_factions_meta(self, room_id: str) -> None:
+        payload = await self.build_factions_meta_payload(room_id)
+        await self.dispatch_to_room(
+            room_id,
+            _envelope("room.factions_meta", payload.model_dump(mode="json")),
+        )
+
+    async def build_factions_meta_payload(self, room_id: str) -> RoomFactionsMetaPayload:
+        factions_meta = await self._factions_meta_service.get_factions_meta(room_id)
+        return RoomFactionsMetaPayload(room_id=room_id, factions=factions_meta)
+
+    async def _dispatch_factions_meta_if_present(
+        self,
+        player_id: str,
+        payload: dict[str, Any],
+    ) -> None:
+        factions_meta = payload.pop("factions_meta", None)
+        if not isinstance(factions_meta, dict):
+            return
+        await self.dispatch_to_player(
+            player_id,
+            _envelope("room.factions_meta", factions_meta),
+        )
 
     async def _session_faction(self, session: PlayerSession) -> FactionId | None:
         player = await self._repos.players.get(session.player_id)

@@ -1,5 +1,5 @@
 import type { RefCallback } from 'react'
-import type { FactionMeta, FactionId } from '@/mock/factions'
+import type { FactionMeta, FactionId } from '@/types/faction'
 import { FactionCard } from './FactionCard'
 
 type FactionSelectGridProps = {

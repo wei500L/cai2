@@ -30,6 +30,7 @@ from app.protocol.outgoing import (
 )
 from app.protocol.routing import parse_incoming
 from app.repositories.factory import Repositories
+from app.services.factions_meta_service import FactionsMetaService
 from app.services.settlement_service import compute_border_tension
 from app.services.takeover_service import TakeoverService
 
@@ -409,9 +410,14 @@ async def _build_reconnect_payload(
             full_state=full_state,
             seq=last_seq,
         )
-        return make_envelope("reconnect.snapshot", payload, clock=clock, seq=last_seq).model_dump(
-            mode="json"
-        )
+        envelope = make_envelope(
+            "reconnect.snapshot",
+            payload,
+            clock=clock,
+            seq=last_seq,
+        ).model_dump(mode="json")
+        envelope["p"]["factions_meta"] = await _factions_meta_payload(repos, room_id)
+        return envelope
 
     current_seq = repos.events.current_seq(room_id)
     gap = current_seq - last_seq
@@ -430,6 +436,7 @@ async def _build_reconnect_payload(
             clock=clock,
             seq=current_seq,
         ).model_dump(mode="json")
+        envelope["p"]["factions_meta"] = await _factions_meta_payload(repos, room_id)
         if room is not None and room.world_geometry is not None:
             envelope["p"]["world_geometry"] = _world_geometry_payload(room.world_geometry)
         return envelope
@@ -453,6 +460,7 @@ async def _build_reconnect_payload(
             clock=clock,
             seq=current_seq,
         ).model_dump(mode="json")
+        envelope["p"]["factions_meta"] = await _factions_meta_payload(repos, room_id)
         if room is not None and room.world_geometry is not None:
             envelope["p"]["world_geometry"] = _world_geometry_payload(room.world_geometry)
         return envelope
@@ -480,6 +488,7 @@ async def _build_reconnect_payload(
             clock=clock,
             seq=current_seq,
         ).model_dump(mode="json")
+        envelope["p"]["factions_meta"] = await _factions_meta_payload(repos, room_id)
         if room is not None and room.world_geometry is not None:
             envelope["p"]["world_geometry"] = _world_geometry_payload(room.world_geometry)
         return envelope
@@ -494,6 +503,7 @@ async def _build_reconnect_payload(
     envelope = make_envelope("reconnect.catchup", payload, clock=clock, seq=current_seq).model_dump(
         mode="json"
     )
+    envelope["p"]["factions_meta"] = await _factions_meta_payload(repos, room_id)
     if room is not None and room.world_geometry is not None:
         envelope["p"]["world_geometry"] = _world_geometry_payload(room.world_geometry)
     return envelope
@@ -584,6 +594,15 @@ def _world_geometry_payload(world_geometry: WorldGeometry | None) -> dict[str, A
     if world_geometry is None:
         return None
     return build_world_geometry_payload(world_geometry).model_dump(mode="json")
+
+
+async def _factions_meta_payload(repos: Repositories, room_id: str) -> dict[str, Any]:
+    factions = await FactionsMetaService(repos).get_factions_meta(room_id)
+    return {
+        "room_id": room_id,
+        "schema_version": "1.0",
+        "factions": [faction.model_dump(mode="json") for faction in factions],
+    }
 
 
 def _room_snapshot(room: Any, current_player_id: str) -> dict[str, Any]:

@@ -1,5 +1,5 @@
 import { ENV } from '@/app/env'
-import { factionById, type FactionId } from '@/mock/factions'
+import { FACTION_IDS, type FactionId } from '@/types/faction'
 import type {
   AIInnerThought,
   DeceptionStat,
@@ -7,9 +7,12 @@ import type {
   KeyMoment,
   RelationshipSnapshot,
   ReplayData,
+  ReplayDTO,
   ReplayTimelineNode,
-} from '@/mock/replay'
-import type { EventKind, EventPriority, GameEvent, GamePhase, PrivateMessage } from '@/mock/types'
+} from '@/types/replay'
+import type { EventKind, EventPriority, GameEvent, GamePhase, PrivateMessage } from '@/types'
+
+export type { ReplayDTO } from '@/types/replay'
 
 const REPLAY_FETCH_TIMEOUT_MS = 10_000
 const eventKinds = new Set<EventKind>([
@@ -22,6 +25,12 @@ const eventKinds = new Set<EventKind>([
   'ceasefire',
   'betrayal',
   'battle',
+  'invasion',
+  'siege',
+  'bombing',
+  'naval_assault',
+  'uprising',
+  'nuclear_strike',
   'economy',
   'intel',
   'phase_change',
@@ -31,27 +40,6 @@ const eventKinds = new Set<EventKind>([
 ])
 const priorities = new Set<EventPriority>(['P0', 'P1', 'P2'])
 const phases = new Set<GamePhase>(['observe', 'action', 'resolve', 'arbitrate'])
-
-export type ReplayDTO = {
-  room_id: string
-  generated_at_ms: number
-  mode: string
-  total_epochs: number
-  total_turns: number
-  timeline: Array<Record<string, unknown>>
-  public_events: Array<Record<string, unknown>>
-  private_messages: Array<Record<string, unknown>>
-  ai_internal_thoughts: Array<Record<string, unknown>>
-  faction_curves: Array<Record<string, unknown>>
-  relationship_snapshots: Array<Record<string, unknown>>
-  key_moments: Array<Record<string, unknown>>
-  famous_quotes: Array<Record<string, unknown>>
-  betrayal_events: Array<Record<string, unknown>>
-  deception_stats: Array<Record<string, unknown>>
-  final_factions: Array<Record<string, unknown>>
-  winner: FactionId | null
-  final_narration: string
-}
 
 export async function fetchReplay(roomId: string): Promise<ReplayDTO> {
   const controller = new AbortController()
@@ -213,12 +201,12 @@ function normalizeKeyMoment(raw: Record<string, unknown>, index: number): KeyMom
     title: `名场面 ${String(index + 1).padStart(2, '0')}`,
     caption: event.narration,
     eventId: event.id,
-    factionId: event.actor,
+    factionId: event.actor ?? undefined,
   }
 }
 
 function factionValue(value: unknown): FactionId | undefined {
-  return typeof value === 'string' && value in factionById ? value as FactionId : undefined
+  return typeof value === 'string' && (FACTION_IDS as readonly string[]).includes(value) ? value as FactionId : undefined
 }
 
 function phaseValue(value: unknown, fallback: GamePhase): GamePhase {

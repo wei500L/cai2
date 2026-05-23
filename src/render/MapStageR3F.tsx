@@ -18,7 +18,9 @@ import {
   SphereGeometry,
   type Group,
 } from 'three'
-import { factionById, type FactionId } from '@/mock/factions'
+import { factionIds, factionTokens } from '@/components/hudTheme'
+import { factionMetaStore } from '@/store/factionMetaStore'
+import type { FactionId } from '@/types/faction'
 import { gameStoreApi, useGameStore } from '@/store/gameStore'
 import { useUIStore, type MapQuality } from '@/store/uiStore'
 import type { BorderTensionEntry, RegionTransitionLogEntry } from '@/protocol/types'
@@ -158,13 +160,17 @@ function resolveCssColor(token: string, styles: CSSStyleDeclaration) {
 function buildPalette(): Palette {
   const styles = getComputedStyle(document.documentElement)
   return Object.fromEntries(
-    Object.values(factionById).map((faction) => [
-      faction.id,
-      {
-        primary: resolveCssColor(faction.primary, styles),
-        glow: resolveCssColor(faction.glow, styles),
-      },
-    ]),
+    factionIds.map((id) => {
+      const meta = factionMetaStore.getState().byId[id]
+      const token = meta ?? factionTokens[id]
+      return [
+        id,
+        {
+          primary: resolveCssColor(token.primary, styles),
+          glow: resolveCssColor(token.glow, styles),
+        },
+      ]
+    }),
   ) as Palette
 }
 
@@ -838,6 +844,7 @@ function MapStageScene({
 
 export function MapStageR3F() {
   const quality = useUIStore((state) => state.mapQuality)
+  const factionMetaLoadedAt = factionMetaStore((state) => state.loadedAt)
   const regionSignature = useGameStore((state) =>
     state.regions
       .map((region) => `${region.id}:${region.owner ?? 'none'}:${region.developmentLevel}:${region.neighbors.join(',')}`)
@@ -857,10 +864,11 @@ export function MapStageR3F() {
 
   const scene = useMemo(() => {
     void borderSignature
+    void factionMetaLoadedAt
     void regionSignature
     void transitionSignature
     return buildSceneData(gameStoreApi.getState(), quality)
-  }, [borderSignature, quality, regionSignature, transitionSignature])
+  }, [borderSignature, factionMetaLoadedAt, quality, regionSignature, transitionSignature])
 
   return (
     <Canvas

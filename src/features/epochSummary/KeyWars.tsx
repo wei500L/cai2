@@ -1,7 +1,6 @@
-import { useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { factionById } from '@/mock/factions'
-import type { BattleEvent, GameEvent } from '@/mock/types'
+import { factionMetaStore } from '@/store/factionMetaStore'
+import type { BattleEvent, GameEvent } from '@/types'
 import { useGameStore } from '@/store/gameStore'
 
 function isBattleEvent(event: GameEvent): event is BattleEvent {
@@ -11,13 +10,10 @@ function isBattleEvent(event: GameEvent): event is BattleEvent {
 export function KeyWars() {
   const epochId = useGameStore((state) => state.epoch.id)
   const events = useGameStore((state) => state.events)
-  const wars = useMemo(
-    () =>
-      events
-        .filter((event): event is BattleEvent => event.epoch === epochId && isBattleEvent(event))
-        .sort((a, b) => a.createdAt - b.createdAt),
-    [epochId, events],
-  )
+  const factionMetaById = factionMetaStore((state) => state.byId)
+  const wars = events
+    .filter((event): event is BattleEvent => event.epoch === epochId && isBattleEvent(event))
+    .sort((a, b) => a.createdAt - b.createdAt)
 
   return (
     <motion.section
@@ -44,7 +40,8 @@ export function KeyWars() {
               </div>
               <div className="mt-1 grid gap-1 font-sans text-[0.78rem] leading-5 text-[color:rgba(255,242,218,0.86)]">
                 <div>
-                  {factionById[war.payload.attacker].name} 攻 / {factionById[war.payload.defender].name} 守
+                  {factionMetaById[war.payload.attacker]?.name ?? war.payload.attacker} 攻 /{' '}
+                  {factionMetaById[war.payload.defender]?.name ?? war.payload.defender} 守
                 </div>
                 <div className="text-[color:rgba(255,231,184,0.58)]">
                   伤亡 {war.payload.atk_loss} / {war.payload.def_loss} · 剩余{' '}

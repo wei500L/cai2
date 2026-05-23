@@ -3,7 +3,8 @@ import type { CSSProperties } from 'react'
 import clsx from 'clsx'
 import { motion } from 'framer-motion'
 import { factionTokens } from '@/components/hudTheme'
-import { factionById, type FactionId } from '@/mock/factions'
+import { useFactionMeta } from '@/store/factionMetaStore'
+import type { FactionId } from '@/types/faction'
 import { splitByKeywords, type KeywordTone } from '@/utils/keywords'
 
 type PublicSpeechBubbleProps = {
@@ -26,7 +27,7 @@ export function PublicSpeechBubble({
   compact = false,
   showTail = true,
 }: PublicSpeechBubbleProps) {
-  const faction = factionById[actor]
+  const faction = useFactionMeta(actor)
   const token = factionTokens[actor]
   const [visibleLength, setVisibleLength] = useState(compact ? text.length : 0)
 
@@ -84,12 +85,12 @@ export function PublicSpeechBubble({
             background: 'linear-gradient(135deg, var(--speech-primary), var(--speech-fill))',
           }}
         >
-          {faction.name.slice(0, 2)}
+          {(faction?.name ?? actor).slice(0, 2)}
         </div>
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex items-center gap-2 font-hud uppercase tracking-[0.18em]">
             <span className={compact ? 'text-[0.54rem]' : 'text-[0.6rem]'}>
-              {faction.name}
+              {faction?.name ?? actor}
             </span>
             <span className="h-px flex-1 bg-[color:rgba(255,255,255,0.12)]" />
           </div>
