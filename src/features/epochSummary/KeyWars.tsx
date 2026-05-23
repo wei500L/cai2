@@ -39,7 +39,7 @@ export function KeyWars() {
           wars.map((war) => (
             <article key={war.id} className="border border-[color:rgba(255,231,184,0.12)] bg-[color:rgba(6,4,2,0.42)] p-2">
               <div className="flex items-center justify-between gap-3 font-hud text-[0.58rem] tracking-[0.14em] text-[color:rgba(255,231,184,0.5)]">
-                <span>{war.payload.regionId}</span>
+                <span>{war.payload.region_id}</span>
                 <span className="text-[color:rgba(255,204,102,0.84)]">T{war.turn}</span>
               </div>
               <div className="mt-1 grid gap-1 font-sans text-[0.78rem] leading-5 text-[color:rgba(255,242,218,0.86)]">
@@ -47,8 +47,8 @@ export function KeyWars() {
                   {factionById[war.payload.attacker].name} 攻 / {factionById[war.payload.defender].name} 守
                 </div>
                 <div className="text-[color:rgba(255,231,184,0.58)]">
-                  伤亡 {war.payload.casualties.attacker} / {war.payload.casualties.defender} · 胜者{' '}
-                  {factionById[war.payload.winner].name}
+                  伤亡 {war.payload.atk_loss} / {war.payload.def_loss} · 剩余{' '}
+                  {war.payload.attacker_remaining_troops} / {war.payload.defender_remaining_troops}
                 </div>
               </div>
             </article>

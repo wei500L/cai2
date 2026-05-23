@@ -81,6 +81,8 @@ class MapRegion(DomainModel):
     min_garrison: int
     supply_lines: int
     neighbors: list[str] = Field(default_factory=list, max_length=8)
+    resistance: float = Field(default=0.0, ge=0.0, le=1.0)
+    captured_at_turn: int | None = None
 
 
 class ResourceState(DomainModel):
@@ -199,6 +201,8 @@ class BattleEvent(GameEvent):
     def_loss: float
     territory_captured: bool
     morale_shift: float
+    attacker_remaining_troops: float = 0.0
+    defender_remaining_troops: float = 0.0
 
 
 class RelationshipDelta(DomainModel):
@@ -220,6 +224,7 @@ class RegionChange(DomainModel):
     prev_owner: FactionId | None = None
     new_owner: FactionId | None = None
     transition: Literal["conquest", "cede", "negotiated", "abandoned"]
+    animation_params: dict[str, Any] = Field(default_factory=dict)
 
 
 class FactionStatChange(DomainModel):

@@ -21,7 +21,7 @@ import {
 import { factionById, type FactionId } from '@/mock/factions'
 import { gameStoreApi, useGameStore } from '@/store/gameStore'
 import { useUIStore, type MapQuality } from '@/store/uiStore'
-import type { BorderTensionEntry } from '@/protocol/types'
+import type { BorderTensionEntry, RegionTransitionLogEntry } from '@/protocol/types'
 
 type PaletteEntry = {
   primary: string
@@ -31,8 +31,11 @@ type PaletteEntry = {
 type Palette = Record<FactionId, PaletteEntry>
 
 type RegionNode = {
+  id: string
   position: [number, number, number]
+  owner: FactionId | null
   color: string
+  targetColor: string
   scale: number
 }
 
@@ -61,6 +64,15 @@ type SceneData = {
   borders: BorderSegment[]
   lights: LightNode[]
   particles: ParticleNode[]
+  inflows: Array<{
+    id: string
+    position: [number, number, number]
+    color: string
+    direction: string
+    speed: number
+    particles: 'aggressive' | 'neutral'
+    startedAt: number
+  }>
   particleCount: number
 }
 
@@ -210,6 +222,12 @@ function buildSceneData(state = gameStoreApi.getState(), quality: MapQuality): S
   const palette = buildPalette()
   const regions = state.regions
   const borderMap = state.borderTensionMap
+  const transitionMap = new Map<string, RegionTransitionLogEntry>()
+  for (const entry of state.regionTransitionLog) {
+    if (!transitionMap.has(entry.region_id)) {
+      transitionMap.set(entry.region_id, entry)
+    }
+  }
   const regionNodes: RegionNode[] = []
   const lightNodes: LightNode[] = []
   const borderNodes: BorderSegment[] = []
@@ -219,10 +237,15 @@ function buildSceneData(state = gameStoreApi.getState(), quality: MapQuality): S
     const basePosition = latLngToUnitVector(region.centerLatLng)
     const owner = region.owner
     const paletteEntry = owner ? palette[owner] : null
+    const transition = transitionMap.get(region.id)
+    const previousColor = transition?.prev_owner ? palette[transition.prev_owner].primary : paletteEntry?.primary
     const strength = clamp(0.35 + region.developmentLevel * 0.65, 0.35, 1)
     regionNodes.push({
+      id: region.id,
       position: basePosition,
-      color: paletteEntry?.primary ?? '#7f97bd',
+      owner,
+      color: previousColor ?? '#7f97bd',
+      targetColor: paletteEntry?.primary ?? '#7f97bd',
       scale: 0.05 + strength * 0.035,
     })
 
@@ -272,6 +295,20 @@ function buildSceneData(state = gameStoreApi.getState(), quality: MapQuality): S
     }
   }
 
+  const inflows = state.regionTransitionLog.map((entry) => {
+    const region = state.regions.find((item) => item.id === entry.region_id)
+    const owner = entry.new_owner
+    return {
+      id: entry.id,
+      position: region ? latLngToUnitVector(region.centerLatLng) : ([0, 0, 1] as [number, number, number]),
+      color: owner ? palette[owner].glow : '#8fcaff',
+      direction: entry.animation_params.direction,
+      speed: entry.animation_params.speed,
+      particles: entry.animation_params.particles,
+      startedAt: entry.started_at,
+    }
+  })
+
   const limit = qualityConfig[quality].particleLimit
   const particleCount = Math.min(
     limit,
@@ -303,6 +340,7 @@ function buildSceneData(state = gameStoreApi.getState(), quality: MapQuality): S
     borders: borderNodes,
     lights: lightNodes,
     particles: particleNodes,
+    inflows,
     particleCount,
   }
 }
@@ -423,7 +461,6 @@ function RegionLayer({ regions, radius }: { regions: RegionNode[]; radius: numbe
       dummy.scale.setScalar(radius * region.scale)
       dummy.updateMatrix()
       mesh.setMatrixAt(index, dummy.matrix)
-      mesh.setColorAt(index, new Color(region.color))
     })
 
     mesh.instanceMatrix.needsUpdate = true
@@ -432,7 +469,112 @@ function RegionLayer({ regions, radius }: { regions: RegionNode[]; radius: numbe
     }
   }, [dummy, radius, regions])
 
+  useFrame(() => {
+    const mesh = meshRef.current
+    if (!mesh || !mesh.instanceColor) {
+      return
+    }
+
+    regions.forEach((region, index) => {
+      const target = new Color(region.targetColor)
+      const current = new Color(region.color)
+      current.lerp(target, 0.06)
+      region.color = `#${current.getHexString()}`
+      mesh.setColorAt(index, current)
+    })
+    mesh.instanceColor.needsUpdate = true
+  })
+
   return <instancedMesh ref={meshRef} args={[geometry, material, Math.max(regions.length, 1)]} />
+}
+
+function RegionInflowLayer({
+  inflows,
+  radius,
+}: {
+  inflows: SceneData['inflows']
+  radius: number
+}) {
+  const meshRef = useRef<InstancedMesh>(null)
+  const dummy = useMemo(() => new Object3D(), [])
+  const geometry = useMemo(() => new SphereGeometry(1, 10, 10), [])
+  const material = useMemo(
+    () =>
+      new MeshBasicMaterial({
+        color: '#ffffff',
+        transparent: true,
+        opacity: 0.9,
+        vertexColors: true,
+        blending: AdditiveBlending,
+        depthWrite: false,
+      }),
+    [],
+  )
+
+  useEffect(() => {
+    const mesh = meshRef.current
+    if (!mesh) {
+      return
+    }
+
+    mesh.count = inflows.length
+    inflows.forEach((flow, index) => {
+      dummy.position.set(
+        flow.position[0] * radius * 1.045,
+        flow.position[1] * radius * 1.045,
+        flow.position[2] * radius * 1.045,
+      )
+      dummy.scale.setScalar(radius * 0.028)
+      dummy.updateMatrix()
+      mesh.setMatrixAt(index, dummy.matrix)
+      mesh.setColorAt(index, new Color(flow.color))
+    })
+    mesh.instanceMatrix.needsUpdate = true
+    if (mesh.instanceColor) {
+      mesh.instanceColor.needsUpdate = true
+    }
+  }, [dummy, inflows, radius])
+
+  useFrame(({ clock }) => {
+    const mesh = meshRef.current
+    if (!mesh) {
+      return
+    }
+
+    const now = clock.getElapsedTime() * 1000
+    let activeCount = 0
+    inflows.forEach((flow) => {
+      const age = now - flow.startedAt
+      const progress = clamp(age / (1200 / Math.max(flow.speed, 0.8)), 0, 1)
+      if (progress >= 1) {
+        return
+      }
+
+      const direction =
+        flow.direction === 'east_to_west' || flow.direction === 'west_to_east' ? 1 : -1
+      const vertical = flow.direction === 'south_to_north' || flow.direction === 'north_to_south'
+      dummy.position.set(
+        flow.position[0] * radius * 1.045 + (vertical ? 0 : direction * progress * radius * 0.08),
+        flow.position[1] * radius * 1.045 + (vertical ? direction * progress * radius * 0.08 : 0),
+        flow.position[2] * radius * 1.045,
+      )
+      dummy.scale.setScalar(
+        radius * (flow.particles === 'aggressive' ? 0.025 : 0.02) * (1 + progress * 1.1),
+      )
+      dummy.updateMatrix()
+      mesh.setMatrixAt(activeCount, dummy.matrix)
+      mesh.setColorAt(activeCount, new Color(flow.color))
+      activeCount += 1
+    })
+
+    mesh.count = Math.max(activeCount, 0)
+    mesh.instanceMatrix.needsUpdate = true
+    if (mesh.instanceColor) {
+      mesh.instanceColor.needsUpdate = true
+    }
+  })
+
+  return <instancedMesh ref={meshRef} args={[geometry, material, Math.max(inflows.length, 1)]} />
 }
 
 function CityLightLayer({ lights, radius }: { lights: LightNode[]; radius: number }) {
@@ -683,6 +825,7 @@ function MapStageScene({
       <group ref={rootRef}>
         <GlobeLayer radius={radius} />
         <RegionLayer regions={scene.regions} radius={radius} />
+        <RegionInflowLayer inflows={scene.inflows} radius={radius} />
         <BorderLayer borders={scene.borders} radius={radius} />
         <CityLightLayer lights={scene.lights} radius={radius} />
         <ParticleLayer particles={scene.particles} radius={radius} quality={quality} />
@@ -698,6 +841,11 @@ export function MapStageR3F() {
       .map((region) => `${region.id}:${region.owner ?? 'none'}:${region.developmentLevel}:${region.neighbors.join(',')}`)
       .join('|'),
   )
+  const transitionSignature = useGameStore((state) =>
+    state.regionTransitionLog
+      .map((entry) => `${entry.id}:${entry.region_id}:${entry.new_owner ?? 'none'}:${entry.animation_params.direction}:${entry.started_at}`)
+      .join('|'),
+  )
   const borderSignature = useGameStore((state) =>
     Object.entries(state.borderTensionMap)
       .sort(([leftKey], [rightKey]) => leftKey.localeCompare(rightKey))
@@ -707,7 +855,7 @@ export function MapStageR3F() {
 
   const scene = useMemo(
     () => buildSceneData(gameStoreApi.getState(), quality),
-    [borderSignature, quality, regionSignature],
+    [borderSignature, quality, regionSignature, transitionSignature],
   )
 
   return (

@@ -1,13 +1,12 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { useGameStore } from '../gameStore'
 
-describe('gameStore _applyMapDiff border updates', () => {
+describe('gameStore region change application', () => {
   beforeEach(() => {
     useGameStore.getState().initGame(42)
-    useGameStore.setState({ borderTensionMap: {} })
   })
 
-  it('writes sorted border tension keys and keeps region neighbors', () => {
+  it('updates owner and appends transition log entries', () => {
     const state = useGameStore.getState()
     const target = state.regions[0]
 
@@ -25,23 +24,21 @@ describe('gameStore _applyMapDiff border updates', () => {
           },
         },
       ],
-      border_updates: [
-        {
-          between: ['starlight', 'ironCrown'],
-          tension: 0.72,
-          visual_state: 'war_frontline',
-        },
-      ],
+      border_updates: [],
     })
 
     const next = useGameStore.getState()
     const updated = next.regions.find((region) => region.id === target.id)
 
     expect(updated?.owner).toBe('starlight')
-    expect(updated?.neighbors).toEqual(target.neighbors)
-    expect(next.borderTensionMap['ironCrown:starlight']).toEqual({
-      tension: 0.72,
-      visual_state: 'war_frontline',
+    expect(updated?.developmentLevel).toBe(0.3)
+    expect(updated?.resistance).toBe(0.5)
+    expect(updated?.capturedAtTurn).toBe(next.epoch.turn)
+    expect(next.regionTransitionLog).toHaveLength(1)
+    expect(next.regionTransitionLog[0]).toMatchObject({
+      region_id: target.id,
+      new_owner: 'starlight',
+      transition: 'conquest',
     })
   })
 })

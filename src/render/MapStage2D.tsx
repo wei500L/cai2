@@ -5,6 +5,7 @@ import type { MapRegion, Relationship } from '@/mock/types'
 import { gameStoreApi } from '@/store/gameStore'
 import { useUIStore, type MapQuality } from '@/store/uiStore'
 import { getParticleDensityMultiplier } from '@/utils/particleDensity'
+import type { RegionAnimationParams } from '@/protocol/types'
 
 type Rgb = { r: number; g: number; b: number }
 type PaletteEntry = {
@@ -49,6 +50,7 @@ type OwnershipFlow = {
   regionId: string
   previousOwner: FactionId | null
   newOwner: FactionId | null
+  animationParams: RegionAnimationParams
   startedAt: number
 }
 
@@ -57,6 +59,11 @@ const FULL_ARC = Math.PI * 2
 const START_ANGLE = -Math.PI / 2
 const MAX_PARTICLES = 8_000
 const OWNERSHIP_FLOW_DURATION = 1.2
+const DEFAULT_FLOW_PARAMS: RegionAnimationParams = {
+  direction: 'west_to_east',
+  speed: 1,
+  particles: 'neutral',
+}
 let lastParticleStatAt = 0
 const PARTICLE_POOL: ParticleSeed[] = Array.from({ length: MAX_PARTICLES }, (_, index) => ({
   a: hash01(`pool:${index}:a`),
@@ -352,11 +359,24 @@ function drawRegions(
       ctx.globalCompositeOperation = 'lighter'
       ctx.strokeStyle = toRgba(glow, (1 - flowProgress) * 0.55)
       ctx.lineWidth = 2
+      const horizontal = flow.animationParams.direction === 'west_to_east' || flow.animationParams.direction === 'east_to_west'
+      const sign =
+        flow.animationParams.direction === 'west_to_east' || flow.animationParams.direction === 'south_to_north'
+          ? 1
+          : -1
       for (let line = 0; line < 4; line += 1) {
-        const offset = (flowProgress * radius * 0.34 + line * radius * 0.045) % (radius * 0.18)
+        const offset =
+          (((flowProgress * flow.animationParams.speed) * sign) * radius * 0.34 +
+            line * radius * 0.045) %
+          (radius * 0.18)
         ctx.beginPath()
-        ctx.moveTo(center.x - radius * 0.18 + offset, center.y - radius * 0.16)
-        ctx.lineTo(center.x + radius * 0.18 + offset, center.y + radius * 0.16)
+        if (horizontal) {
+          ctx.moveTo(center.x - radius * 0.18 + offset, center.y - radius * 0.16)
+          ctx.lineTo(center.x + radius * 0.18 + offset, center.y + radius * 0.16)
+        } else {
+          ctx.moveTo(center.x - radius * 0.16, center.y - radius * 0.18 + offset)
+          ctx.lineTo(center.x + radius * 0.16, center.y + radius * 0.18 + offset)
+        }
         ctx.stroke()
       }
       ctx.restore()
@@ -673,6 +693,7 @@ export function MapStage2D({ qualityOverride, interactive = true }: MapStage2DPr
   })
   const ownerSnapshotRef = useRef<Map<string, FactionId | null>>(new Map())
   const ownershipFlowsRef = useRef<Map<string, OwnershipFlow>>(new Map())
+  const appliedTransitionIdsRef = useRef<Set<string>>(new Set())
   const viewRef = useRef<ViewState>({
     scale: 1,
     panX: 0,
@@ -724,14 +745,29 @@ export function MapStage2D({ qualityOverride, interactive = true }: MapStage2DPr
     }
 
     const syncOwnershipFlows = (nowSeconds: number) => {
-      const regions = gameStoreApi.getState().regions
+      const state = gameStoreApi.getState()
+      const regions = state.regions
       const snapshot = ownerSnapshotRef.current
 
       if (snapshot.size === 0) {
         for (const region of regions) {
           snapshot.set(region.id, region.owner)
         }
-        return
+      }
+
+      for (const transition of state.regionTransitionLog) {
+        if (appliedTransitionIdsRef.current.has(transition.id)) {
+          continue
+        }
+        appliedTransitionIdsRef.current.add(transition.id)
+        ownershipFlowsRef.current.set(transition.region_id, {
+          regionId: transition.region_id,
+          previousOwner: transition.prev_owner,
+          newOwner: transition.new_owner,
+          animationParams: transition.animation_params,
+          startedAt: nowSeconds,
+        })
+        snapshot.set(transition.region_id, transition.new_owner)
       }
 
       for (const region of regions) {
@@ -741,6 +777,7 @@ export function MapStage2D({ qualityOverride, interactive = true }: MapStage2DPr
             regionId: region.id,
             previousOwner: previousOwner ?? null,
             newOwner: region.owner,
+            animationParams: DEFAULT_FLOW_PARAMS,
             startedAt: nowSeconds,
           })
           snapshot.set(region.id, region.owner)

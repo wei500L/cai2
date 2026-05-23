@@ -97,6 +97,8 @@ function createRegions(seed: number) {
       owner: owners[index],
       resourceValue: randomInt(rng, 18, 96),
       developmentLevel: randomInt(rng, 1, 5),
+      resistance: 0,
+      capturedAtTurn: null,
       centerLatLng: [
         Number((18 + row * 4.8 + randomFloat(rng, -0.8, 0.8)).toFixed(3)),
         Number((72 + col * 5.2 + randomFloat(rng, -1.1, 1.1)).toFixed(3)),

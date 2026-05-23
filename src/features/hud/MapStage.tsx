@@ -10,6 +10,7 @@ import { MapStage2D } from '@/render/MapStage2D'
 import { useGameStore } from '@/store/gameStore'
 import { useUIStore } from '@/store/uiStore'
 import { getPhaseUIConfig } from '@/features/phaseSystem/PhaseStateMachine'
+import { RegionInflowAnimation } from '@/effects/war/RegionInflowAnimation'
 
 function getPublicSpeechText(event: GameEvent) {
   if (event.kind !== 'speech' || !event.actor || event.payload.channel !== 'public') {
@@ -36,6 +37,7 @@ export function MapStage() {
   const allowFloatingSpeech = epoch.phase !== 'arbitrate'
   const latestSpeech = allowFloatingSpeech ? events.find((event) => getPublicSpeechText(event)) : null
   const latestReaction = allowFloatingSpeech ? events.find((event) => getReactionLabel(event)) : null
+  const latestTransition = useGameStore((state) => state.regionTransitionLog[0] ?? null)
   const MapRenderer = mapQuality === 'high' ? MapStageR3F : MapStage2D
 
   return (
@@ -97,6 +99,14 @@ export function MapStage() {
               label={getReactionLabel(latestReaction) ?? ''}
             />
           </div>
+        ) : null}
+        {mapQuality !== 'high' && latestTransition ? (
+          <RegionInflowAnimation
+            key={latestTransition.id}
+            region_id={latestTransition.region_id}
+            new_owner={latestTransition.new_owner}
+            animation_params={latestTransition.animation_params}
+          />
         ) : null}
       </div>
     </GlowPanel>

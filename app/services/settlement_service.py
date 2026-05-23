@@ -297,7 +297,8 @@ def _build_map_diff(
                 "prev_owner": _value(change.prev_owner),
                 "new_owner": _value(change.new_owner),
                 "transition": change.transition,
-                "animation_params": _animation_params_for_transition(change.transition),
+                "animation_params": change.animation_params
+                or _animation_params_for_transition(change.transition),
                 "previous": _dump_model(before) if before is not None else None,
             }
         )
@@ -401,13 +402,13 @@ def _sorted_faction_pair(left: str, right: str) -> tuple[str, str]:
 
 
 def _animation_params_for_transition(transition: str) -> dict[str, Any]:
-    presets: dict[str, tuple[str, float, int]] = {
-        "conquest": ("inward", 1.2, 48),
-        "cede": ("outward", 0.95, 32),
-        "negotiated": ("drift", 0.7, 20),
-        "abandoned": ("fade", 0.55, 12),
+    presets: dict[str, tuple[str, float, str]] = {
+        "conquest": ("south_to_north", 1.2, "aggressive"),
+        "cede": ("north_to_south", 0.95, "neutral"),
+        "negotiated": ("west_to_east", 1.0, "neutral"),
+        "abandoned": ("east_to_west", 0.85, "neutral"),
     }
-    direction, speed, particles = presets.get(transition, ("drift", 0.8, 16))
+    direction, speed, particles = presets.get(transition, ("west_to_east", 1.0, "neutral"))
     return {
         "direction": direction,
         "speed": speed,
@@ -666,7 +667,17 @@ def _apply_region_changes(
         if change is None:
             updated.append(region.model_copy(deep=True))
         else:
-            updated.append(region.model_copy(update={"owner": change.new_owner}, deep=True))
+            updated.append(
+                region.model_copy(
+                    update={
+                        "owner": change.new_owner,
+                        "development_level": 0.3,
+                        "resistance": 0.5,
+                        "captured_at_turn": result.turn,
+                    },
+                    deep=True,
+                )
+            )
     return updated
 
 

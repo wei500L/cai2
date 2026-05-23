@@ -64,6 +64,8 @@ class BattleResultRecord(BaseModel):
     territory_captured: bool
     morale_shift: float
     narrative: str
+    attacker_remaining_troops: float
+    defender_remaining_troops: float
 
 
 @dataclass(frozen=True)
@@ -252,6 +254,7 @@ class RuleResolver:
 
         atk_loss = attacker_faction.military * (1.0 - atk_ratio) * 0.3
         def_loss = defender_faction.military * atk_ratio * 0.3
+        attacker_remaining = max(0.0, attacker_faction.military - atk_loss)
         defender_remaining = max(0.0, defender_faction.military - def_loss)
         territory_captured = defender_remaining < float(region.min_garrison)
         morale_shift = (atk_ratio - 0.5) * 0.2
@@ -268,6 +271,8 @@ class RuleResolver:
                 f"{attacker_faction.id} attacked {defender_faction.id} in {region.id}; "
                 f"terrain={region.terrain}, war_penalty={war_penalty:.2f}."
             ),
+            attacker_remaining_troops=round(attacker_remaining, 4),
+            defender_remaining_troops=round(defender_remaining, 4),
         )
 
     def apply_culture_impact(
@@ -373,6 +378,12 @@ class RuleResolver:
                 prev_owner=region.owner,
                 new_owner=battle.attacker,
                 transition="conquest",
+                animation_params=self._derive_animation_params(
+                    input,
+                    source_faction=battle.attacker,
+                    target_faction=region.owner,
+                    transition="conquest",
+                ),
             )
 
         for suggestion in model_output.map_change_suggestions:
@@ -390,10 +401,44 @@ class RuleResolver:
                     region_id=suggestion.region_id,
                     prev_owner=region.owner,
                     new_owner=suggestion.new_owner,
-                    transition="conquest",
+                    transition="negotiated",
+                    animation_params=self._derive_animation_params(
+                        input,
+                        source_faction=suggestion.new_owner,
+                        target_faction=region.owner,
+                        transition="negotiated",
+                    ),
                 )
 
         return list(changes_by_region.values())
+
+    def _derive_animation_params(
+        self,
+        input: SettlementInput,
+        *,
+        source_faction: FactionId,
+        target_faction: FactionId | None,
+        transition: str,
+    ) -> dict[str, Any]:
+        source = _faction_anchor(input.regions_snapshot, source_faction) or (0.0, 0.0)
+        target = _faction_anchor(input.regions_snapshot, target_faction) if target_faction else None
+
+        if target is None:
+            target = source
+
+        lat_delta = target[0] - source[0]
+        lng_delta = target[1] - source[1]
+        if abs(lat_delta) >= abs(lng_delta):
+            direction = "south_to_north" if lat_delta >= 0 else "north_to_south"
+        else:
+            direction = "west_to_east" if lng_delta >= 0 else "east_to_west"
+
+        distance = min(180.0, abs(lat_delta) + abs(lng_delta))
+        return {
+            "direction": direction,
+            "speed": round(_clamp(1.0 + distance / 360.0, 1.0, 1.5), 4),
+            "particles": "aggressive" if transition == "conquest" else "neutral",
+        }
 
     def enforce_bounds(
         self,
@@ -643,7 +688,16 @@ class RuleResolver:
             kind=EventKind.battle,
             actor_faction=record.attacker,
             target_faction=record.defender,
-            payload={"narrative": record.narrative},
+            payload={
+                "region_id": record.region_id,
+                "atk_loss": record.atk_loss,
+                "def_loss": record.def_loss,
+                "territory_captured": record.territory_captured,
+                "morale_shift": record.morale_shift,
+                "narrative": record.narrative,
+                "attacker_remaining_troops": record.attacker_remaining_troops,
+                "defender_remaining_troops": record.defender_remaining_troops,
+            },
             narration=record.narrative,
             visibility=MessageVisibility(scope=VisibilityScope.public),
             attacker=record.attacker,
@@ -653,6 +707,8 @@ class RuleResolver:
             def_loss=record.def_loss,
             territory_captured=record.territory_captured,
             morale_shift=record.morale_shift,
+            attacker_remaining_troops=record.attacker_remaining_troops,
+            defender_remaining_troops=record.defender_remaining_troops,
         )
 
     def _war_penalty(self, faction_id: FactionId, input: SettlementInput) -> float:
@@ -757,6 +813,25 @@ def resolve_rules(
 
 def _clamp(value: float, low: float, high: float) -> float:
     return min(high, max(low, value))
+
+
+def _faction_anchor(
+    regions: list[MapRegion],
+    faction_id: FactionId | None,
+) -> tuple[float, float] | None:
+    owned = [region for region in regions if region.owner == faction_id]
+    if not owned:
+        return None
+
+    primary = sorted(
+        owned,
+        key=lambda region: (
+            -region.development_level,
+            -region.resource_value,
+            region.id,
+        ),
+    )[0]
+    return primary.center_lat_lng
 
 
 def _average(values: Any) -> float:

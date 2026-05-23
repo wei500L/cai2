@@ -25,6 +25,9 @@ import type {
   EventBundlePayload,
   FactionStatsPatch,
   MapRegionPatch,
+  RegionAnimationParams,
+  RegionTransition,
+  RegionTransitionLogEntry,
   PhasePayload,
   ReconnectAIThinkingState,
   ReconnectFullState,
@@ -117,6 +120,7 @@ export type GameStoreState = MockGameWorldState & {
   currentTurn: Epoch | null
   aiThinkingState: (ReconnectAIThinkingState & { fallback: boolean }) | null
   borderTensionMap: Record<string, BorderTension>
+  regionTransitionLog: RegionTransitionLogEntry[]
   winner: FactionId | null
   finalNarration: string | null
   serverClockOffsetMs: number
@@ -302,6 +306,32 @@ function normalizeBorderKey(pair: [string, string]) {
   return [...pair].sort().join(':')
 }
 
+function normalizeRegionTransition(value: unknown): RegionTransition {
+  if (value === 'conquest' || value === 'cede' || value === 'negotiated' || value === 'abandoned') {
+    return value
+  }
+
+  return 'conquest'
+}
+
+function normalizeAnimationParams(value: unknown): RegionAnimationParams {
+  const raw = isRecord(value) ? value : {}
+  const direction = raw.direction
+  const particles = raw.particles
+
+  return {
+    direction:
+      direction === 'south_to_north' ||
+      direction === 'north_to_south' ||
+      direction === 'east_to_west' ||
+      direction === 'west_to_east'
+        ? direction
+        : 'west_to_east',
+    speed: clamp(toNumberValue(raw.speed, 1), 1, 1.5),
+    particles: particles === 'aggressive' || particles === 'neutral' ? particles : 'neutral',
+  }
+}
+
 function normalizeRegion(region: unknown): MapRegion {
   const raw = isRecord(region) ? region : {}
   const neighbors = Array.isArray(raw.neighbors)
@@ -313,6 +343,13 @@ function normalizeRegion(region: unknown): MapRegion {
     owner: toFactionIdValue(raw.owner ?? raw.owner_id),
     resourceValue: toNumberValue(raw.resourceValue ?? raw.resource_value),
     developmentLevel: toNumberValue(raw.developmentLevel ?? raw.development_level),
+    resistance: toNumberValue(raw.resistance, 0),
+    capturedAtTurn:
+      typeof raw.capturedAtTurn === 'number'
+        ? raw.capturedAtTurn
+        : typeof raw.captured_at_turn === 'number'
+          ? raw.captured_at_turn
+          : null,
     centerLatLng: normalizeLatLng(raw.centerLatLng ?? raw.center_lat_lng),
     terrain: (raw.terrain as MapRegion['terrain']) ?? 'plains',
     minGarrison: Math.max(0, Math.round(toNumberValue(raw.minGarrison ?? raw.min_garrison, 10))),
@@ -460,6 +497,11 @@ function normalizeRegionPatch(patch: unknown): MapRegionPatch | null {
 
   const normalized: MapRegionPatch = {
     id: regionId,
+    region_id: regionId,
+    prev_owner: toFactionIdValue(raw.prev_owner ?? raw.prevOwner),
+    new_owner: toFactionIdValue(raw.new_owner ?? raw.newOwner ?? raw.owner),
+    transition: normalizeRegionTransition(raw.transition),
+    animation_params: normalizeAnimationParams(raw.animation_params ?? raw.animationParams),
   }
 
   const owner = toFactionIdValue(raw.owner ?? raw.new_owner ?? raw.newOwner)
@@ -471,6 +513,12 @@ function normalizeRegionPatch(patch: unknown): MapRegionPatch | null {
   }
   if (typeof raw.developmentLevel === 'number' || typeof raw.development_level === 'number') {
     normalized.developmentLevel = toNumberValue(raw.developmentLevel ?? raw.development_level)
+  }
+  if (typeof raw.resistance === 'number') {
+    normalized.resistance = toNumberValue(raw.resistance)
+  }
+  if (typeof raw.capturedAtTurn === 'number' || typeof raw.captured_at_turn === 'number') {
+    normalized.capturedAtTurn = toNumberValue(raw.capturedAtTurn ?? raw.captured_at_turn)
   }
   if (typeof raw.terrain === 'string') {
     normalized.terrain = raw.terrain as MapRegion['terrain']
@@ -803,6 +851,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   currentTurn: initialState.epoch,
   aiThinkingState: null,
   borderTensionMap: {},
+  regionTransitionLog: [],
   winner: null,
   finalNarration: null,
   serverClockOffsetMs: 0,
@@ -823,6 +872,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       currentTurn: state.currentTurn,
       aiThinkingState: state.aiThinkingState,
       borderTensionMap: state.borderTensionMap,
+      regionTransitionLog: [],
       winner: state.winner,
       finalNarration: state.finalNarration,
       serverClockOffsetMs: state.serverClockOffsetMs,
@@ -927,7 +977,6 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
         defender.military * 1.05 + defender.morale * 0.65 + terrainBonus + region.developmentLevel * 3,
       )
       const winner = attackerPower >= defenderPower ? attackerId : defenderId
-      const loser = winner === attackerId ? defenderId : attackerId
       const regionOwnerChanged = winner === attackerId && region.owner !== attackerId
       const attackerCasualties = Math.round(defenderPower * 0.18)
       const defenderCasualties = Math.round(attackerPower * 0.2)
@@ -973,26 +1022,16 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
         actor: attackerId,
         target: defenderId,
         payload: {
-          regionId,
+          region_id: regionId,
           attacker: attackerId,
           defender: defenderId,
-          attackerPower,
-          defenderPower,
-          winner,
-          loser,
-          casualties: {
-            attacker: attackerCasualties,
-            defender: defenderCasualties,
-          },
           atk_loss: attackerCasualties,
           def_loss: defenderCasualties,
           territory_captured: regionOwnerChanged,
-          morale_shift: {
-            attacker: winner === attackerId ? 4 : -6,
-            defender: winner === defenderId ? 3 : -7,
-          },
-          regionOwnerChanged,
-          stateApplied: true,
+          morale_shift: winner === attackerId ? 0.04 : -0.06,
+          narrative: `${factionById[attackerId].name}与${factionById[defenderId].name}在${regionId}爆发战斗，${factionById[winner].name}取得优势`,
+          attacker_remaining_troops: Math.max(0, attacker.military - attackerCasualties),
+          defender_remaining_troops: Math.max(0, defender.military - defenderCasualties),
         },
         narration: `${factionById[attackerId].name}与${factionById[defenderId].name}在${regionId}爆发战斗，${factionById[winner].name}取得优势`,
       }
@@ -1232,10 +1271,46 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       regions:
         changes.length > 0
           ? state.regions.map((region) => {
-              const patch = changes.find((change) => change.id === region.id)
-              return patch ? { ...region, ...patch } : region
+              const patch = changes.find((change) => change.region_id === region.id || change.id === region.id)
+              if (!patch) {
+                return region
+              }
+
+              const owner = 'new_owner' in patch ? patch.new_owner ?? null : patch.owner ?? region.owner
+              return {
+                ...region,
+                owner,
+                resourceValue: patch.resourceValue ?? region.resourceValue,
+                developmentLevel:
+                  patch.developmentLevel ??
+                  (patch.transition === 'conquest' ? 0.3 : region.developmentLevel),
+                resistance: patch.resistance ?? (patch.transition === 'conquest' ? 0.5 : region.resistance),
+                capturedAtTurn:
+                  patch.capturedAtTurn ??
+                  (patch.transition === 'conquest' ? state.epoch.turn : region.capturedAtTurn),
+                centerLatLng: patch.centerLatLng ?? region.centerLatLng,
+                terrain: patch.terrain ?? region.terrain,
+                minGarrison: patch.minGarrison ?? region.minGarrison,
+                supplyLines: patch.supplyLines ?? region.supplyLines,
+                neighbors: patch.neighbors ?? region.neighbors,
+              }
             })
           : state.regions,
+      regionTransitionLog:
+        changes.length > 0
+          ? [
+              ...changes.map((change) => ({
+                id: `${change.region_id ?? change.id}:${change.new_owner ?? 'none'}:${Date.now()}`,
+                region_id: change.region_id ?? change.id ?? '',
+                prev_owner: change.prev_owner ?? null,
+                new_owner: change.new_owner ?? null,
+                transition: change.transition ?? 'conquest',
+                animation_params: change.animation_params ?? normalizeAnimationParams(null),
+                started_at: Date.now(),
+              })),
+              ...state.regionTransitionLog,
+            ].slice(0, 20)
+          : state.regionTransitionLog,
       borderTensionMap:
         Object.keys(borderTensionMap).length > 0
           ? {
@@ -1360,6 +1435,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
         privateMessages: dedupeAndSortPrivateMessages(snapshot.privateMessages),
         aiThinkingState: snapshot.aiThinkingState,
         borderTensionMap: snapshot.borderTensionMap,
+        regionTransitionLog: [],
         winner: snapshot.winner,
         finalNarration: snapshot.finalNarration,
       }

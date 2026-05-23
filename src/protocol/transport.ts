@@ -19,10 +19,10 @@ import type { SubmitSpeechResult } from '@/features/commandTerminal/types'
 import type {
   FactionStatsPatch,
   IncomingMessage,
-  MapRegionPatch,
   BorderTensionEntry,
   OutgoingMessage,
   RelationshipPatch,
+  RegionChange,
   StatsDiffPayload,
 } from './types'
 
@@ -497,7 +497,7 @@ export class MockTransport implements Transport {
     }))
   }
 
-  emitMapDiff(changes: MapRegionPatch[], borderUpdates: BorderTensionEntry[] = []) {
+  emitMapDiff(changes: RegionChange[], borderUpdates: BorderTensionEntry[] = []) {
     if (changes.length === 0 && borderUpdates.length === 0) {
       return
     }
@@ -584,7 +584,6 @@ export class MockTransport implements Transport {
       defender.military * 1.05 + defender.morale * 0.65 + terrainBonus + region.developmentLevel * 3,
     )
     const winner = attackerPower >= defenderPower ? attackerId : defenderId
-    const loser = winner === attackerId ? defenderId : attackerId
     const regionOwnerChanged = winner === attackerId && region.owner !== attackerId
     const attackerCasualties = Math.round(defenderPower * 0.18)
     const defenderCasualties = Math.round(attackerPower * 0.2)
@@ -644,7 +643,19 @@ export class MockTransport implements Transport {
     })
 
     if (regionOwnerChanged) {
-      this.emitMapDiff([{ id: regionId, owner: attackerId }])
+      this.emitMapDiff([
+        {
+          region_id: regionId,
+          prev_owner: region.owner,
+          new_owner: attackerId,
+          transition: 'conquest',
+          animation_params: {
+            direction: 'west_to_east',
+            speed: 1.2,
+            particles: 'aggressive',
+          },
+        },
+      ])
     }
 
     const event: BattleEvent = {
@@ -658,26 +669,16 @@ export class MockTransport implements Transport {
       actor: attackerId,
       target: defenderId,
       payload: {
-        regionId,
+        region_id: regionId,
         attacker: attackerId,
         defender: defenderId,
-        attackerPower,
-        defenderPower,
-        winner,
-        loser,
-        casualties: {
-          attacker: attackerCasualties,
-          defender: defenderCasualties,
-        },
         atk_loss: attackerCasualties,
         def_loss: defenderCasualties,
         territory_captured: regionOwnerChanged,
-        morale_shift: {
-          attacker: winner === attackerId ? 4 : -6,
-          defender: winner === defenderId ? 3 : -7,
-        },
-        regionOwnerChanged,
-        stateApplied: true,
+        morale_shift: winner === attackerId ? 0.04 : -0.06,
+        narrative: `${factionById[attackerId].name}与${factionById[defenderId].name}在${regionId}爆发战斗，${factionById[winner].name}取得优势`,
+        attacker_remaining_troops: attackerNext.military,
+        defender_remaining_troops: defenderNext.military,
       },
       narration: `${factionById[attackerId].name}与${factionById[defenderId].name}在${regionId}爆发战斗，${factionById[winner].name}取得优势`,
     }

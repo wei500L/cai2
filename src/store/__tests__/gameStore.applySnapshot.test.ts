@@ -75,6 +75,8 @@ describe('gameStore reconnect snapshot', () => {
           owner: 'ironCrown',
           resourceValue: 24,
           developmentLevel: 3,
+          resistance: 0.5,
+          capturedAtTurn: 2,
           centerLatLng: [12, 34],
           terrain: 'plains',
           minGarrison: 10,

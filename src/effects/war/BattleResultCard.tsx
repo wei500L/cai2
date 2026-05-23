@@ -13,6 +13,8 @@ export type BattleResultCardData = {
   regionId?: string
   atkLoss: number
   defLoss: number
+  attackerRemainingTroops: number
+  defenderRemainingTroops: number
   territoryCaptured: boolean
   moraleShift: { attacker: number; defender: number }
   narration: string
@@ -162,8 +164,8 @@ export function BattleResultCard({ card, onClose }: BattleResultCardProps) {
           <div className="grid grid-cols-2 gap-2 text-[color:#ff6666]">
             <RollingStat label="ATK LOSS" value={card.atkLoss} prefix="-" />
             <RollingStat label="DEF LOSS" value={card.defLoss} prefix="-" />
-            <RollingStat label="ATK MORALE" value={card.moraleShift.attacker} prefix={card.moraleShift.attacker >= 0 ? '+' : ''} />
-            <RollingStat label="DEF MORALE" value={card.moraleShift.defender} prefix={card.moraleShift.defender >= 0 ? '+' : ''} />
+            <RollingStat label="ATK LEFT" value={card.attackerRemainingTroops} />
+            <RollingStat label="DEF LEFT" value={card.defenderRemainingTroops} />
           </div>
 
           <div

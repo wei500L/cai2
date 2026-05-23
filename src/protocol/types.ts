@@ -121,24 +121,52 @@ export type ReconnectFullState = {
   final_narration: string | null
 }
 
-export type MapRegionPatch = Partial<Omit<MapRegion, 'id'>> & {
+export type RegionTransition = 'conquest' | 'cede' | 'negotiated' | 'abandoned'
+export type RegionFlowDirection =
+  | 'south_to_north'
+  | 'north_to_south'
+  | 'east_to_west'
+  | 'west_to_east'
+export type RegionAnimationParams = {
+  direction: RegionFlowDirection
+  speed: number
+  particles: 'aggressive' | 'neutral'
+}
+
+export type RegionChange = {
+  region_id: string
+  prev_owner: FactionId | null
+  new_owner: FactionId | null
+  transition: RegionTransition
+  animation_params: RegionAnimationParams
+}
+
+export type RegionTransitionLogEntry = RegionChange & {
+  id: string
+  started_at: number
+}
+
+export type MapRegionPatch = Partial<RegionChange> & {
   id?: string
   region_id?: string
-  prev_owner?: FactionId | null
+  owner?: FactionId | null
   new_owner?: FactionId | null
-  transition?: 'conquest' | 'cede' | 'negotiated' | 'abandoned'
-  animation_params?: {
-    direction: string
-    speed: number
-    particles: number
-  }
+  resourceValue?: MapRegion['resourceValue']
+  developmentLevel?: MapRegion['developmentLevel']
+  resistance?: MapRegion['resistance']
+  capturedAtTurn?: MapRegion['capturedAtTurn']
+  centerLatLng?: MapRegion['centerLatLng']
+  terrain?: MapRegion['terrain']
+  minGarrison?: MapRegion['minGarrison']
+  supplyLines?: MapRegion['supplyLines']
+  neighbors?: MapRegion['neighbors']
 }
 
 export type MapDiffPayload = {
   room_id: string
   epoch: number
   turn: number
-  changes: MapRegionPatch[]
+  changes: RegionChange[]
   border_updates: BorderTensionEntry[]
 }
 

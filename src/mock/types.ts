@@ -91,26 +91,16 @@ export type BattleEvent = GameEvent & {
   actor: FactionId
   target: FactionId
   payload: {
-    regionId: string
+    region_id: string
     attacker: FactionId
     defender: FactionId
-    attackerPower: number
-    defenderPower: number
-    winner: FactionId
-    loser: FactionId
-    casualties: {
-      attacker: number
-      defender: number
-    }
-    atk_loss?: number
-    def_loss?: number
-    territory_captured?: boolean
-    morale_shift?: number | {
-      attacker?: number
-      defender?: number
-    }
-    regionOwnerChanged: boolean
-    stateApplied?: boolean
+    atk_loss: number
+    def_loss: number
+    territory_captured: boolean
+    morale_shift: number
+    narrative: string
+    attacker_remaining_troops: number
+    defender_remaining_troops: number
   }
 }
 
@@ -144,6 +134,8 @@ export type MapRegion = {
   owner: FactionId | null
   resourceValue: number
   developmentLevel: number
+  resistance: number
+  capturedAtTurn: number | null
   centerLatLng: [number, number]
   terrain: 'mountain' | 'plains' | 'river' | 'fortress' | 'desert'
   minGarrison: number

@@ -4,7 +4,7 @@ import type { GameEvent } from '@/mock/types'
 import { useUIStore } from '@/store/uiStore'
 
 function getPayloadRegionId(payload: Record<string, unknown>) {
-  const value = payload.regionId
+  const value = payload.region_id ?? payload.regionId
   return typeof value === 'string' ? value : undefined
 }
 

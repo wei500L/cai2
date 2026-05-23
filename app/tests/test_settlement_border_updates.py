@@ -63,6 +63,8 @@ def _battle() -> BattleEvent:
         def_loss=1.0,
         territory_captured=True,
         morale_shift=2.0,
+        attacker_remaining_troops=99.0,
+        defender_remaining_troops=99.0,
     )
 
 
@@ -103,6 +105,11 @@ def test_build_map_diff_emits_border_updates_from_neighbors_and_relationships() 
                 prev_owner=FactionId.starlight,
                 new_owner=FactionId.ironCrown,
                 transition="conquest",
+                animation_params={
+                    "direction": "south_to_north",
+                    "speed": 1.2,
+                    "particles": "aggressive",
+                },
             )
         ],
         battle_results=[_battle()],
@@ -117,9 +124,9 @@ def test_build_map_diff_emits_border_updates_from_neighbors_and_relationships() 
     bundle = _build_map_diff(result, input_state)
 
     assert bundle["changes"][0]["animation_params"] == {
-        "direction": "inward",
+        "direction": "south_to_north",
         "speed": 1.2,
-        "particles": 48,
+        "particles": "aggressive",
     }
     assert bundle["border_updates"] == [
         {

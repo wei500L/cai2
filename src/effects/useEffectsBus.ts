@@ -436,10 +436,43 @@ function parseBattleCard(event: GameEvent): BattleResultCardData | null {
     regionId: getPayloadString(event, 'regionId') ?? getPayloadString(event, 'region_id'),
     atkLoss,
     defLoss,
+    attackerRemainingTroops: getPayloadNumber(event, 'attacker_remaining_troops') ?? 0,
+    defenderRemainingTroops: getPayloadNumber(event, 'defender_remaining_troops') ?? 0,
     territoryCaptured,
     moraleShift: getMoraleShift(event),
-    narration: event.narration,
+    narration: getPayloadString(event, 'narrative') ?? event.narration,
   }
+}
+
+export function triggerBattleVisuals(
+  event: GameEvent,
+  callbacks: {
+    onShake: (level: 'light' | 'medium' | 'heavy', duration: number) => void
+    onBoost: (
+      attacker: FactionId,
+      defender: FactionId,
+      regionId: string | undefined,
+      persist: boolean,
+      life?: number,
+    ) => void
+    onFocus?: (regionId: string, factionId: FactionId) => void
+  },
+) {
+  const card = parseBattleCard(event)
+  if (!card) {
+    return null
+  }
+
+  callbacks.onShake('heavy', 500)
+  window.setTimeout(() => callbacks.onShake('medium', 500), 500)
+  window.setTimeout(() => callbacks.onShake('light', 500), 1_000)
+  callbacks.onBoost(card.attacker, card.defender, card.regionId, false, 800)
+
+  if (card.territoryCaptured && card.regionId && callbacks.onFocus) {
+    callbacks.onFocus(card.regionId, card.attacker)
+  }
+
+  return card
 }
 
 function resizeCanvas(canvas: HTMLCanvasElement) {
@@ -651,38 +684,20 @@ export function useEffectsBus({ canvasRef, mapQuality }: UseEffectsBusOptions) {
     }
 
     const spawnBattle = (state: GameStoreState, event: GameEvent) => {
-      const card = parseBattleCard(event)
+      const card = triggerBattleVisuals(event, {
+        onShake: (level, duration) => ScreenShake.trigger(level, duration),
+        onBoost: (attacker, defender, regionId, persist, life) => {
+          spawnWarBoost(state, attacker, defender, regionId, persist, life)
+        },
+        onFocus: (regionId, factionId) => {
+          useUIStore.getState().setMapFocus({ regionId, factionId })
+        },
+      })
       if (!card) {
         return
       }
 
       setBattleCard(card)
-      spawnWarBoost(state, card.attacker, card.defender, card.regionId, false, 800)
-
-      if (card.territoryCaptured && card.regionId) {
-        window.setTimeout(() => {
-          gameStoreApi.getState().updateRegionOwner(card.regionId as string, card.attacker)
-          if (event.payload.stateApplied !== true) {
-            gameStoreApi.getState().applyBattleOutcome({
-              attacker: card.attacker,
-              defender: card.defender,
-              atkLoss: card.atkLoss,
-              defLoss: card.defLoss,
-              moraleShift: card.moraleShift,
-            })
-          }
-        }, 260)
-      } else if (event.payload.stateApplied !== true) {
-        window.setTimeout(() => {
-          gameStoreApi.getState().applyBattleOutcome({
-            attacker: card.attacker,
-            defender: card.defender,
-            atkLoss: card.atkLoss,
-            defLoss: card.defLoss,
-            moraleShift: card.moraleShift,
-          })
-        }, 260)
-      }
     }
 
     const stopWar = (event: GameEvent) => {
