@@ -75,6 +75,7 @@ class ActionTreatyPayload(IncomingPayloadModel):
     treaty_kind: TreatyKind
     target_factions: list[FactionId]
     proposal_text: str
+    metadata: dict[str, Any] | None = None
 
 
 class ActionMilitaryPayload(IncomingPayloadModel):
@@ -84,7 +85,9 @@ class ActionMilitaryPayload(IncomingPayloadModel):
     target_region: str
     movement: Literal["move", "attack", "defend"]
     orders_text: str
+    unit_id: str | None = None
     troops: int | None = None
+    metadata: dict[str, Any] | None = None
 
 
 class ActionIntelPayload(IncomingPayloadModel):
@@ -93,6 +96,7 @@ class ActionIntelPayload(IncomingPayloadModel):
     target_faction: FactionId
     intel_kind: Literal["spy", "interrogate", "intercept"]
     brief: str
+    metadata: dict[str, Any] | None = None
 
 
 class ActionLockPayload(IncomingPayloadModel):

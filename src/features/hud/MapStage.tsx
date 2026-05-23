@@ -19,7 +19,7 @@ function getPublicSpeechText(event: GameEvent) {
 }
 
 function getReactionLabel(event: GameEvent) {
-  if (event.kind !== 'reaction' || !event.actor) {
+  if (event.kind !== 'ai_reaction' || !event.actor) {
     return null
   }
 

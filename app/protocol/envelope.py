@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any, Generic, Protocol, TypeVar
+from typing import Any, Generic, Literal, Protocol, TypeVar
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict
@@ -19,11 +19,11 @@ class ClockLike(Protocol):
 class Envelope(BaseModel, Generic[PayloadT]):
     model_config = ConfigDict(strict=True, extra="forbid")
 
-    v: int = 1
+    v: Literal[1] = 1
     id: str
     t: str
     ts: int
-    seq: int | None = None
+    seq: int
     p: PayloadT
 
 

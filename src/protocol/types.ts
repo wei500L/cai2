@@ -2,13 +2,11 @@ import type { CommandMode, MilitaryAction, ToneAnalysis } from '@/features/comma
 import type {
   ArbitratePhase,
   FactionId,
-  FactionState,
   GameEvent,
   GamePhase,
   MapRegion,
   MockGameWorldState,
   PrivateMessage,
-  Relationship,
   TreatyKind,
 } from '@/mock/types'
 
@@ -55,14 +53,28 @@ export type MapDiffPayload = {
   border_updates: Record<string, unknown>[]
 }
 
-export type FactionStatsPatch = Partial<Omit<FactionState, 'id'>> & {
-  id: FactionId
+export type FactionStatsPatch = {
+  faction_id: FactionId
+  military_delta: number
+  economy_delta: number
+  diplomacy_delta: number
+  culture_delta: number
+  morale_delta: number
+  resulting_military?: number
+  resulting_economy?: number
+  resulting_diplomacy?: number
+  resulting_culture?: number
+  resulting_morale?: number
+  resulting_total_power?: number
+  crisis?: boolean
+  reason?: string | null
 }
 
-export type RelationshipPatch = Partial<Pick<Relationship, 'value' | 'status' | 'treaties'>> & {
-  from: FactionId
-  to: FactionId
-  delta?: number
+export type RelationshipPatch = {
+  from_faction: FactionId
+  to_faction: FactionId
+  delta: number
+  reason: string
 }
 
 export type StatsDiffPayload = {
@@ -185,7 +197,10 @@ export type ActionIntelMessage = Envelope<'action.intel', {
   metadata?: ActionMetadata
 }>
 export type ActionLockMessage = Envelope<'action.lock', { room_id: string }>
-export type ActionBroadcastMessage = Envelope<'action.broadcast', ActionEventPayload>
+export type ActionBroadcastMessage = Envelope<'action.broadcast', {
+  room_id: string
+  event: GameEvent
+}>
 export type ActionPrivateMessage = Envelope<'action.private', ActionEventPayload>
 export type ActionRejectedMessage = Envelope<'action.rejected', {
   room_id: string
@@ -238,10 +253,14 @@ export type ReconnectRequestMessage = Envelope<'reconnect.request', {
   last_seq: number
   session_token: string
 }>
+export type ReconnectCatchupEntry = {
+  seq: number
+  event: GameEvent
+}
 export type ReconnectCatchupMessage = Envelope<'reconnect.catchup', {
   room_id: string
   from_seq: number
-  messages: IncomingMessage[]
+  messages: ReconnectCatchupEntry[]
 }>
 export type ReconnectSnapshotMessage = Envelope<'reconnect.snapshot', {
   room_id: string

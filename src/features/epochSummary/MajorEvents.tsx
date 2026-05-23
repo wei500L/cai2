@@ -7,18 +7,18 @@ import { useGameStore } from '@/store/gameStore'
 const fallbackGlyph: Record<GameEvent['kind'], string> = {
   speech: '言',
   private: '密',
-  reaction: '应',
   narration: '史',
-  treaty: '约',
-  military: '令',
   declare_war: '战',
   alliance: '盟',
   trade: '贸',
+  non_aggression: '和',
+  ceasefire: '停',
   betrayal: '叛',
   battle: '战',
   economy: '财',
   intel: '情',
-  peace: '和',
+  ai_thinking: '思',
+  ai_reaction: '应',
   phase_change: '更',
 }
 

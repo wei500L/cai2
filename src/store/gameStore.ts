@@ -566,7 +566,14 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     }
 
     const priority = isDeclareWar ? 'P0' : submission.tone?.isAggressive ? 'P1' : 'P2'
-    const eventKind: EventKind = isDeclareWar ? 'declare_war' : submission.mode
+    const eventKind: EventKind =
+      isDeclareWar
+        ? 'declare_war'
+        : submission.mode === 'treaty'
+          ? submission.treatyKind ?? 'non_aggression'
+          : submission.mode === 'military'
+            ? 'battle'
+            : submission.mode
     const target = targets[0]
     const targetNames = getTargetNames(targets)
     const treatyLabel = submission.treatyKind ? treatyKindLabels[submission.treatyKind] : undefined
@@ -717,34 +724,58 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       factions:
         factionStats.length > 0
           ? state.factions.map((faction) => {
-              const patch = factionStats.find((item) => item.id === faction.id)
-              return patch ? recalculateFaction({ ...faction, ...patch }) : faction
+              const patch = factionStats.find((item) => item.faction_id === faction.id)
+              if (!patch) {
+                return faction
+              }
+
+              const nextFaction = {
+                ...faction,
+                military:
+                  patch.resulting_military ?? clamp(faction.military + patch.military_delta, 0, 100),
+                economy:
+                  patch.resulting_economy ?? clamp(faction.economy + patch.economy_delta, 0, 100),
+                diplomacy:
+                  patch.resulting_diplomacy ??
+                  clamp(faction.diplomacy + patch.diplomacy_delta, 0, 100),
+                culture:
+                  patch.resulting_culture ?? clamp(faction.culture + patch.culture_delta, 0, 100),
+                morale: patch.resulting_morale ?? clamp(faction.morale + patch.morale_delta, 0, 100),
+              }
+              const totalPower =
+                patch.resulting_total_power ??
+                nextFaction.military +
+                  nextFaction.economy +
+                  nextFaction.diplomacy +
+                  nextFaction.culture +
+                  nextFaction.morale
+
+              return {
+                ...nextFaction,
+                totalPower,
+                status: getFactionStatus(totalPower),
+              }
             })
           : state.factions,
       relationships:
         relationshipChanges.length > 0
           ? state.relationships.map((relationship) => {
               const patch = relationshipChanges.find(
-                (item) => item.from === relationship.from && item.to === relationship.to,
+                (item) =>
+                  item.from_faction === relationship.from && item.to_faction === relationship.to,
               )
 
               if (!patch) {
                 return relationship
               }
 
-              const nextValue =
-                typeof patch.value === 'number'
-                  ? clamp(patch.value, -100, 100)
-                  : typeof patch.delta === 'number'
-                    ? clamp(relationship.value + patch.delta, -100, 100)
-                    : relationship.value
+              const nextValue = clamp(relationship.value + patch.delta, -100, 100)
 
               return {
                 ...relationship,
-                ...patch,
                 value: nextValue,
-                status: patch.status ?? getRelationshipStatus(nextValue),
-                treaties: patch.treaties ?? relationship.treaties,
+                status: getRelationshipStatus(nextValue),
+                treaties: relationship.treaties,
               }
             })
           : state.relationships,

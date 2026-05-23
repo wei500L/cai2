@@ -92,7 +92,7 @@ const fixtureEvents: GameEvent[] = [
     turn: 2,
     phase: 'action',
     priority: 'P1',
-    kind: 'treaty',
+    kind: 'non_aggression',
     actor: 'magma',
     target: 'voidChurch',
     payload: { treatyKind: 'non_aggression' },

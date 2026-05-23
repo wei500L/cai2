@@ -200,8 +200,10 @@ export function isKeyResolveEvent(event: GameEvent) {
     event.kind === 'declare_war' ||
     event.kind === 'alliance' ||
     event.kind === 'betrayal' ||
-    event.kind === 'treaty' ||
     event.kind === 'trade' ||
+    event.kind === 'non_aggression' ||
+    event.kind === 'ceasefire' ||
+    event.kind === 'ai_reaction' ||
     event.kind === 'economy'
   )
 }

@@ -55,6 +55,7 @@ def _incoming_payloads() -> dict[str, dict[str, object]]:
             "treaty_kind": "trade",
             "target_factions": ["starlight"],
             "proposal_text": "Open markets.",
+            "metadata": {"tone": "formal"},
         },
         "action.military": {
             "room_id": "room-1",
@@ -62,13 +63,16 @@ def _incoming_payloads() -> dict[str, dict[str, object]]:
             "target_region": "r-2",
             "movement": "attack",
             "orders_text": "Advance.",
+            "unit_id": "unit-12",
             "troops": 12,
+            "metadata": {"stance": "aggressive"},
         },
         "action.intel": {
             "room_id": "room-1",
             "target_faction": "starlight",
             "intel_kind": "spy",
             "brief": "Watch border movement.",
+            "metadata": {"source": "field-agent"},
         },
         "action.lock": {"room_id": "room-1"},
         "reconnect.request": {
@@ -216,6 +220,45 @@ def test_outgoing_payload_route_table_covers_expected_types() -> None:
     assert all(
         issubclass(payload_type, BaseModel) for payload_type in OUTGOING_PAYLOAD_TYPES.values()
     )
+
+
+def test_optional_protocol_fields_are_accepted() -> None:
+    from app.protocol.outgoing import (
+        AISpeakPayload,
+        ActionPrivateBroadcastPayload,
+        ResolveEventsPayload,
+    )
+
+    assert ActionPrivateBroadcastPayload(
+        room_id="room-1",
+        event={"id": "event-1"},
+        private_message={"id": "pm-1"},
+    ).private_message == {"id": "pm-1"}
+
+    assert ResolveEventsPayload(
+        room_id="room-1",
+        epoch=1,
+        turn=2,
+        events=[],
+        private_messages=[{"id": "pm-1"}],
+    ).private_messages == [{"id": "pm-1"}]
+
+    assert AISpeakPayload(
+        room_id="room-1",
+        event={"id": "event-1"},
+        private_message={"id": "pm-1"},
+    ).private_message == {"id": "pm-1"}
+
+    assert PhaseChangePayload(
+        room_id="room-1",
+        epoch=1,
+        turn=2,
+        phase=GamePhase.action,
+        arbitrate_phase=None,
+        phase_duration_ms=30_000,
+        phase_started_at_ms=1_000,
+        is_paused=True,
+    ).is_paused is True
 
 
 def test_protocol_payloads_use_strict_validation() -> None:

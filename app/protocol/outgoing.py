@@ -74,6 +74,7 @@ class PhaseChangePayload(OutgoingPayloadModel):
     arbitrate_phase: ArbitratePhase | None = None
     phase_duration_ms: int
     phase_started_at_ms: int
+    is_paused: bool | None = None
 
 
 class TurnBeginPayload(OutgoingPayloadModel):
@@ -94,6 +95,7 @@ class ActionPrivateBroadcastPayload(OutgoingPayloadModel):
     t: Literal["action.private"] = Field("action.private", exclude=True)
     room_id: str
     event: dict[str, Any]
+    private_message: dict[str, Any] | None = None
 
 
 class ActionRejectedPayload(OutgoingPayloadModel):
@@ -110,6 +112,7 @@ class ResolveEventsPayload(OutgoingPayloadModel):
     epoch: int
     turn: int
     events: list[dict[str, Any]]
+    private_messages: list[dict[str, Any]] | None = None
 
 
 class ResolveMapDiffPayload(OutgoingPayloadModel):
@@ -141,6 +144,7 @@ class AISpeakPayload(OutgoingPayloadModel):
     t: Literal["ai.speak"] = Field("ai.speak", exclude=True)
     room_id: str
     event: dict[str, Any]
+    private_message: dict[str, Any] | None = None
 
 
 class AIReactionPayload(OutgoingPayloadModel):

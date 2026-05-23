@@ -11,13 +11,11 @@ import type {
   GameEvent,
   PrivateMessage,
   Relationship,
-  RelationshipStatus,
 } from '@/mock/types'
 import { clearAIResponseTimers, triggerAIResponses } from '@/mock/aiResponder'
 import { gameStoreApi } from '@/store/gameStore'
 import type { SubmitSpeechResult } from '@/features/commandTerminal/types'
 import type {
-  ActionEventPayload,
   FactionStatsPatch,
   IncomingMessage,
   MapRegionPatch,
@@ -63,26 +61,6 @@ function createPhaseKey(epoch: Epoch) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value))
-}
-
-function getRelationshipStatus(value: number): RelationshipStatus {
-  if (value <= -60) {
-    return 'hostile'
-  }
-
-  if (value <= -15) {
-    return 'wary'
-  }
-
-  if (value < 25) {
-    return 'neutral'
-  }
-
-  if (value < 65) {
-    return 'friendly'
-  }
-
-  return 'allied'
 }
 
 function getFactionStatus(totalPower: number): FactionState['status'] {
@@ -225,17 +203,16 @@ function isDeclareWar(mode: CommandMode, content: string) {
   return false
 }
 
-function getRelationshipPatch(relationship: Relationship, delta: number): RelationshipPatch {
-  const value = clamp(relationship.value + delta, -100, 100)
-  const treaties =
-    value < 50 ? relationship.treaties.filter((treaty) => treaty !== 'alliance') : relationship.treaties
-
+function getRelationshipPatch(
+  relationship: Relationship,
+  delta: number,
+  reason = 'battle',
+): RelationshipPatch {
   return {
-    from: relationship.from,
-    to: relationship.to,
-    value,
-    status: getRelationshipStatus(value),
-    treaties,
+    from_faction: relationship.from,
+    to_faction: relationship.to,
+    delta,
+    reason,
   }
 }
 
@@ -428,16 +405,23 @@ export class MockTransport implements Transport {
   }
 
   emitActionEvent(event: GameEvent, privateMessage?: PrivateMessage) {
-    const payload: ActionEventPayload = {
+    if (privateMessage) {
+      this.emit(nextEnvelope('action.private', {
+        room_id: DEFAULT_ROOM_ID,
+        event,
+        private_message: privateMessage,
+      }))
+      return
+    }
+
+    this.emit(nextEnvelope('action.broadcast', {
       room_id: DEFAULT_ROOM_ID,
       event,
-      private_message: privateMessage,
-    }
-    this.emit(nextEnvelope(privateMessage ? 'action.private' : 'action.broadcast', payload))
+    }))
   }
 
   emitAIEvent(event: GameEvent) {
-    if (event.kind === 'reaction') {
+    if (event.kind === 'ai_reaction') {
       this.emit(nextEnvelope('ai.reaction', {
         room_id: DEFAULT_ROOM_ID,
         event,
@@ -546,23 +530,55 @@ export class MockTransport implements Transport {
     const regionOwnerChanged = winner === attackerId && region.owner !== attackerId
     const attackerCasualties = Math.round(defenderPower * 0.18)
     const defenderCasualties = Math.round(attackerPower * 0.2)
-    const attackerPatch: FactionStatsPatch = recalculateFaction({
+    const attackerNext = recalculateFaction({
       ...attacker,
       military: clamp(attacker.military - attackerCasualties, 0, 100),
       morale: clamp(attacker.morale + (winner === attackerId ? 4 : -6), 0, 100),
     })
-    const defenderPatch: FactionStatsPatch = recalculateFaction({
+    const defenderNext = recalculateFaction({
       ...defender,
       military: clamp(defender.military - defenderCasualties, 0, 100),
       morale: clamp(defender.morale + (winner === defenderId ? 3 : -7), 0, 100),
     })
+    const attackerPatch: FactionStatsPatch = {
+      faction_id: attackerId,
+      military_delta: attackerNext.military - attacker.military,
+      economy_delta: attackerNext.economy - attacker.economy,
+      diplomacy_delta: attackerNext.diplomacy - attacker.diplomacy,
+      culture_delta: attackerNext.culture - attacker.culture,
+      morale_delta: attackerNext.morale - attacker.morale,
+      resulting_military: attackerNext.military,
+      resulting_economy: attackerNext.economy,
+      resulting_diplomacy: attackerNext.diplomacy,
+      resulting_culture: attackerNext.culture,
+      resulting_morale: attackerNext.morale,
+      resulting_total_power: attackerNext.totalPower,
+      crisis: attackerNext.status === 'critical',
+      reason: 'battle',
+    }
+    const defenderPatch: FactionStatsPatch = {
+      faction_id: defenderId,
+      military_delta: defenderNext.military - defender.military,
+      economy_delta: defenderNext.economy - defender.economy,
+      diplomacy_delta: defenderNext.diplomacy - defender.diplomacy,
+      culture_delta: defenderNext.culture - defender.culture,
+      morale_delta: defenderNext.morale - defender.morale,
+      resulting_military: defenderNext.military,
+      resulting_economy: defenderNext.economy,
+      resulting_diplomacy: defenderNext.diplomacy,
+      resulting_culture: defenderNext.culture,
+      resulting_morale: defenderNext.morale,
+      resulting_total_power: defenderNext.totalPower,
+      crisis: defenderNext.status === 'critical',
+      reason: 'battle',
+    }
     const relationshipChanges = state.relationships
       .filter(
         (relationship) =>
           (relationship.from === attackerId && relationship.to === defenderId) ||
           (relationship.from === defenderId && relationship.to === attackerId),
       )
-      .map((relationship) => getRelationshipPatch(relationship, -18))
+      .map((relationship) => getRelationshipPatch(relationship, -18, 'battle'))
 
     this.emitStatsDiff({
       faction_stats: [attackerPatch, defenderPatch],
@@ -630,9 +646,16 @@ export class MockTransport implements Transport {
 
     const target = targets[0]
     const priority: EventPriority = declareWar ? 'P0' : tone?.isAggressive ? 'P1' : 'P2'
-    const kind: EventKind = declareWar ? 'declare_war' : mode
-    const targetNames = getTargetNames(targets)
     const treatyKind = message.t === 'action.treaty' ? message.p.treaty_kind : undefined
+    const kind: EventKind =
+      declareWar
+        ? 'declare_war'
+        : mode === 'treaty'
+          ? (treatyKind ?? 'non_aggression')
+          : mode === 'military'
+            ? 'battle'
+            : mode
+    const targetNames = getTargetNames(targets)
     const treatyLabel = treatyKind ? treatyKindLabels[treatyKind] : undefined
     const militaryLabel = message.t === 'action.military' ? militaryActionLabels[message.p.movement] : undefined
     const narrationByMode: Record<CommandMode, string> = {

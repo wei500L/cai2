@@ -719,7 +719,7 @@ export function useEffectsBus({ canvasRef, mapQuality }: UseEffectsBusOptions) {
         spawnDeclareWar(state, event)
       } else if (event.kind === 'battle') {
         spawnBattle(state, event)
-      } else if (event.kind === 'peace' || event.payload.treatyKind === 'ceasefire') {
+      } else if (event.kind === 'ceasefire' || event.payload.treatyKind === 'ceasefire') {
         stopWar(event)
       }
     }

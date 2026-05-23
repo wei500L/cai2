@@ -164,7 +164,7 @@ function pushReaction(transport: AITransport, actor: FactionId, target: FactionI
   }
 
   const label = renderFactionTemplate(AI_REACTION_TEMPLATES, actor, target)
-  pushAIEvent(transport, 'reaction', actor, target, 'P2', label, {
+  pushAIEvent(transport, 'ai_reaction', actor, target, 'P2', label, {
     aiGenerated: true,
     sourceEventId,
     label,

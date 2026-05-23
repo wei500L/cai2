@@ -71,7 +71,16 @@ export type ReplayData = {
 
 type ReplayEventCategory = 'declare_war' | 'elimination' | 'betrayal' | 'alliance'
 
-const keyKinds = new Set<EventKind>(['declare_war', 'battle', 'betrayal', 'alliance', 'peace', 'treaty'])
+const keyKinds = new Set<EventKind>([
+  'declare_war',
+  'battle',
+  'betrayal',
+  'alliance',
+  'trade',
+  'non_aggression',
+  'ceasefire',
+  'ai_reaction',
+])
 
 const syntheticCategories: ReplayEventCategory[] = [
   'declare_war',

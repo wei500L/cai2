@@ -36,13 +36,16 @@ export function attachAdapter(transport: Transport, gameStore: GameStoreApiLike)
         break
       case 'action.broadcast':
       case 'action.private':
-      case 'ai.speak':
+      case 'ai.speak': {
+        const privateMessage =
+          'private_message' in message.p ? message.p.private_message : undefined
         store._applyEvents({
           room_id: message.p.room_id,
           events: [message.p.event],
-          private_messages: message.p.private_message ? [message.p.private_message] : undefined,
+          private_messages: privateMessage ? [privateMessage] : undefined,
         })
         break
+      }
       case 'ai.reaction':
         store._applyEvents({
           room_id: message.p.room_id,
@@ -51,6 +54,12 @@ export function attachAdapter(transport: Transport, gameStore: GameStoreApiLike)
         break
       case 'action.rejected':
         useUIStore.getState().setLastError(message.p.reason)
+        break
+      case 'reconnect.catchup':
+        store._applyEvents({
+          room_id: message.p.room_id,
+          events: message.p.messages.map((entry) => entry.event),
+        })
         break
       case 'room.start':
       case 'reconnect.snapshot':

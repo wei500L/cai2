@@ -181,9 +181,10 @@ function pushSimpleEvent(
       transport.emitStatsDiff({
         faction_stats: [],
         relationship_changes: [{
-          from: actor,
-          to: target,
+          from_faction: actor,
+          to_faction: target,
           delta,
+          reason: kind,
         }],
       })
     }
