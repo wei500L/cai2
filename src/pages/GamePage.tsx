@@ -169,6 +169,24 @@ export default function GamePage() {
         roomId = message.p.room_id
       }
 
+      if (
+        message.t === 'room.joined' &&
+        typeof message.p.room_snapshot === 'object' &&
+        message.p.room_snapshot !== null
+      ) {
+        const snapshot = message.p.room_snapshot as Record<string, unknown>
+        const nextPlayerId = snapshot.current_player_id
+        if (typeof nextPlayerId === 'string') {
+          playerId = nextPlayerId
+        }
+
+        const room = snapshot.room as Record<string, unknown> | undefined
+        const nextRoomId = room?.id
+        if (typeof nextRoomId === 'string') {
+          roomId = nextRoomId
+        }
+      }
+
       const reconnectable = transport as ReconnectableTransport | null
       reconnectable?.setReconnectContext?.({
         roomId,
