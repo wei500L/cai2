@@ -36,6 +36,19 @@ def test_debug_router_registers_required_routes() -> None:
     assert "/debug/v1/rooms/{room_id}/actions/speak" in routes
     assert "/debug/v1/rooms/{room_id}/settlement/run" in routes
     assert "/debug/v1/rooms/{room_id}/replay" in routes
+    assert "/debug/v1/runtime/config" in routes
+
+
+def test_runtime_config(rest_client: TestClient) -> None:
+    response = rest_client.get("/debug/v1/runtime/config")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ws_path"] == "/ws"
+    assert body["rest_prefix"] == "/debug/v1"
+    assert body["env"] == "dev"
+    assert body["llm_provider"] == "mock"
+    assert isinstance(body["server_time_ms"], int)
 
 
 def test_rest_debug_end_to_end_flow(rest_client: TestClient) -> None:

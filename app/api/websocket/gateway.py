@@ -10,12 +10,15 @@ from app.api.websocket.connection import ConnectionManager
 from app.api.websocket.dispatcher import OutboundDispatcher
 from app.api.websocket.router import InboundRouter
 from app.core.clock import SystemClock
+from app.core.config import get_settings
+from app.core.logging import get_logger
 from app.repositories.factory import make_repositories
 from app.services.action_service import ActionService
 from app.services.phase_service import PhaseService
 from app.services.room_service import RoomService
 
 router = APIRouter()
+logger = get_logger(__name__)
 
 
 class GameWebSocketGateway:
@@ -32,6 +35,7 @@ class GameWebSocketGateway:
 
     async def handle(self, websocket: WebSocket) -> None:
         player_id = websocket.query_params.get("player_id") or f"conn_{uuid4().hex[:12]}"
+        logger.info("websocket origin=%s player_id=%s", websocket.headers.get("origin"), player_id)
         await websocket.accept()
         await self._connection_manager.register(player_id, websocket)
         try:
@@ -69,7 +73,7 @@ def build_gateway() -> GameWebSocketGateway:
 gateway = build_gateway()
 
 
-@router.websocket("/ws")
+@router.websocket(get_settings().ws_path)
 async def endpoint(websocket: WebSocket) -> None:
     await gateway.handle(websocket)
 

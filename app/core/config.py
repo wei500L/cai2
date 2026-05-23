@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+_DEV_CORS_ORIGINS = ("http://localhost:5173", "http://127.0.0.1:5173")
+
 
 class Settings(BaseModel):
     model_config = ConfigDict(strict=True)
@@ -12,6 +14,17 @@ class Settings(BaseModel):
     log_level: str = "INFO"
     llm_provider: Literal["mock", "openai", "claude"] = "mock"
     enable_persistence: bool = False
+    cors_extra_origins: str = ""
+    ws_path: str = "/ws"
+    rest_prefix: str = "/debug/v1"
+
+    def allowed_cors_origins(self) -> list[str]:
+        origins = [*_DEV_CORS_ORIGINS]
+        for origin in self.cors_extra_origins.split(","):
+            normalized = origin.strip()
+            if normalized and normalized not in origins:
+                origins.append(normalized)
+        return origins
 
 
 def _read_literal(name: str, default: str, allowed: set[str]) -> str:
@@ -39,5 +52,7 @@ def get_settings() -> Settings:
         log_level=getenv("LOG_LEVEL", "INFO"),
         llm_provider=_read_literal("LLM_PROVIDER", "mock", {"mock", "openai", "claude"}),
         enable_persistence=_read_bool("ENABLE_PERSISTENCE", False),
+        cors_extra_origins=getenv("EXTRA_CORS_ORIGINS", ""),
+        ws_path=getenv("WS_PATH", "/ws"),
+        rest_prefix=getenv("REST_PREFIX", "/debug/v1"),
     )
-

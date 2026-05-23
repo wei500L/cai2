@@ -224,8 +224,9 @@ def test_outgoing_payload_route_table_covers_expected_types() -> None:
 
 def test_optional_protocol_fields_are_accepted() -> None:
     from app.protocol.outgoing import (
-        AISpeakPayload,
         ActionPrivateBroadcastPayload,
+        AIReactionPayload,
+        AISpeakPayload,
         ResolveEventsPayload,
     )
 
@@ -248,6 +249,14 @@ def test_optional_protocol_fields_are_accepted() -> None:
         event={"id": "event-1"},
         private_message={"id": "pm-1"},
     ).private_message == {"id": "pm-1"}
+
+    assert AIReactionPayload(
+        room_id="room-1",
+        event={"id": "event-1"},
+        private_message={"id": "pm-2"},
+        faction_id=FactionId.starlight,
+        reaction="concerned",
+    ).private_message == {"id": "pm-2"}
 
     assert PhaseChangePayload(
         room_id="room-1",

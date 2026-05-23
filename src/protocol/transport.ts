@@ -29,6 +29,30 @@ const MAX_CONTENT_LENGTH = 400
 
 type MessageHandler = (msg: IncomingMessage) => void
 
+export type TransportStatus = 'idle' | 'connecting' | 'open' | 'reconnecting' | 'closed' | 'error'
+
+export type ReconnectConfig = {
+  enabled: boolean
+  baseDelayMs: number
+  maxDelayMs: number
+  maxAttempts: number
+}
+
+export type TransportConfig = {
+  kind: 'mock' | 'ws'
+  ws?: {
+    url: string
+    token?: string
+    clientVersion: string
+    reconnect?: Partial<ReconnectConfig>
+    heartbeatIntervalMs?: number
+    onStatusChange?: (status: TransportStatus) => void
+  }
+  mock?: {
+    latencyMs?: number
+  }
+}
+
 export type Transport = {
   connect: () => void
   disconnect: () => void
@@ -288,6 +312,11 @@ function validateOutgoingAction(message: OutgoingMessage) {
 export class MockTransport implements Transport {
   private handlers = new Set<MessageHandler>()
   private connected = false
+  private latencyMs = 0
+
+  constructor(config: { latencyMs?: number } = {}) {
+    this.latencyMs = Math.max(0, config.latencyMs ?? 0)
+  }
 
   connect() {
     if (this.connected) {
@@ -748,19 +777,395 @@ export class MockTransport implements Transport {
       return
     }
 
+    if (this.latencyMs > 0) {
+      globalThis.setTimeout(() => {
+        if (!this.connected) {
+          return
+        }
+
+        for (const handler of this.handlers) {
+          handler(message)
+        }
+      }, this.latencyMs)
+      return
+    }
+
     for (const handler of this.handlers) {
       handler(message)
     }
   }
 }
 
-export declare class WebSocketTransport implements Transport {
-  constructor(url: string, token: string)
-  connect(): void
-  disconnect(): void
-  send(msg: OutgoingMessage): SubmitSpeechResult | void
-  on(handler: MessageHandler): void
-  off(handler: MessageHandler): void
+type ReconnectContext = {
+  roomId?: string
+  playerId?: string
+  sessionToken?: string
 }
 
-// TODO: 替换为 WebSocketTransport，URL 与 token 待后端接入
+type WireEnvelope = {
+  v?: unknown
+  id?: unknown
+  t?: unknown
+  ts?: unknown
+  seq?: unknown
+  p?: unknown
+}
+
+const DEFAULT_RECONNECT: ReconnectConfig = {
+  enabled: true,
+  baseDelayMs: 1000,
+  maxDelayMs: 30000,
+  maxAttempts: Infinity,
+}
+
+const DEFAULT_HEARTBEAT_INTERVAL_MS = 15000
+const MAX_OUTBOUND_QUEUE = 200
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function hasMinimumEnvelopeFields(value: unknown): value is WireEnvelope {
+  return (
+    isRecord(value) &&
+    value.v === 1 &&
+    typeof value.id === 'string' &&
+    typeof value.t === 'string' &&
+    typeof value.ts === 'number'
+  )
+}
+
+export class WebSocketTransport implements Transport {
+  private url: string
+  private token?: string
+  private clientVersion: string
+  private reconnect: ReconnectConfig
+  private heartbeatIntervalMs: number
+  private onStatusChange?: (status: TransportStatus) => void
+  private handlers = new Set<MessageHandler>()
+  private socket: WebSocket | null = null
+  private status: TransportStatus = 'idle'
+  private outboundSeq = 0
+  private lastInboundSeq = 0
+  private outboundQueue: OutgoingMessage[] = []
+  private reconnectAttempts = 0
+  private reconnectTimer: ReturnType<typeof globalThis.setTimeout> | null = null
+  private heartbeatTimer: ReturnType<typeof globalThis.setInterval> | null = null
+  private lastPongAt = 0
+  private manuallyClosed = false
+  private reconnectContext: ReconnectContext = {}
+
+  constructor(
+    url: string,
+    token?: string,
+    clientVersion = 'unknown',
+    reconnect?: Partial<ReconnectConfig>,
+    heartbeatIntervalMs = DEFAULT_HEARTBEAT_INTERVAL_MS,
+    onStatusChange?: (status: TransportStatus) => void,
+  ) {
+    this.url = url
+    this.token = token
+    this.clientVersion = clientVersion
+    this.reconnect = { ...DEFAULT_RECONNECT, ...reconnect }
+    this.heartbeatIntervalMs = heartbeatIntervalMs
+    this.onStatusChange = onStatusChange
+  }
+
+  connect() {
+    if (this.status === 'connecting' || this.status === 'open') {
+      return
+    }
+
+    this.manuallyClosed = false
+    this.clearReconnectTimer()
+    this.openSocket(false)
+  }
+
+  disconnect() {
+    this.manuallyClosed = true
+    this.clearReconnectTimer()
+    this.stopHeartbeat()
+    this.handlers.clear()
+
+    if (this.socket && this.socket.readyState !== WebSocket.CLOSED) {
+      this.socket.close()
+    }
+
+    this.socket = null
+    this.setStatus('closed')
+  }
+
+  send(message: OutgoingMessage): void {
+    const envelope = this.prepareOutgoing(message)
+
+    if (this.status !== 'open' || !this.socket || this.socket.readyState !== WebSocket.OPEN) {
+      this.enqueue(envelope)
+      return
+    }
+
+    this.sendRaw(envelope)
+  }
+
+  on(handler: MessageHandler) {
+    this.handlers.add(handler)
+  }
+
+  off(handler: MessageHandler) {
+    this.handlers.delete(handler)
+  }
+
+  setReconnectContext(context: ReconnectContext) {
+    this.reconnectContext = context
+  }
+
+  getStatus() {
+    return this.status
+  }
+
+  getLastInboundSeq() {
+    return this.lastInboundSeq
+  }
+
+  getQueueDepth() {
+    return this.outboundQueue.length
+  }
+
+  private openSocket(isReconnect: boolean) {
+    this.stopHeartbeat()
+    this.setStatus(isReconnect ? 'reconnecting' : 'connecting')
+
+    const socket = new WebSocket(this.buildUrl())
+    this.socket = socket
+
+    socket.onopen = () => {
+      if (this.socket !== socket) {
+        return
+      }
+
+      this.reconnectAttempts = 0
+      this.lastPongAt = Date.now()
+
+      if (isReconnect && this.lastInboundSeq > 0) {
+        this.sendReconnectRequest()
+      } else {
+        this.sendAuth()
+      }
+
+      this.setStatus('open')
+      this.startHeartbeat()
+      this.flushQueue()
+    }
+
+    socket.onmessage = (event: MessageEvent) => {
+      this.handleMessage(event.data)
+    }
+
+    socket.onerror = () => {
+      this.setStatus('error')
+    }
+
+    socket.onclose = () => {
+      if (this.socket === socket) {
+        this.socket = null
+      }
+
+      this.stopHeartbeat()
+
+      if (this.manuallyClosed) {
+        this.setStatus('closed')
+        return
+      }
+
+      this.scheduleReconnect()
+    }
+  }
+
+  private buildUrl() {
+    if (!this.token) {
+      return this.url
+    }
+
+    const separator = this.url.includes('?') ? '&' : '?'
+    return `${this.url}${separator}token=${encodeURIComponent(this.token)}`
+  }
+
+  private sendAuth() {
+    this.sendRaw(this.createEnvelope('conn.auth', {
+      token: this.token ?? '',
+      client_version: this.clientVersion,
+    }))
+  }
+
+  private sendReconnectRequest() {
+    this.sendRaw(this.createEnvelope('reconnect.request', {
+      room_id: this.reconnectContext.roomId,
+      player_id: this.reconnectContext.playerId,
+      last_seq: this.lastInboundSeq,
+      session_token: this.reconnectContext.sessionToken,
+    }))
+  }
+
+  private handleMessage(data: unknown) {
+    let parsed: unknown
+
+    try {
+      parsed = typeof data === 'string' ? JSON.parse(data) : JSON.parse(String(data))
+    } catch {
+      this.setStatus('error')
+      return
+    }
+
+    if (!hasMinimumEnvelopeFields(parsed)) {
+      this.setStatus('error')
+      return
+    }
+
+    if (typeof parsed.seq === 'number' && Number.isFinite(parsed.seq)) {
+      this.lastInboundSeq = parsed.seq
+    }
+
+    if (parsed.t === 'conn.pong') {
+      this.lastPongAt = Date.now()
+    }
+
+    for (const handler of this.handlers) {
+      handler(parsed as IncomingMessage)
+    }
+  }
+
+  private startHeartbeat() {
+    this.stopHeartbeat()
+
+    this.heartbeatTimer = globalThis.setInterval(() => {
+      if (this.status !== 'open' || !this.socket || this.socket.readyState !== WebSocket.OPEN) {
+        return
+      }
+
+      if (Date.now() - this.lastPongAt >= this.heartbeatIntervalMs * 2) {
+        this.socket.close()
+        return
+      }
+
+      this.sendRaw(this.createEnvelope('conn.ping', {
+        client_ts: Date.now(),
+      }))
+    }, this.heartbeatIntervalMs)
+  }
+
+  private stopHeartbeat() {
+    if (this.heartbeatTimer !== null) {
+      globalThis.clearInterval(this.heartbeatTimer)
+      this.heartbeatTimer = null
+    }
+  }
+
+  private scheduleReconnect() {
+    if (!this.reconnect.enabled || this.reconnectAttempts >= this.reconnect.maxAttempts) {
+      this.setStatus('closed')
+      return
+    }
+
+    const delay = Math.min(
+      this.reconnect.maxDelayMs,
+      this.reconnect.baseDelayMs * 2 ** this.reconnectAttempts,
+    )
+
+    this.reconnectAttempts += 1
+    this.setStatus('reconnecting')
+    this.reconnectTimer = globalThis.setTimeout(() => {
+      this.reconnectTimer = null
+      this.openSocket(true)
+    }, delay)
+  }
+
+  private clearReconnectTimer() {
+    if (this.reconnectTimer !== null) {
+      globalThis.clearTimeout(this.reconnectTimer)
+      this.reconnectTimer = null
+    }
+  }
+
+  private flushQueue() {
+    while (this.outboundQueue.length > 0) {
+      const next = this.outboundQueue.shift()
+
+      if (next) {
+        this.sendRaw(next)
+      }
+    }
+  }
+
+  private enqueue(message: OutgoingMessage) {
+    if (this.outboundQueue.length >= MAX_OUTBOUND_QUEUE) {
+      this.outboundQueue.shift()
+      console.warn('WebSocketTransport outbound queue is full; dropped the oldest message')
+    }
+
+    this.outboundQueue.push(message)
+  }
+
+  private prepareOutgoing(message: OutgoingMessage): OutgoingMessage {
+    const nextSeq = this.nextOutboundSeq()
+
+    return {
+      ...message,
+      id: message.id || `msg_${nextSeq.toString(36)}`,
+      ts: message.ts || Date.now(),
+      seq: message.seq || nextSeq,
+    } as OutgoingMessage
+  }
+
+  private createEnvelope<T extends string>(type: T, payload: unknown) {
+    const nextSeq = this.nextOutboundSeq()
+
+    return {
+      v: 1,
+      id: `msg_${nextSeq.toString(36)}`,
+      t: type,
+      ts: Date.now(),
+      seq: nextSeq,
+      p: payload,
+    }
+  }
+
+  private nextOutboundSeq() {
+    this.outboundSeq += 1
+    return this.outboundSeq
+  }
+
+  private sendRaw(message: unknown) {
+    if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+      return
+    }
+
+    this.socket.send(JSON.stringify(message))
+  }
+
+  private setStatus(status: TransportStatus) {
+    if (this.status === status) {
+      return
+    }
+
+    this.status = status
+    this.onStatusChange?.(status)
+  }
+}
+
+export function createTransport(config: TransportConfig): Transport {
+  if (config.kind === 'mock') {
+    return new MockTransport(config.mock)
+  }
+
+  if (!config.ws) {
+    throw new Error('WebSocket transport config is required when kind is "ws"')
+  }
+
+  return new WebSocketTransport(
+    config.ws.url,
+    config.ws.token,
+    config.ws.clientVersion,
+    config.ws.reconnect,
+    config.ws.heartbeatIntervalMs,
+    config.ws.onStatusChange,
+  )
+}

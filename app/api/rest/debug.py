@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from time import time
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from app.api.rest.deps import (
     get_action_service,
@@ -41,6 +42,7 @@ from app.api.rest.dto import (
     StartResponse,
     TreatyRequest,
 )
+from app.core.config import get_settings
 from app.domain.enums import FactionId
 from app.repositories.factory import Repositories
 from app.services.action_service import ActionService
@@ -49,7 +51,22 @@ from app.services.replay_service import ReplayService
 from app.services.room_service import RoomService
 from app.services.settlement_service import SettlementService
 
-router = APIRouter(prefix="/debug/v1", tags=["debug"])
+router = APIRouter(prefix=get_settings().rest_prefix, tags=["debug"])
+
+
+@router.get("/runtime/config")
+async def runtime_config() -> dict[str, str | int]:
+    settings = get_settings()
+    if settings.env != "dev":
+        raise HTTPException(status_code=404, detail="not found")
+
+    return {
+        "ws_path": settings.ws_path,
+        "rest_prefix": settings.rest_prefix,
+        "env": settings.env,
+        "llm_provider": settings.llm_provider,
+        "server_time_ms": int(time() * 1000),
+    }
 
 
 @router.post("/rooms", response_model=CreateRoomResponse)

@@ -105,7 +105,7 @@ def test_ai_speech_content_too_long_returns_fallback() -> None:
     result = ModelOutputParser().parse(_json_text(payload))
 
     assert result.ai_speeches == []
-    assert result.narrative_events[0].narration == "裁决系统暂未响应，本回合按规则继续。"
+    assert result.narrative_events[0].narration == "裁决系统暂未响应，本回合按规则继续。"  # noqa: RUF001
 
 
 def test_fallback_output_has_non_empty_narration() -> None:

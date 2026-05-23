@@ -219,11 +219,14 @@ def _ai_internal_thoughts(
                     "faction_id": faction_id.value,
                     "epoch": epoch,
                     "turn": turn,
-                    "text": f"玩家提出 {proposal} 时语气太急切了，我需要保留余地再观察一轮。",
+                    "text": f"玩家提出 {proposal} 时语气太急切了，我需要保留余地再观察一轮。",  # noqa: RUF001
                 }
             )
 
-    return sorted(thoughts, key=lambda item: (item["epoch"], item["turn"], item["faction_id"], item["text"]))
+    return sorted(
+        thoughts,
+        key=lambda item: (item["epoch"], item["turn"], item["faction_id"], item["text"]),
+    )
 
 
 def _first_speech_by_turn(actions: list[GameAction]) -> dict[tuple[int, int], str]:
@@ -321,7 +324,9 @@ def _relationship_snapshots(
     settlements: list[SettlementResult],
     final_relationships: list[Relationship],
 ) -> list[dict[str, Any]]:
-    epochs = sorted({epoch for epoch, _ in turn_keys} | {settlement.epoch for settlement in settlements})
+    epochs = sorted(
+        {epoch for epoch, _ in turn_keys} | {settlement.epoch for settlement in settlements}
+    )
     if not epochs:
         return []
 
@@ -336,7 +341,11 @@ def _relationship_snapshots(
     snapshots: dict[int, dict[str, dict[str, str]]] = {}
     for epoch in sorted(epochs, reverse=True):
         snapshots[epoch] = _relationship_matrix(current)
-        for settlement in sorted(settlements_by_epoch.get(epoch, []), key=_settlement_sort_key, reverse=True):
+        for settlement in sorted(
+            settlements_by_epoch.get(epoch, []),
+            key=_settlement_sort_key,
+            reverse=True,
+        ):
             for delta in reversed(settlement.relationship_deltas):
                 key = (delta.from_faction, delta.to_faction)
                 relationship = current.get(key)
@@ -415,7 +424,10 @@ def _deception_stats(
                 continue
             participants = treaty_participants.get(decision.treaty_id, set())
             for faction_id in participants:
-                if any(_is_after(event, settlement) and _mentions_faction(event, faction_id) for event in betrayal_events):
+                if any(
+                    _is_after(event, settlement) and _mentions_faction(event, faction_id)
+                    for event in betrayal_events
+                ):
                     lies[faction_id] += 1
 
     for event in events:
@@ -483,7 +495,9 @@ def _final_narration(
 ) -> str:
     if settlements:
         last = max(settlements, key=_settlement_sort_key)
-        narration = " ".join(event.narration for event in sorted(last.narration_events, key=_event_sort_key))
+        narration = " ".join(
+            event.narration for event in sorted(last.narration_events, key=_event_sort_key)
+        )
         if narration:
             return narration
     if events:

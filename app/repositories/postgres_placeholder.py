@@ -30,6 +30,7 @@ from app.repositories.base import (
     SettlementRepository,
 )
 
+
 class PostgresRoomRepository(RoomRepository):
     async def create(self, room: GameRoom) -> GameRoom:
         raise NotImplementedError("postgres adapter pending; see docs/PERSISTENCE_PLAN.md")

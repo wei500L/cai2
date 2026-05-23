@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+
 class RedisPubSub:
     async def connect(self) -> None:
         raise NotImplementedError("redis adapter pending; see docs/PERSISTENCE_PLAN.md")

@@ -1,9 +1,11 @@
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from starlette.middleware.cors import CORSMiddleware
 
 from app.api.rest.debug import router as debug_router
 from app.api.rest.health import router as health_router
 from app.api.websocket import router as websocket_router
+from app.core.config import get_settings
 from app.core.errors import (
     DiplomacyError,
     FactionAlreadyTakenError,
@@ -13,7 +15,18 @@ from app.core.errors import (
     RoomNotFoundError,
 )
 
+settings = get_settings()
 app = FastAPI(title="Diplomacy Backend", version="0.1.0")
+
+if settings.env == "dev":
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.allowed_cors_origins(),
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
 app.include_router(health_router)
 app.include_router(debug_router)
 app.include_router(websocket_router)

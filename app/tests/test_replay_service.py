@@ -28,8 +28,8 @@ from app.domain.models import (
     Relationship,
     SettlementResult,
     SpeechAction,
-    TreatyDecision,
     TreatyAction,
+    TreatyDecision,
 )
 from app.repositories.base import MessageRecord
 from app.repositories.factory import Repositories, make_repositories

@@ -150,6 +150,8 @@ class AISpeakPayload(OutgoingPayloadModel):
 class AIReactionPayload(OutgoingPayloadModel):
     t: Literal["ai.reaction"] = Field("ai.reaction", exclude=True)
     room_id: str
+    event: dict[str, Any]
+    private_message: dict[str, Any] | None = None
     faction_id: FactionId
     reaction: str
     target_faction: FactionId | None = None

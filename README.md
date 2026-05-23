@@ -6,6 +6,30 @@
 前端独立开发，通过 WebSocket 协议接入。
 当前只提供后端工程骨架、分层目录和健康检查接口，不连接真实数据库、不调用真实 LLM。
 
+## 联调启动
+
+后端本机联调启动：
+
+```bash
+bash scripts/backend-dev.sh
+```
+
+PowerShell：
+
+```powershell
+./scripts/backend-dev.ps1
+```
+
+按 Ctrl-C 退出本机 dev 进程。前端 Vite 开发服务器默认使用 `http://localhost:5173`，后端 dev 环境仅允许本机前端来源和 `EXTRA_CORS_ORIGINS` 中追加的来源访问。
+
+健康检查与联调握手：
+
+- `http://localhost:8000/healthz`
+- `http://localhost:8000/readyz`
+- `http://localhost:8000/debug/v1/runtime/config`
+
+该启动方式仅用于本机前后端联调，未做鉴权、未做 TLS、未连接数据库。联调期间保持 `LLM_PROVIDER=mock`；行动期不调用 LLM 仍是架构红线，联调改动不得绕过这条边界。
+
 ## 目录结构
 
 ```text
