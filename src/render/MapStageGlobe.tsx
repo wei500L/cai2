@@ -1,15 +1,18 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import Globe from 'globe.gl'
 import type { GlobeInstance } from 'globe.gl'
 import { AmbientLight, DirectionalLight, type Camera, type Scene, type WebGLRenderer } from 'three'
 import type { MapRegion } from '@/mock/types'
 import {
   buildHexPolygons,
+  type HexPolygonInput,
   hexPolygonAltitude,
   hexPolygonMargin,
 } from '@/render/globe/buildHexPolygons'
 import { bindComposerBridge, setupBloom, type ComposerBridge, type MoonComposer } from '@/render/globe/postprocess'
 import { createStarfield, disposeStarfield } from '@/render/globe/starfield'
+import { spawnExplosion } from '@/render/globe/explosionFx'
+import { useFxLoop } from '@/render/globe/fxLoop'
 import { hexPolygonColor } from '@/render/globe/stylePresets'
 import { GlobeInstanceProvider } from '@/render/globe/GlobeInstanceProvider'
 import type { GlobeInstanceSnapshot } from '@/render/globe/globeTypes'
@@ -35,8 +38,8 @@ function resolveRegionPoint(region: MapRegion) {
   }
 }
 
-function unwrapHexPolygonData<T>(hexPolygon: T | { __data?: T }) {
-  return (hexPolygon as { __data?: T }).__data ?? hexPolygon
+function unwrapHexPolygonData<T>(hexPolygon: T | { __data?: T }): T {
+  return (((hexPolygon as { __data?: T }).__data ?? hexPolygon) as T)
 }
 
 function toSnapshot(globe: GlobeInstance): GlobeInstanceSnapshot {
@@ -52,7 +55,6 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
   const containerRef = useRef<HTMLDivElement | null>(null)
   const globeRef = useRef<GlobeInstance | null>(null)
   const starfieldRef = useRef<ReturnType<typeof createStarfield> | null>(null)
-  const starfieldFrameRef = useRef<number | null>(null)
   const bloomComposerRef = useRef<MoonComposer | null>(null)
   const composerBridgeRef = useRef<ReturnType<typeof bindComposerBridge> | null>(null)
   const [published, setPublished] = useState<GlobeInstanceSnapshot | null>(null)
@@ -60,8 +62,20 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
   const focusRegionId = useMapStore((state) => state.focusRegionId)
   const scorchedRegions = useMapStore((state) => state.scorchedRegions)
   const lighting = useMapStore((state) => state.lighting)
+  const explosionQueue = useMapStore((state) => state.explosionQueue)
+  const consumeExplosion = useMapStore((state) => state.consumeExplosion)
   const regions = useGameStore((state) => state.regions)
   const worldGeometry = useGameStore((state) => state.worldGeometry)
+  const fxLoop = useFxLoop(
+    published?.globe ?? null,
+    {
+      onFrame: useCallback((dtMs: number) => {
+        if (starfieldRef.current) {
+          starfieldRef.current.rotation.y += dtMs * 0.000006
+        }
+      }, []),
+    },
+  )
 
   const focusRegion = useMemo(() => {
     if (!focusRegionId) {
@@ -77,18 +91,22 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
       return undefined
     }
 
-    const globe = Globe()(container)
+    const globe = new Globe(container)
     globeRef.current = globe
     const scene = globe.scene() as Scene
     const camera = globe.camera() as Camera
     const renderer = globe.renderer() as WebGLRenderer
+    const globeApi = globe as GlobeInstance & {
+      globeImageUrl(url: string | null): GlobeInstance
+      showGraticules?: (enabled: boolean) => GlobeInstance
+    }
 
+    globeApi.globeImageUrl(null)
     globe
-      .globeImageUrl(null)
       .backgroundColor('#000')
       .showAtmosphere(false)
       .pointOfView(PRESET_POINTS.overview, 0)
-    ;(globe as any).showGraticules?.(false)
+    globeApi.showGraticules?.(false)
 
     const ambientLight = new AmbientLight('#09111c', 0.18)
     const sunLight = new DirectionalLight('#f2e5c0', 1.25)
@@ -102,13 +120,14 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
     scene.add(ambientLight)
     scene.add(sunLight)
 
+    const initialLighting = useMapStore.getState().lighting
     const bloomRig = setupBloom(renderer, scene, camera, {
-      strength: lighting.bloomStrength,
-      radius: lighting.bloomRadius,
-      threshold: lighting.bloomThreshold,
+      strength: initialLighting.bloomStrength,
+      radius: initialLighting.bloomRadius,
+      threshold: initialLighting.bloomThreshold,
       vignetteDarkness: 0.6,
       noiseOpacity: 0.06,
-      noiseEnabled: lighting.noiseEnabled,
+      noiseEnabled: initialLighting.noiseEnabled,
     })
     bloomComposerRef.current = bloomRig.composer
     composerBridgeRef.current = bindComposerBridge(
@@ -120,10 +139,8 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
 
     return () => {
       setPublished(null)
-      if (starfieldFrameRef.current !== null) {
-        cancelAnimationFrame(starfieldFrameRef.current)
-        starfieldFrameRef.current = null
-      }
+      composerBridgeRef.current?.restore()
+      bloomComposerRef.current?.dispose()
       disposeStarfield(starfieldRef.current)
       starfieldRef.current = null
       bloomComposerRef.current = null
@@ -199,24 +216,24 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
     const starfield = createStarfield(globe.scene() as Scene, lighting.starfieldDensity)
     starfieldRef.current = starfield
 
-    let frameId = 0
-    const spin = () => {
-      starfield.rotation.y += 0.0001
-      frameId = requestAnimationFrame(spin)
-      starfieldFrameRef.current = frameId
-    }
-
-    frameId = requestAnimationFrame(spin)
-    starfieldFrameRef.current = frameId
-
     return () => {
-      cancelAnimationFrame(frameId)
       if (starfieldRef.current === starfield) {
         starfieldRef.current = null
       }
       disposeStarfield(starfield)
     }
   }, [lighting.starfieldDensity])
+
+  useEffect(() => {
+    if (!published?.scene || explosionQueue.length === 0) {
+      return
+    }
+
+    for (const event of explosionQueue) {
+      fxLoop.add(spawnExplosion(published.scene, event))
+      consumeExplosion(event.id)
+    }
+  }, [consumeExplosion, explosionQueue, fxLoop, published?.scene])
 
   useEffect(() => {
     const composer = bloomComposerRef.current
@@ -226,8 +243,8 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
 
     const effects = composer.__moonEffects
     effects.bloom.intensity = lighting.bloomStrength
-    effects.bloom.radius = lighting.bloomRadius
-    ;(effects.bloom.luminanceMaterial as { threshold: number }).threshold = lighting.bloomThreshold
+    effects.bloom.mipmapBlurPass.radius = lighting.bloomRadius
+    effects.bloom.luminanceMaterial.threshold = lighting.bloomThreshold
     effects.noise.blendMode.opacity.value = lighting.noiseEnabled ? 0.06 : 0
   }, [lighting.bloomStrength, lighting.bloomRadius, lighting.bloomThreshold, lighting.noiseEnabled])
 
@@ -242,13 +259,13 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
       .hexPolygonGeoJsonGeometry('geometry')
       .hexPolygonResolution(worldGeometry.hex_resolution)
       .hexPolygonColor((hexPolygon) =>
-        hexPolygonColor(unwrapHexPolygonData(hexPolygon), {
+        hexPolygonColor(unwrapHexPolygonData<HexPolygonInput>(hexPolygon), {
           sunLat: 10,
           sunLng: 0,
           nightMaskAlpha: lighting.dayNightMaskAlpha,
         }),
       )
-      .hexPolygonAltitude((hexPolygon) => hexPolygonAltitude(unwrapHexPolygonData(hexPolygon)))
+      .hexPolygonAltitude((hexPolygon) => hexPolygonAltitude(unwrapHexPolygonData<HexPolygonInput>(hexPolygon)))
       .hexPolygonMargin(hexPolygonMargin())
       .hexPolygonUseDots(false)
   }, [regions, scorchedRegions, worldGeometry, lighting.dayNightMaskAlpha])

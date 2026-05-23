@@ -725,7 +725,7 @@ function ParticleLayer({
           }
         `,
       }),
-    [particles.length],
+    [],
   )
 
   useEffect(() => {
@@ -855,10 +855,12 @@ export function MapStageR3F() {
       .join('|'),
   )
 
-  const scene = useMemo(
-    () => buildSceneData(gameStoreApi.getState(), quality),
-    [borderSignature, quality, regionSignature, transitionSignature],
-  )
+  const scene = useMemo(() => {
+    void borderSignature
+    void regionSignature
+    void transitionSignature
+    return buildSceneData(gameStoreApi.getState(), quality)
+  }, [borderSignature, quality, regionSignature, transitionSignature])
 
   return (
     <Canvas

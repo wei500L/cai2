@@ -148,7 +148,7 @@ export function RealtimeConnection({
       transport.disconnect()
       transportRef.current = null
     }
-  }, [displayNameFromQuery, playerIdFromQuery, roomIdFromQuery, setConnectionStatus])
+  }, [displayNameFromQuery, pathname, playerIdFromQuery, roomIdFromQuery, setConnectionStatus])
 
   useEffect(() => {
     const transport = transportRef.current

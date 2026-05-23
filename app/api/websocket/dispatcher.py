@@ -8,7 +8,7 @@ from uuid import uuid4
 
 from app.api.websocket.connection import ConnectionManager, PlayerSession
 from app.core.clock import Clock, SystemClock
-from app.domain.enums import FactionId, VisibilityScope
+from app.domain.enums import FactionId, TerrainKind, VisibilityScope
 from app.domain.factions import all_faction_ids
 from app.domain.models import GameRoom, Player
 from app.domain.world_geometry import WorldGeometry
@@ -22,6 +22,7 @@ from app.protocol.outgoing import (
     RoomSnapshotPayload,
     RoomStartPayload,
     WorldGeometryCellPayload,
+    WorldGeometryFactionPayload,
     WorldGeometryPayload,
 )
 from app.repositories.factory import Repositories
@@ -64,6 +65,16 @@ class OutboundDispatcher:
             if not allowed:
                 continue
             await self.dispatch_to_player(session.player_id, envelope_dict)
+
+    async def emit(
+        self,
+        room_id: str,
+        message_type: str,
+        payload: dict[str, Any],
+        *,
+        seq: int | None = None,
+    ) -> None:
+        await self.dispatch_to_room(room_id, _envelope(message_type, payload, seq=seq))
 
     async def dispatch_phase_change(
         self,
@@ -243,6 +254,7 @@ class OutboundDispatcher:
         bundle: SettlementOutboundBundle,
     ) -> None:
         subscribers = await self._connection_manager.get_room_subscribers(room_id)
+        recipient_rows: list[tuple[PlayerSession, FactionId | None, list[dict[str, Any]]]] = []
 
         for session in subscribers:
             faction_id = await self._session_faction(session)
@@ -251,6 +263,9 @@ class OutboundDispatcher:
                 for event in bundle.resolve_events
                 if _event_visible_to_faction(event, faction_id)
             ]
+            recipient_rows.append((session, faction_id, visible_events))
+
+        for session, _faction_id, visible_events in recipient_rows:
             if visible_events:
                 await self.dispatch_to_player(
                     session.player_id,
@@ -266,6 +281,52 @@ class OutboundDispatcher:
                     ),
                 )
 
+        seq_offset = 1
+        if bundle.resolve_diplomatic_arcs:
+            await self.emit(
+                room_id,
+                "resolve.diplomatic_arcs",
+                {
+                    "room_id": room_id,
+                    "epoch": bundle.epoch,
+                    "turn": bundle.turn,
+                    "arcs": [
+                        arc.model_dump(mode="json") for arc in bundle.resolve_diplomatic_arcs
+                    ],
+                },
+                seq=bundle.seq_base + seq_offset,
+            )
+            seq_offset += 1
+
+        if bundle.resolve_explosions:
+            for index, explosion in enumerate(bundle.resolve_explosions):
+                await self.dispatch_to_room(
+                    room_id,
+                    _envelope(
+                        "resolve.event.explosion",
+                        explosion.model_dump(mode="json"),
+                        seq=bundle.seq_base + seq_offset + index,
+                    ),
+                )
+            seq_offset += len(bundle.resolve_explosions)
+
+        if bundle.resolve_ripples:
+            await self.emit(
+                room_id,
+                "resolve.ripple",
+                {
+                    "room_id": room_id,
+                    "epoch": bundle.epoch,
+                    "turn": bundle.turn,
+                    "ripples": [
+                        ripple.model_dump(mode="json") for ripple in bundle.resolve_ripples
+                    ],
+                },
+                seq=bundle.seq_base + seq_offset,
+            )
+            seq_offset += 1
+
+        for session, faction_id, _visible_events in recipient_rows:
             await self.dispatch_to_player(
                 session.player_id,
                 _envelope(
@@ -277,7 +338,7 @@ class OutboundDispatcher:
                         "changes": bundle.resolve_map_diff.get("changes", []),
                         "border_updates": bundle.resolve_map_diff.get("border_updates", []),
                     },
-                    seq=bundle.seq_base + 1,
+                    seq=bundle.seq_base + seq_offset,
                 ),
             )
             await self.dispatch_to_player(
@@ -294,11 +355,11 @@ class OutboundDispatcher:
                             [],
                         ),
                     },
-                    seq=bundle.seq_base + 2,
+                    seq=bundle.seq_base + seq_offset + 1,
                 ),
             )
 
-            for offset, event in enumerate(bundle.ai_speech_events, start=3):
+            for offset, event in enumerate(bundle.ai_speech_events, start=seq_offset + 2):
                 if _event_visible_to_faction(event, faction_id):
                     await self.dispatch_to_player(
                         session.player_id,
@@ -315,7 +376,7 @@ class OutboundDispatcher:
                     _envelope(
                         "resolve.world_lighting",
                         bundle.resolve_world_lighting,
-                        seq=bundle.seq_base + 3 + len(bundle.ai_speech_events),
+                        seq=bundle.seq_base + seq_offset + 2 + len(bundle.ai_speech_events),
                     ),
                 )
 
@@ -339,24 +400,7 @@ class OutboundDispatcher:
         )
 
     async def _dispatch_world_geometry(self, room_id: str, world_geometry: WorldGeometry) -> None:
-        payload = WorldGeometryPayload(
-            seed=world_geometry.seed,
-            hex_resolution=world_geometry.hex_resolution,
-            total_cells=world_geometry.total_cells,
-            factions=[faction_id for faction_id, _, _ in world_geometry.capitals],
-            cells=[
-                WorldGeometryCellPayload(
-                    lat=cell.lat,
-                    lng=cell.lng,
-                    hex_id=cell.hex_id,
-                    faction_id=cell.faction_id,
-                    terrain=cell.terrain,
-                    elevation=cell.elevation,
-                    neighbors=list(cell.neighbors),
-                )
-                for cell in world_geometry.cells
-            ],
-        )
+        payload = build_world_geometry_payload(world_geometry)
         await self.dispatch_to_room(
             room_id,
             _envelope("room.world_geometry", payload.model_dump(mode="json")),
@@ -375,6 +419,72 @@ class OutboundDispatcher:
             _event_visible_to_faction(event, faction_id, session.player_id)
             for event in events
         )
+
+
+def build_world_geometry_payload(world_geometry: WorldGeometry) -> WorldGeometryPayload:
+    return WorldGeometryPayload(
+        seed=world_geometry.seed,
+        hex_resolution=world_geometry.hex_resolution,
+        total_cells=world_geometry.total_cells,
+        factions=[
+            _world_geometry_faction(world_geometry, faction_id, lat, lng)
+            for faction_id, lat, lng in world_geometry.capitals
+        ],
+        cells=[
+            WorldGeometryCellPayload(
+                lat=cell.lat,
+                lng=cell.lng,
+                hex_id=cell.hex_id,
+                faction_id=cell.faction_id,
+                terrain=TerrainKind(cell.terrain.value),
+                elevation=cell.elevation,
+                neighbors=list(cell.neighbors),
+            )
+            for cell in world_geometry.cells
+        ],
+    )
+
+
+def _world_geometry_faction(
+    world_geometry: WorldGeometry,
+    faction_id: FactionId,
+    capital_lat: float,
+    capital_lng: float,
+) -> WorldGeometryFactionPayload:
+    return WorldGeometryFactionPayload(
+        id=faction_id,
+        capital_hex_id=_capital_hex_id(world_geometry, faction_id, capital_lat, capital_lng),
+        capital_lat=capital_lat,
+        capital_lng=capital_lng,
+    )
+
+
+def _capital_hex_id(
+    world_geometry: WorldGeometry,
+    faction_id: FactionId,
+    capital_lat: float,
+    capital_lng: float,
+) -> str:
+    candidate_hex_id = ""
+    best_distance = float("inf")
+    for cell in world_geometry.cells:
+        if cell.faction_id != faction_id:
+            continue
+        distance = abs(cell.lat - capital_lat) + abs(cell.lng - capital_lng)
+        if distance < best_distance:
+            best_distance = distance
+            candidate_hex_id = cell.hex_id
+
+    if candidate_hex_id:
+        return candidate_hex_id
+
+    for cell in world_geometry.cells:
+        distance = abs(cell.lat - capital_lat) + abs(cell.lng - capital_lng)
+        if distance < best_distance:
+            best_distance = distance
+            candidate_hex_id = cell.hex_id
+
+    return candidate_hex_id
 
 
 def _encode(envelope_dict: dict[str, Any]) -> str:

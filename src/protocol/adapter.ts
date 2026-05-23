@@ -50,6 +50,15 @@ export function attachAdapter(transport: Transport, gameStore: GameStoreApiLike)
       case 'room.player_resume':
         store._applyPlayerResume(message.p)
         break
+      case 'resolve.diplomatic_arcs':
+        store._applyDiplomaticArcs(message.p)
+        break
+      case 'resolve.ripple':
+        store._applyRipples(message.p)
+        break
+      case 'resolve.event.explosion':
+        store.handleExplosion(message.p)
+        break
       case 'resolve.events':
         store._applyEvents(message.p)
         break

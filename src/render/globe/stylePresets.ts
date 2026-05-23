@@ -158,6 +158,10 @@ export function hexPolygonColor(region: HexPolygonLike, ctx: HexPolygonColorCont
   const sunLat = ctx.sunLat ?? 10
   const sunLng = ctx.sunLng ?? 0
   const nightMaskAlpha = clamp(ctx.nightMaskAlpha ?? 0.6, 0, 1)
+  const normal = surfaceNormal(region.lat ?? 0, region.lng ?? 0)
+  const sun = sunVector(sunLat, sunLng)
+  const sunDot = normal.x * sun.x + normal.y * sun.y + normal.z * sun.z
+  const nightBlend = clamp(-sunDot, 0, 1) * nightMaskAlpha
 
   const baseRgb = parseCssColor(
     terrainBaseColor(region.terrain),
@@ -177,16 +181,13 @@ export function hexPolygonColor(region: HexPolygonLike, ctx: HexPolygonColorCont
     color = mixRgb(color, faction.shadowRgb, 0.45)
   }
 
+  const brightness = 1 - nightBlend * 0.5
   if (faction) {
-    const normal = surfaceNormal(region.lat ?? 0, region.lng ?? 0)
-    const sun = sunVector(sunLat, sunLng)
-    const sunDot = normal.x * sun.x + normal.y * sun.y + normal.z * sun.z
-    const nightBlend = clamp(-sunDot, 0, 1) * nightMaskAlpha
-    const brightness = 1 - nightBlend * 0.5
     const glowBlend = clamp(elevation * 0.24 + Math.max(sunDot, 0) * 0.08, 0, 0.24)
     color = mixRgb(color, faction.glowRgb, glowBlend)
-    color = mixRgb(color, { r: 0, g: 0, b: 0 }, 1 - brightness)
   }
+
+  color = mixRgb(color, { r: 0, g: 0, b: 0 }, 1 - brightness)
 
   const alpha = region.scorched ? 0.84 : factionId === null ? 0.72 : 0.95
   return toRgba(color, alpha)

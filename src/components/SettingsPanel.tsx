@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion'
 import { GlowPanel } from './GlowPanel'
 import { PixelButton } from './PixelButton'
+import type { ExplosionKind } from '@/protocol/types'
 import { useGameStore } from '@/store/gameStore'
 import { useMapStore } from '@/store/mapStore'
 import { useUIStore, type GlobalParticleDensity } from '@/store/uiStore'
@@ -18,6 +19,31 @@ const rendererOptions: Array<{ value: 'globe' | 'r3f' | '2d'; label: string }> =
   { value: '2d', label: '2D 平面（兼容）' },
 ]
 
+const explosionKindOptions: Array<{ value: ExplosionKind; label: string }> = [
+  { value: 'conventional', label: '常规' },
+  { value: 'nuke', label: '核爆' },
+  { value: 'aerial', label: '空袭' },
+  { value: 'naval', label: '海战' },
+  { value: 'uprising', label: '起义' },
+  { value: 'siege', label: '围城' },
+]
+
+function createDebugExplosionEvent(kind: ExplosionKind) {
+  const now = Date.now()
+  const centerLat = -42 + Math.random() * 84
+  const centerLng = -60 + Math.random() * 120
+
+  return {
+    id: `debug_explosion_${kind}_${now}_${Math.floor(Math.random() * 10000)}`,
+    centerLat,
+    centerLng,
+    intensity: kind === 'nuke' ? 2.8 : kind === 'siege' ? 1.8 : 1.25,
+    kind,
+    ttl_ms: 4000,
+    created_at_ms: now,
+  }
+}
+
 export function SettingsPanel() {
   const open = useUIStore((state) => state.settingsOpen)
   const density = useUIStore((state) => state.globalParticleDensity)
@@ -34,7 +60,13 @@ export function SettingsPanel() {
   const lighting = useMapStore((state) => state.lighting)
   const setRenderer = useMapStore((state) => state.setRenderer)
   const setLighting = useMapStore((state) => state.setLighting)
+  const enqueueExplosion = useMapStore((state) => state.enqueueExplosion)
   const initGame = useGameStore((state) => state.initGame)
+
+  const triggerDebugExplosion = (kind: ExplosionKind) => {
+    enqueueExplosion(createDebugExplosionEvent(kind))
+    setOpen(false)
+  }
 
   return (
     <AnimatePresence>
@@ -244,6 +276,26 @@ export function SettingsPanel() {
                     <span>显示 FPS</span>
                     <span className="text-[color:var(--border-glow)]">{devOverlayOpen ? 'ON' : 'OFF'}</span>
                   </button>
+
+                  {import.meta.env.DEV ? (
+                    <section>
+                      <div className="mb-2 text-[0.58rem] uppercase tracking-[0.18em] text-[color:var(--text-muted)]">
+                        [Debug] 触发模拟爆炸
+                      </div>
+                      <div className="grid grid-cols-3 gap-1">
+                        {explosionKindOptions.map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            className="h-9 border border-[color:rgba(255,255,255,0.14)] bg-[color:rgba(255,255,255,0.025)] font-hud text-[0.56rem] uppercase tracking-[0.12em] text-[color:var(--text-muted)] transition-holo hover:border-[color:var(--border-glow)] hover:text-[color:var(--text-primary)]"
+                            onClick={() => triggerDebugExplosion(option.value)}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    </section>
+                  ) : null}
 
                   <PixelButton
                     tone="danger"

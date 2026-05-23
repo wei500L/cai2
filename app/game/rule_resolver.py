@@ -680,6 +680,10 @@ class RuleResolver:
         index: int,
         record: BattleResultRecord,
     ) -> BattleEvent:
+        region = next(
+            (candidate for candidate in input.regions_snapshot if candidate.id == record.region_id),
+            None,
+        )
         return BattleEvent(
             id=f"settlement:{input.room_id}:{input.epoch}:{input.turn}:battle:{index}",
             room_id=input.room_id,
@@ -693,6 +697,8 @@ class RuleResolver:
             target_faction=record.defender,
             payload={
                 "region_id": record.region_id,
+                "center_lat": region.center_lat_lng[0] if region is not None else None,
+                "center_lng": region.center_lat_lng[1] if region is not None else None,
                 "atk_loss": record.atk_loss,
                 "def_loss": record.def_loss,
                 "territory_captured": record.territory_captured,

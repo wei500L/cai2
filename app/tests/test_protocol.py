@@ -9,14 +9,21 @@ from app.protocol import (
     INCOMING_PAYLOAD_TYPES,
     OUTGOING_PAYLOAD_TYPES,
     ActionSpeakPayload,
+    DiplomaticArcsEvent,
+    DiplomaticArcsPayload,
     Envelope,
+    ExplosionEvent,
+    ExplosionPayload,
     PhaseChangePayload,
     ProtocolError,
     RegionEntryOut,
     ReplayAIDiaryRevealPayload,
     ResolveMapDiffPayload,
+    RippleEvent,
+    RipplePayload,
     WorldGeometryCellPayload,
     WorldGeometryEvent,
+    WorldGeometryFactionPayload,
     WorldGeometryPayload,
     WorldLightingEvent,
     WorldLightingPayload,
@@ -225,6 +232,9 @@ def test_outgoing_payload_route_table_covers_expected_types() -> None:
         "resolve.events",
         "resolve.map_diff",
         "resolve.stats_diff",
+        "resolve.diplomatic_arcs",
+        "resolve.event.explosion",
+        "resolve.ripple",
         "resolve.world_lighting",
         "ai.thinking",
         "ai.speak",
@@ -260,6 +270,108 @@ def test_world_lighting_event_round_trip_is_stable() -> None:
 
     raw = serialize_json(payload)
     decoded = deserialize_json(raw, WorldLightingEvent)
+
+    assert decoded == payload
+    assert serialize_json(decoded) == raw
+
+
+def test_diplomatic_arcs_event_round_trip_is_stable() -> None:
+    payload = DiplomaticArcsEvent(
+        v=1,
+        id="msg_arc",
+        t="resolve.diplomatic_arcs",
+        ts=456,
+        seq=16,
+        p=DiplomaticArcsPayload(
+            room_id="room-1",
+            epoch=1,
+            turn=2,
+            arcs=[
+                {
+                    "id": "arc-1",
+                    "kind": "speech",
+                    "from_faction": FactionId.ironCrown,
+                    "to_faction": FactionId.starlight,
+                    "color": ["#8B1A1A", "#33AAFF"],
+                    "ttl_ms": 4_000,
+                    "created_at_ms": 321,
+                    "intensity": 0.7,
+                    "stroke": 0.6,
+                    "dashed": True,
+                    "bidirectional": False,
+                    "dash_length": 0.3,
+                    "dash_gap": 0.05,
+                    "dash_animate_time": 1_500,
+                }
+            ],
+        ),
+    )
+
+    raw = serialize_json(payload)
+    decoded = deserialize_json(raw, DiplomaticArcsEvent)
+
+    assert decoded == payload
+    assert serialize_json(decoded) == raw
+
+
+def test_ripple_event_round_trip_is_stable() -> None:
+    payload = RippleEvent(
+        v=1,
+        id="msg_ripple",
+        t="resolve.ripple",
+        ts=457,
+        seq=17,
+        p=RipplePayload(
+            room_id="room-1",
+            epoch=1,
+            turn=2,
+            ripples=[
+                {
+                    "id": "ripple-1",
+                    "kind": "speech",
+                    "lat": 12.5,
+                    "lng": 34.5,
+                    "color": "#33FFFF",
+                    "max_radius": 300,
+                    "ttl_ms": 4_000,
+                    "created_at_ms": 321,
+                }
+            ],
+        ),
+    )
+
+    raw = serialize_json(payload)
+    decoded = deserialize_json(raw, RippleEvent)
+
+    assert decoded == payload
+    assert serialize_json(decoded) == raw
+
+
+def test_explosion_event_round_trip_is_stable() -> None:
+    payload = ExplosionEvent(
+        v=1,
+        id="msg_explosion",
+        t="resolve.event.explosion",
+        ts=458,
+        seq=18,
+        p=ExplosionPayload(
+            id="battle-1",
+            turn=2,
+            attacker_faction=FactionId.ironCrown,
+            defender_faction=FactionId.starlight,
+            center_lat=12.5,
+            center_lng=34.5,
+            radius_km_estimate=120,
+            kind="conventional",
+            intensity=0.5,
+            ttl_ms=4_000,
+            casualties_estimate=5_000,
+            affected_hex_ids=[],
+        ),
+    )
+
+    raw = serialize_json(payload)
+    decoded = deserialize_json(raw, ExplosionEvent)
 
     assert decoded == payload
     assert serialize_json(decoded) == raw
@@ -387,7 +499,20 @@ def test_world_geometry_event_round_trip_is_stable() -> None:
             seed=42,
             hex_resolution=4,
             total_cells=642,
-            factions=[FactionId.ironCrown, FactionId.starlight],
+            factions=[
+                WorldGeometryFactionPayload(
+                    id=FactionId.ironCrown,
+                    capital_hex_id="H4_00001",
+                    capital_lat=12.5,
+                    capital_lng=34.5,
+                ),
+                WorldGeometryFactionPayload(
+                    id=FactionId.starlight,
+                    capital_hex_id="H4_00002",
+                    capital_lat=-12.5,
+                    capital_lng=-34.5,
+                ),
+            ],
             cells=[
                 WorldGeometryCellPayload(
                     lat=12.5,

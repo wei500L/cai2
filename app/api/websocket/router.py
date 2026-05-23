@@ -6,7 +6,7 @@ from typing import Any
 from pydantic import BaseModel
 
 from app.api.websocket.connection import ConnectionManager
-from app.api.websocket.dispatcher import OutboundDispatcher
+from app.api.websocket.dispatcher import OutboundDispatcher, build_world_geometry_payload
 from app.core.clock import Clock
 from app.core.config import get_settings
 from app.core.errors import DiplomacyError
@@ -583,24 +583,7 @@ def _room_state(room: Any) -> dict[str, Any]:
 def _world_geometry_payload(world_geometry: WorldGeometry | None) -> dict[str, Any] | None:
     if world_geometry is None:
         return None
-    return {
-        "seed": world_geometry.seed,
-        "hex_resolution": world_geometry.hex_resolution,
-        "total_cells": world_geometry.total_cells,
-        "factions": [faction_id for faction_id, _, _ in world_geometry.capitals],
-        "cells": [
-            {
-                "lat": cell.lat,
-                "lng": cell.lng,
-                "hex_id": cell.hex_id,
-                "faction_id": cell.faction_id,
-                "terrain": cell.terrain.value,
-                "elevation": cell.elevation,
-                "neighbors": list(cell.neighbors),
-            }
-            for cell in world_geometry.cells
-        ],
-    }
+    return build_world_geometry_payload(world_geometry).model_dump(mode="json")
 
 
 def _room_snapshot(room: Any, current_player_id: str) -> dict[str, Any]:

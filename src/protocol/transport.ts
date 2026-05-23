@@ -14,6 +14,7 @@ import type {
 } from '@/mock/types'
 import { clearAIResponseTimers, triggerAIResponses } from '@/mock/aiResponder'
 import { createMockWorldGeometry } from '@/mock/worldGeometry'
+import { createMockDiplomaticVisuals } from '@/mock/diplomaticArcs'
 import { gameStoreApi } from '@/store/gameStore'
 import { useUIStore } from '@/store/uiStore'
 import type { SubmitSpeechResult } from '@/features/commandTerminal/types'
@@ -464,6 +465,7 @@ export class MockTransport implements Transport {
         event,
         private_message: privateMessage,
       }))
+      this.emitDiplomaticVisuals(event, privateMessage)
       return
     }
 
@@ -471,6 +473,7 @@ export class MockTransport implements Transport {
       room_id: getRoomId(),
       event,
     }))
+    this.emitDiplomaticVisuals(event)
   }
 
   emitAIEvent(event: GameEvent) {
@@ -489,6 +492,7 @@ export class MockTransport implements Transport {
       room_id: getRoomId(),
       event,
     }))
+    this.emitDiplomaticVisuals(event)
   }
 
   emitAIPrivateMessage(event: GameEvent, privateMessage: PrivateMessage) {
@@ -497,6 +501,7 @@ export class MockTransport implements Transport {
       event,
       private_message: privateMessage,
     }))
+    this.emitDiplomaticVisuals(event, privateMessage)
   }
 
   emitMapDiff(changes: RegionChange[], borderUpdates: BorderTensionEntry[] = []) {
@@ -550,6 +555,42 @@ export class MockTransport implements Transport {
 
   tickPhase(deltaMs: number) {
     void deltaMs
+  }
+
+  private emitDiplomaticVisuals(event: GameEvent, privateMessage?: PrivateMessage) {
+    const worldGeometry = gameStoreApi.getState().worldGeometry
+    const actor = event.actor ?? privateMessage?.from
+    const target = event.target ?? privateMessage?.to
+
+    if (!worldGeometry || !actor) {
+      return
+    }
+
+    if (event.kind !== 'speech' && event.kind !== 'private') {
+      return
+    }
+
+    const visuals = createMockDiplomaticVisuals({
+      actor,
+      target,
+      kind: event.kind,
+      worldGeometry,
+      createdAtMs: event.createdAt,
+    })
+
+    if (visuals.arcs.length > 0) {
+      this.emit(nextEnvelope('resolve.diplomatic_arcs', {
+        room_id: getRoomId(),
+        arcs: visuals.arcs,
+      }))
+    }
+
+    if (visuals.ripples.length > 0) {
+      this.emit(nextEnvelope('resolve.ripple', {
+        room_id: getRoomId(),
+        ripples: visuals.ripples,
+      }))
+    }
   }
 
   advancePhase() {
@@ -686,6 +727,23 @@ export class MockTransport implements Transport {
     }
 
     this.emitEvents([event])
+    this.emitExplosion({
+      id: `${event.id}_explosion`,
+      room_id: getRoomId(),
+      epoch: state.epoch.id,
+      turn: state.epoch.turn,
+      region_id: regionId,
+      centerLat: region.lat ?? region.centerLatLng[0],
+      centerLng: region.lng ?? region.centerLatLng[1],
+      intensity: regionOwnerChanged ? 1.35 : 1,
+      kind: region.terrain === 'river' ? 'naval' : 'conventional',
+      ttl_ms: 4000,
+      created_at_ms: event.createdAt,
+    })
+  }
+
+  private emitExplosion(payload: Extract<IncomingMessage, { t: 'resolve.event.explosion' }>['p']) {
+    this.emit(nextEnvelope('resolve.event.explosion', payload))
   }
 
   private acceptPlayerAction(

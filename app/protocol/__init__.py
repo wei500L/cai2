@@ -2,6 +2,7 @@
 
 from app.protocol.envelope import Envelope, make_envelope, parse_envelope
 from app.protocol.errors import ProtocolError, UnknownMessageTypeError
+from app.protocol.explosion_events import ExplosionEvent, ExplosionPayload
 from app.protocol.incoming import (
     ActionIntelPayload,
     ActionLockPayload,
@@ -32,6 +33,8 @@ from app.protocol.outgoing import (
     ConnAuthOkPayload,
     ConnKickPayload,
     ConnPongPayload,
+    DiplomaticArcsEvent,
+    DiplomaticArcsPayload,
     ErrorMessagePayload,
     OutgoingMessage,
     OutgoingPayloadModel,
@@ -43,6 +46,8 @@ from app.protocol.outgoing import (
     ResolveEventsPayload,
     ResolveMapDiffPayload,
     ResolveStatsDiffPayload,
+    RippleEvent,
+    RipplePayload,
     RoomCreatedPayload,
     RoomJoinedPayload,
     RoomPlayerJoinPayload,
@@ -55,6 +60,7 @@ from app.protocol.outgoing import (
     TurnBeginPayload,
     WorldGeometryCellPayload,
     WorldGeometryEvent,
+    WorldGeometryFactionPayload,
     WorldGeometryPayload,
     WorldLightingEvent,
     WorldLightingPayload,
@@ -89,8 +95,12 @@ __all__ = [
     "ConnKickPayload",
     "ConnPingPayload",
     "ConnPongPayload",
+    "DiplomaticArcsEvent",
+    "DiplomaticArcsPayload",
     "Envelope",
     "ErrorMessagePayload",
+    "ExplosionEvent",
+    "ExplosionPayload",
     "IncomingMessage",
     "IncomingPayloadModel",
     "OutgoingMessage",
@@ -105,6 +115,8 @@ __all__ = [
     "ResolveEventsPayload",
     "ResolveMapDiffPayload",
     "ResolveStatsDiffPayload",
+    "RippleEvent",
+    "RipplePayload",
     "RoomCreatePayload",
     "RoomCreatedPayload",
     "RoomJoinPayload",
@@ -123,6 +135,7 @@ __all__ = [
     "UnknownMessageTypeError",
     "WorldGeometryCellPayload",
     "WorldGeometryEvent",
+    "WorldGeometryFactionPayload",
     "WorldGeometryPayload",
     "WorldLightingEvent",
     "WorldLightingPayload",

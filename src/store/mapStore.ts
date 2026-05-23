@@ -2,6 +2,8 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 import { create } from 'zustand'
 import type { CameraPreset, ExplosionEvent, GlobeRenderer } from '@/render/globe/globeTypes'
 
+export const MAX_EXPLOSION_QUEUE = 30
+
 export type MapLightingState = {
   bloomStrength: number
   bloomRadius: number
@@ -28,6 +30,8 @@ type MapStoreState = {
   clearScorched: (regionId: string) => void
   setLighting: (lighting: Partial<MapLightingState>) => void
 }
+
+type MapPersistedState = Pick<MapStoreState, 'renderer' | 'lighting'>
 
 const memoryStorage = (() => {
   const values = new Map<string, string>()
@@ -60,7 +64,7 @@ function getMapRendererStorage() {
   return memoryStorage
 }
 
-const storage = createJSONStorage<MapStoreState>(getMapRendererStorage)
+const storage = createJSONStorage<MapPersistedState>(getMapRendererStorage)
 
 export const useMapStore = create<MapStoreState>()(
   persist(
@@ -92,7 +96,10 @@ export const useMapStore = create<MapStoreState>()(
       },
       enqueueExplosion: (event) => {
         set((state) => ({
-          explosionQueue: [...state.explosionQueue.filter((item) => item.id !== event.id), event],
+          explosionQueue: [
+            ...state.explosionQueue.filter((item) => item.id !== event.id),
+            event,
+          ].slice(-MAX_EXPLOSION_QUEUE),
         }))
       },
       consumeExplosion: (id) => {
@@ -126,7 +133,10 @@ export const useMapStore = create<MapStoreState>()(
     {
       name: 'mapRenderer',
       storage,
-      partialize: (state) => ({ renderer: state.renderer, lighting: state.lighting }),
+      partialize: (state): MapPersistedState => ({
+        renderer: state.renderer,
+        lighting: state.lighting,
+      }),
     },
   ),
 )

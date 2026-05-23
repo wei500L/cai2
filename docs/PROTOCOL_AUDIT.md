@@ -70,7 +70,7 @@
 | ArbitratePhase | `battle`, `epic`, `summary` | `battle`, `epic`, `summary` | 是 | 三仲裁阶段一致。 |
 | TreatyKind | `non_aggression`, `trade`, `alliance`, `ceasefire` | `non_aggression`, `trade`, `alliance`, `ceasefire` | 是 | 四条约类型一致。 |
 | EventPriority | `P0`, `P1`, `P2` | `P0`, `P1`, `P2` | 是 | 三优先级一致。 |
-| EventKind | `speech`, `private`, `declare_war`, `alliance`, `trade`, `non_aggression`, `ceasefire`, `betrayal`, `battle`, `economy`, `intel`, `phase_change`, `ai_thinking`, `ai_reaction`, `narration` | `speech`, `private`, `declare_war`, `alliance`, `trade`, `non_aggression`, `ceasefire`, `betrayal`, `battle`, `economy`, `intel`, `phase_change`, `ai_thinking`, `ai_reaction`, `narration` | 是 | 实际全集为 15 项，按后端 domain 枚举对齐。 |
+| EventKind | `speech`, `private`, `declare_war`, `alliance`, `trade`, `non_aggression`, `ceasefire`, `betrayal`, `battle`, `invasion`, `siege`, `bombing`, `naval_assault`, `uprising`, `nuclear_strike`, `economy`, `intel`, `phase_change`, `ai_thinking`, `ai_reaction`, `narration` | `speech`, `private`, `declare_war`, `alliance`, `trade`, `non_aggression`, `ceasefire`, `betrayal`, `battle`, `invasion`, `siege`, `bombing`, `naval_assault`, `uprising`, `nuclear_strike`, `economy`, `intel`, `phase_change`, `ai_thinking`, `ai_reaction`, `narration` | 部分 | 后端先补军事子类用于 resolve.event.explosion 分流；前端 union 仍待同步。 |
 | RelationshipStatus | `hostile`, `wary`, `neutral`, `friendly`, `allied` | `hostile`, `wary`, `neutral`, `friendly`, `allied` | 是 | 五关系状态一致。 |
 
 ## 5. 差异清单
@@ -108,3 +108,35 @@
 | `region.hex_id` | `string \| null` | `str \| None` | 否 | `v1.0-globe` |
 
 说明：后端 `MapRegion` 与 `resolve.map_diff` 内部 region payload 现已携带上述可选字段；当值为 `None` 时序列化会省略对应键，前端可继续回退到 `center_lat_lng`。
+
+## 8. 外交可视化扩展
+
+| 字段 | 前端类型 | 后端类型 | 是否必填 | 备注 |
+| --- | --- | --- | --- | --- |
+| `room.world_geometry.factions[].capital_hex_id` | `string` | `str` | 是 | 首都所属 hex，用于 globe.points / arc 端点定位。 |
+| `room.world_geometry.factions[].capital_lat` | `number` | `float` | 是 | 首都纬度。 |
+| `room.world_geometry.factions[].capital_lng` | `number` | `float` | 是 | 首都经度。 |
+| `resolve.diplomatic_arcs` | `DiplomaticArc[]` | `DiplomaticArcsPayload` | 是 | resolve 阶段的演讲 / 密谈 / 条约 / 宣战 / 贸易飞线批。 |
+| `resolve.ripple` | `Ripple[]` | `RipplePayload` | 是 | resolve 阶段的演讲 / 宣战 / 城市陷落涟漪批。 |
+
+说明：`resolve.diplomatic_arcs` 事件包含势力引用与视觉参数，`room.world_geometry.factions` 负责承载首都坐标，避免在外交弧事件里重复携带完整地理信息。
+
+## 9. 战争爆炸扩展
+
+| 字段 | 前端类型 | 后端类型 | 是否必填 | 备注 |
+| --- | --- | --- | --- | --- |
+| `resolve.event.explosion` | `ExplosionEvent` | `ExplosionEvent` | 是 | resolve 阶段战争爆炸 VFX 事件。 |
+| `id` | `string` | `str` | 是 | 爆炸事件 ID，通常与源军情事件对齐。 |
+| `turn` | `number` | `int` | 是 | 触发回合。 |
+| `attacker_faction` | `FactionId` | `FactionId` | 是 | 进攻方。 |
+| `defender_faction` | `FactionId` | `FactionId` | 是 | 防守方。 |
+| `center_lat` | `number` | `float` | 是 | 爆炸中心纬度，优先取防守方中心。 |
+| `center_lng` | `number` | `float` | 是 | 爆炸中心经度，优先取防守方中心。 |
+| `radius_km_estimate` | `number` | `int` | 是 | 规则法半径估计，任务 6 会覆盖。 |
+| `kind` | `'conventional'|'aerial'|'naval'|'siege'|'uprising'|'nuke'` | 同左 | 是 | 爆炸表现类型。 |
+| `intensity` | `number` | `float` | 是 | 0.2..1.0。 |
+| `ttl_ms` | `number` | `int` | 是 | 动画生命周期。 |
+| `casualties_estimate` | `number` | `int` | 是 | 伤亡估计。 |
+| `affected_hex_ids` | `string[]` | `list[str]` | 是 | 本任务保持空数组。 |
+
+说明：任务 5 只负责规则分流与视觉参数骨架，不做 LLM 范围判定，也不下发焦土染色。

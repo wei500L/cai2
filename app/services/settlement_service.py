@@ -3,12 +3,12 @@ from __future__ import annotations
 from os import getenv
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from app.core.clock import Clock
 from app.core.errors import DiplomacyError
 from app.core.logging import get_logger
-from app.domain.enums import EventKind, EventPriority, GamePhase, VisibilityScope
+from app.domain.enums import EventKind, EventPriority, FactionId, GamePhase, VisibilityScope
 from app.domain.models import (
     AISpeechItem,
     BattleEvent,
@@ -34,6 +34,14 @@ from app.llm.prompt_builder import PromptBuilder
 from app.llm.retry import call_with_retry
 from app.repositories.factory import Repositories
 from app.services.ai_output_service import AIOutputBundle, AIOutputService
+from app.services.arc_builder import (
+    ArcSpec,
+    Capital,
+    RippleSpec,
+    build_arcs_from_events,
+    build_ripples_from_events,
+)
+from app.services.explosion_dispatcher import dispatch_explosions
 
 logger = get_logger(__name__)
 
@@ -56,6 +64,9 @@ class SettlementOutboundBundle(BaseModel):
     resolve_events: list[dict[str, Any]]
     resolve_map_diff: dict[str, Any]
     resolve_stats_diff: dict[str, Any]
+    resolve_diplomatic_arcs: list[ArcSpec] = Field(default_factory=list)
+    resolve_explosions: list[Any] = Field(default_factory=list)
+    resolve_ripples: list[RippleSpec] = Field(default_factory=list)
     ai_speech_events: list[dict[str, Any]]
     resolve_world_lighting: dict[str, Any] | None = None
 
@@ -163,6 +174,13 @@ class SettlementService:
 
         self._log_step(room_id, epoch, turn, "build_outbound")
         seq_base = self._repos.events.next_seq(room_id)
+        visual_events = _visual_source_events(settlement_result, settlement_input)
+        capitals = _capital_map(settlement_input.world_geometry)
+        explosions = dispatch_explosions(
+            settlement_result.battle_results,
+            settlement_input.world_geometry,
+            None,
+        )
         bundle = SettlementOutboundBundle(
             room_id=room_id,
             epoch=epoch,
@@ -175,6 +193,9 @@ class SettlementService:
             ],
             resolve_map_diff=_build_map_diff(settlement_result, settlement_input),
             resolve_stats_diff=_build_stats_diff(settlement_result, settlement_input),
+            resolve_diplomatic_arcs=build_arcs_from_events(visual_events, capitals),
+            resolve_explosions=explosions,
+            resolve_ripples=build_ripples_from_events(visual_events, capitals),
             ai_speech_events=_build_ai_output_events(ai_output),
             resolve_world_lighting=_build_world_lighting(
                 room_id=room_id,
@@ -470,6 +491,31 @@ def _build_stats_diff(
         ],
         "treaty_decisions": [_dump_model(decision) for decision in result.treaty_decisions],
         "created_treaties": [_dump_model(treaty) for treaty in result.created_treaties],
+    }
+
+
+def _visual_source_events(
+    result: SettlementResult,
+    input: SettlementInput,
+) -> list[GameEvent]:
+    current_turn_events = [
+        event
+        for event in input.recent_events
+        if event.epoch == input.epoch and event.turn == input.turn
+    ]
+    return [
+        *current_turn_events,
+        *result.narration_events,
+        *result.battle_results,
+    ]
+
+
+def _capital_map(world_geometry: WorldGeometry | None) -> dict[FactionId, Capital]:
+    if world_geometry is None:
+        return {}
+    return {
+        faction_id: (lat, lng)
+        for faction_id, lat, lng in world_geometry.capitals
     }
 
 

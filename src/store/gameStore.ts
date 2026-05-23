@@ -6,6 +6,7 @@ import { factionById, type FactionId } from '@/mock/factions'
 import { createInitialState } from '@/mock/initialState'
 import { MAX_EPOCHS, TURNS_PER_EPOCH, getPhaseDurationMs } from '@/mock/gameState'
 import { useUIStore } from '@/store/uiStore'
+import { useMapStore } from '@/store/mapStore'
 import type {
   BattleEvent,
   Epoch,
@@ -23,7 +24,10 @@ import type {
   BorderTensionEntry,
   DiaryEntry,
   EventBundlePayload,
+  ExplosionEvent,
+  ExplosionKind,
   FactionStatsPatch,
+  DiplomaticArc,
   MapRegionPatch,
   RegionAnimationParams,
   RegionTransition,
@@ -32,6 +36,7 @@ import type {
   ReconnectAIThinkingState,
   ReconnectFullState,
   ReconnectSnapshotMessage,
+  Ripple,
   RoomFinishedPayload,
   RoomPlayerSnapshot,
   RelationshipPatch,
@@ -43,12 +48,17 @@ import type {
 
 const MAX_EVENTS = 200
 const MAX_PRIVATE_MESSAGES = 100
+const MAX_ACTIVE_DIPLOMATIC_ARCS = 24
+const MAX_ACTIVE_RIPPLES = 24
 type BorderTension = {
   tension: number
   visual_state: BorderTensionEntry['visual_state']
 }
 
 type WorldGeometryCapital = WorldGeometryPayload['factions'][number]
+
+const activeDiplomaticArcTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const activeRippleTimers = new Map<string, ReturnType<typeof setTimeout>>()
 
 type GameStoreActions = {
   initGame: (seed?: number) => void
@@ -70,6 +80,9 @@ type GameStoreActions = {
   _applyPhase: (payload: Epoch | PhasePayload) => void
   _applyTurnBegin: (payload: TurnBeginPayload) => void
   _applyEvents: (payload: GameEvent[] | EventBundlePayload) => void
+  handleExplosion: (payload: ExplosionEvent | Record<string, unknown>) => void
+  _applyDiplomaticArcs: (payload: { room_id: string; arcs: DiplomaticArc[] } | DiplomaticArc[]) => void
+  _applyRipples: (payload: { room_id: string; ripples: Ripple[] } | Ripple[]) => void
   _applyMapDiff: (
     payload: MapRegionPatch[] | { changes: MapRegionPatch[]; border_updates?: BorderTensionEntry[] },
   ) => void
@@ -125,10 +138,13 @@ export type GameStoreState = MockGameWorldState & {
   aiThinkingState: (ReconnectAIThinkingState & { fallback: boolean }) | null
   borderTensionMap: Record<string, BorderTension>
   regionTransitionLog: RegionTransitionLogEntry[]
+  diplomaticArcs: DiplomaticArc[]
+  ripples: Ripple[]
   worldGeometry: {
     seed: number
     hex_resolution: number
     total_cells: number
+    factions: WorldGeometryCapital[]
     capitals: WorldGeometryCapital[]
   } | null
   winner: FactionId | null
@@ -253,6 +269,84 @@ function dedupeAndSortPrivateMessages(messages: PrivateMessage[]) {
   )
 }
 
+function clearVisualTimerMap(timerMap: Map<string, ReturnType<typeof setTimeout>>) {
+  for (const timer of timerMap.values()) {
+    clearTimeout(timer)
+  }
+
+  timerMap.clear()
+}
+
+function resetExpiringVisuals() {
+  clearVisualTimerMap(activeDiplomaticArcTimers)
+  clearVisualTimerMap(activeRippleTimers)
+}
+
+function settleExpiringVisuals<T extends { id: string; ttl_ms: number; created_at_ms?: number }>(
+  current: T[],
+  incoming: T[],
+  timerMap: Map<string, ReturnType<typeof setTimeout>>,
+  limit: number,
+  onExpire: (id: string) => void,
+) {
+  const now = Date.now()
+  const incomingIds = new Set(incoming.map((item) => item.id))
+  const freshCurrent = current.filter((item) => !incomingIds.has(item.id))
+  const merged = [
+    ...incoming.map((item) => ({
+      ...item,
+      created_at_ms: item.created_at_ms ?? now,
+    })),
+    ...freshCurrent,
+  ]
+  const next = merged.filter((item) => {
+    const createdAt = item.created_at_ms ?? now
+    return now - createdAt < item.ttl_ms
+  })
+
+  const nextIds = new Set(next.map((item) => item.id))
+  for (const [id, timer] of timerMap.entries()) {
+    if (nextIds.has(id)) {
+      continue
+    }
+
+    clearTimeout(timer)
+    timerMap.delete(id)
+  }
+
+  for (const item of incoming) {
+    const createdAt = item.created_at_ms ?? now
+    const remaining = Math.max(0, createdAt + item.ttl_ms - now)
+    const existingTimer = timerMap.get(item.id)
+    if (existingTimer) {
+      clearTimeout(existingTimer)
+    }
+
+    timerMap.set(
+      item.id,
+      setTimeout(() => {
+        timerMap.delete(item.id)
+        onExpire(item.id)
+      }, remaining),
+    )
+  }
+
+  if (next.length <= limit) {
+    return next
+  }
+
+  const kept = next.slice(0, limit)
+  const keptIds = new Set(kept.map((item) => item.id))
+  for (const [id, timer] of timerMap.entries()) {
+    if (!keptIds.has(id)) {
+      clearTimeout(timer)
+      timerMap.delete(id)
+    }
+  }
+
+  return kept
+}
+
 function compareTuple(left: readonly (string | number)[], right: readonly (string | number)[]) {
   for (let index = 0; index < left.length; index += 1) {
     if (left[index] === right[index]) {
@@ -342,6 +436,21 @@ function normalizeRegionTransition(value: unknown): RegionTransition {
   }
 
   return 'conquest'
+}
+
+function normalizeExplosionKind(value: unknown): ExplosionKind {
+  if (
+    value === 'conventional' ||
+    value === 'nuke' ||
+    value === 'aerial' ||
+    value === 'naval' ||
+    value === 'uprising' ||
+    value === 'siege'
+  ) {
+    return value
+  }
+
+  return 'conventional'
 }
 
 function normalizeAnimationParams(value: unknown): RegionAnimationParams {
@@ -663,6 +772,39 @@ function normalizeActionEvents(payload: unknown) {
   return { events, privateMessages }
 }
 
+function normalizeExplosionEvent(payload: unknown, regions: MapRegion[]): ExplosionEvent {
+  const rawPayload = isRecord(payload) ? payload : {}
+  const raw = isRecord(rawPayload.event) ? rawPayload.event : rawPayload
+  const regionId = toStringValue(raw.region_id ?? raw.regionId)
+  const region = regionId ? regions.find((item) => item.id === regionId) : undefined
+  const centerLat = toNumberValue(
+    raw.centerLat ?? raw.center_lat ?? raw.lat ?? raw.latitude ?? region?.lat ?? region?.centerLatLng[0],
+    0,
+  )
+  const centerLng = toNumberValue(
+    raw.centerLng ?? raw.center_lng ?? raw.lng ?? raw.longitude ?? region?.lng ?? region?.centerLatLng[1],
+    0,
+  )
+  const ttlMs = Math.round(clamp(toNumberValue(raw.ttl_ms ?? raw.ttlMs, 4000), 500, 6000))
+  const intensity = clamp(toNumberValue(raw.intensity, 1), 0.5, 3)
+
+  return {
+    id: toStringValue(raw.id, createEventId('explosion')),
+    room_id: typeof (raw.room_id ?? rawPayload.room_id) === 'string'
+      ? ((raw.room_id ?? rawPayload.room_id) as string)
+      : undefined,
+    epoch: toNullableNumberValue(raw.epoch ?? rawPayload.epoch) ?? undefined,
+    turn: toNullableNumberValue(raw.turn ?? rawPayload.turn) ?? undefined,
+    region_id: regionId || undefined,
+    centerLat,
+    centerLng,
+    intensity,
+    kind: normalizeExplosionKind(raw.kind),
+    ttl_ms: ttlMs,
+    created_at_ms: toNullableNumberValue(raw.created_at_ms ?? raw.createdAtMs) ?? Date.now(),
+  }
+}
+
 function updateRoomPlayer(
   roomPlayers: RoomPlayerSnapshot[],
   playerId: string,
@@ -901,6 +1043,8 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   aiThinkingState: null,
   borderTensionMap: {},
   regionTransitionLog: [],
+  diplomaticArcs: [],
+  ripples: [],
   worldGeometry: null,
   winner: null,
   finalNarration: null,
@@ -910,6 +1054,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
   initGame: (seed) => {
     const nextState = createInitialState(seed)
+    resetExpiringVisuals()
     set((state) => ({
       ...nextState,
       selectedFactionId: state.selectedFactionId,
@@ -923,6 +1068,8 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       aiThinkingState: state.aiThinkingState,
       borderTensionMap: state.borderTensionMap,
       regionTransitionLog: [],
+      diplomaticArcs: [],
+      ripples: [],
       worldGeometry: null,
       winner: state.winner,
       finalNarration: state.finalNarration,
@@ -1305,6 +1452,55 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     }))
   },
 
+  handleExplosion: (payload) => {
+    const event = normalizeExplosionEvent(payload, get().regions)
+    useMapStore.getState().enqueueExplosion(event)
+  },
+
+  _applyDiplomaticArcs: (payload) => {
+    const arcs = Array.isArray(payload) ? payload : payload.arcs
+
+    if (arcs.length === 0) {
+      return
+    }
+
+    set((state) => ({
+      diplomaticArcs: settleExpiringVisuals(
+        state.diplomaticArcs,
+        arcs,
+        activeDiplomaticArcTimers,
+        MAX_ACTIVE_DIPLOMATIC_ARCS,
+        (id) => {
+          set((current) => ({
+            diplomaticArcs: current.diplomaticArcs.filter((arc) => arc.id !== id),
+          }))
+        },
+      ),
+    }))
+  },
+
+  _applyRipples: (payload) => {
+    const ripples = Array.isArray(payload) ? payload : payload.ripples
+
+    if (ripples.length === 0) {
+      return
+    }
+
+    set((state) => ({
+      ripples: settleExpiringVisuals(
+        state.ripples,
+        ripples,
+        activeRippleTimers,
+        MAX_ACTIVE_RIPPLES,
+        (id) => {
+          set((current) => ({
+            ripples: current.ripples.filter((ripple) => ripple.id !== id),
+          }))
+        },
+      ),
+    }))
+  },
+
   _applyMapDiff: (payload) => {
     const rawPayload: Record<string, unknown> = isRecord(payload) ? payload : {}
     const changes = (Array.isArray(payload) ? payload : payload.changes)
@@ -1382,6 +1578,12 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
         seed: payload.seed,
         hex_resolution: payload.hex_resolution,
         total_cells: payload.total_cells,
+        factions: payload.factions.map((capital) => ({
+          id: capital.id,
+          capital_hex_id: capital.capital_hex_id,
+          capital_lat: capital.capital_lat,
+          capital_lng: capital.capital_lng,
+        })),
         capitals: payload.factions.map((capital) => ({
           id: capital.id,
           capital_hex_id: capital.capital_hex_id,
@@ -1484,11 +1686,16 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     const fullState = 'full_state' in payload ? payload.full_state : payload
     const now = Date.now()
     const snapshot = normalizeSnapshotPayload(fullState)
+    const room = isRecord(fullState.room) ? fullState.room : null
+    const nextRoomId = room && typeof room.id === 'string' ? room.id : null
+    if (nextRoomId !== null && nextRoomId !== get().currentRoomId) {
+      resetExpiringVisuals()
+    }
 
     set((state) => {
-      const room = isRecord(fullState.room) ? fullState.room : null
+      const shouldResetVisuals = nextRoomId !== null && nextRoomId !== state.currentRoomId
       return {
-        currentRoomId: room && typeof room.id === 'string' ? room.id : state.currentRoomId,
+        currentRoomId: nextRoomId ?? state.currentRoomId,
         roomMode: room && typeof room.mode === 'string' ? (room.mode as RoomMode) : state.roomMode,
         roomStatus: room && typeof room.status === 'string' ? room.status : state.roomStatus,
         roomPlayers: room && Array.isArray(room.players)
@@ -1524,6 +1731,8 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
         aiThinkingState: snapshot.aiThinkingState,
         borderTensionMap: snapshot.borderTensionMap,
         regionTransitionLog: [],
+        diplomaticArcs: shouldResetVisuals ? [] : state.diplomaticArcs,
+        ripples: shouldResetVisuals ? [] : state.ripples,
         winner: snapshot.winner,
         finalNarration: snapshot.finalNarration,
       }
@@ -1626,6 +1835,11 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
     const currentPlayerId =
       typeof snapshot.current_player_id === 'string' ? snapshot.current_player_id : null
     const roomId = typeof room?.id === 'string' ? room.id : null
+    const currentRoomId = get().currentRoomId
+    const shouldResetVisuals = roomId !== null && roomId !== currentRoomId
+    if (shouldResetVisuals) {
+      resetExpiringVisuals()
+    }
 
     if (!room) {
       return
@@ -1639,11 +1853,18 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       roomPlayers: Array.isArray(room.players) ? room.players.map(normalizeRoomPlayer) : state.roomPlayers,
       aiFactions: Array.isArray(room.ai_factions) ? room.ai_factions : state.aiFactions,
       aiDiaries:
-        roomId !== null && roomId !== state.currentRoomId ? emptyAIDiaries() : state.aiDiaries,
+        shouldResetVisuals ? emptyAIDiaries() : state.aiDiaries,
+      diplomaticArcs: shouldResetVisuals ? [] : state.diplomaticArcs,
+      ripples: shouldResetVisuals ? [] : state.ripples,
     }))
   },
 
   _applyRoomSnapshot: (payload) => {
+    const shouldResetVisuals = payload.room_id !== get().currentRoomId
+    if (shouldResetVisuals) {
+      resetExpiringVisuals()
+    }
+
     set((state) => ({
       currentRoomId: payload.room_id,
       roomMode: payload.mode,
@@ -1651,7 +1872,9 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
       roomPlayers: payload.players.map(normalizeRoomPlayer),
       aiFactions: payload.ai_factions,
       aiDiaries:
-        payload.room_id !== state.currentRoomId ? emptyAIDiaries() : state.aiDiaries,
+        shouldResetVisuals ? emptyAIDiaries() : state.aiDiaries,
+      diplomaticArcs: shouldResetVisuals ? [] : state.diplomaticArcs,
+      ripples: shouldResetVisuals ? [] : state.ripples,
     }))
   },
 

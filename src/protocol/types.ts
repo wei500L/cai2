@@ -342,6 +342,65 @@ export type RoomStartMessage = Envelope<'room.start', {
   }
 }>
 export type RoomWorldGeometryMessage = Envelope<'room.world_geometry', WorldGeometryPayload>
+export type DiplomaticArc = {
+  id: string
+  kind: 'speech' | 'private' | 'treaty' | 'declaration' | 'trade'
+  from_faction?: FactionId
+  to_faction?: FactionId
+  source_faction_id?: FactionId
+  target_faction_id?: FactionId
+  start_lat?: number
+  start_lng?: number
+  end_lat?: number
+  end_lng?: number
+  color: [string, string]
+  ttl_ms: number
+  created_at_ms?: number
+  intensity?: number
+  stroke?: number
+  dashed?: boolean
+  bidirectional?: boolean
+  dash_length?: number
+  dash_gap?: number
+  dash_animate_time?: number
+}
+export type Ripple = {
+  id: string
+  kind?: 'speech' | 'shockwave'
+  lat: number
+  lng: number
+  max_radius: number
+  ttl_ms: number
+  color: string
+  created_at_ms?: number
+}
+export type ExplosionKind = 'conventional' | 'nuke' | 'aerial' | 'naval' | 'uprising' | 'siege'
+export interface ExplosionEvent {
+  id: string
+  room_id?: string
+  epoch?: number
+  turn?: number
+  region_id?: string
+  centerLat: number
+  centerLng: number
+  intensity: number
+  kind: ExplosionKind
+  ttl_ms: number
+  created_at_ms?: number
+}
+export type ResolveDiplomaticArcsMessage = Envelope<'resolve.diplomatic_arcs', {
+  room_id: string
+  epoch?: number
+  turn?: number
+  arcs: DiplomaticArc[]
+}>
+export type ResolveRippleMessage = Envelope<'resolve.ripple', {
+  room_id: string
+  epoch?: number
+  turn?: number
+  ripples: Ripple[]
+}>
+export type ResolveExplosionMessage = Envelope<'resolve.event.explosion', ExplosionEvent>
 export type RoomFinishedPayload = {
   room_id: string
   winner: FactionId | null
@@ -496,6 +555,9 @@ export type IncomingMessage =
   | ActionBroadcastMessage
   | ActionPrivateMessage
   | ActionRejectedMessage
+  | ResolveDiplomaticArcsMessage
+  | ResolveRippleMessage
+  | ResolveExplosionMessage
   | ResolveEventsMessage
   | ResolveMapDiffMessage
   | ResolveStatsDiffMessage

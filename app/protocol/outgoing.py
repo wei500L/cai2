@@ -5,6 +5,7 @@ from typing import Annotated, Any, Literal, TypeAlias
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.domain.enums import ArbitratePhase, FactionId, GamePhase, TerrainKind
+from app.services.arc_builder import ArcSpec, RippleSpec
 
 
 class BaseEnvelope(BaseModel):
@@ -119,11 +120,18 @@ class WorldGeometryCellPayload(OutgoingPayloadModel):
     neighbors: list[int] = Field(default_factory=list)
 
 
+class WorldGeometryFactionPayload(OutgoingPayloadModel):
+    id: FactionId
+    capital_hex_id: str
+    capital_lat: float = Field(ge=-90.0, le=90.0)
+    capital_lng: float = Field(ge=-180.0, le=180.0)
+
+
 class WorldGeometryPayload(OutgoingPayloadModel):
     seed: int
     hex_resolution: int
     total_cells: int
-    factions: list[FactionId]
+    factions: list[WorldGeometryFactionPayload]
     cells: list[WorldGeometryCellPayload]
 
 
@@ -248,6 +256,32 @@ class ResolveStatsDiffPayload(OutgoingPayloadModel):
     relationship_changes: list[dict[str, Any]]
 
 
+class DiplomaticArcsPayload(OutgoingPayloadModel):
+    t: Literal["resolve.diplomatic_arcs"] = Field("resolve.diplomatic_arcs", exclude=True)
+    room_id: str
+    epoch: int
+    turn: int
+    arcs: list[ArcSpec]
+
+
+class DiplomaticArcsEvent(BaseEnvelope):
+    t: Literal["resolve.diplomatic_arcs"] = Field("resolve.diplomatic_arcs", exclude=True)
+    p: DiplomaticArcsPayload
+
+
+class RipplePayload(OutgoingPayloadModel):
+    t: Literal["resolve.ripple"] = Field("resolve.ripple", exclude=True)
+    room_id: str
+    epoch: int
+    turn: int
+    ripples: list[RippleSpec]
+
+
+class RippleEvent(BaseEnvelope):
+    t: Literal["resolve.ripple"] = Field("resolve.ripple", exclude=True)
+    p: RipplePayload
+
+
 class AIThinkingPayload(OutgoingPayloadModel):
     t: Literal["ai.thinking"] = Field("ai.thinking", exclude=True)
     room_id: str
@@ -333,6 +367,8 @@ OutgoingMessage: TypeAlias = Annotated[
     | ResolveEventsPayload
     | ResolveMapDiffPayload
     | ResolveStatsDiffPayload
+    | DiplomaticArcsPayload
+    | RipplePayload
     | AIThinkingPayload
     | AISpeakPayload
     | AIReactionPayload
