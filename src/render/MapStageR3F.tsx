@@ -12,7 +12,6 @@ import {
   InstancedMesh,
   LineBasicMaterial,
   MeshBasicMaterial,
-  MeshStandardMaterial,
   Object3D,
   ShaderMaterial,
   SphereGeometry,
@@ -469,12 +468,10 @@ function RegionLayer({ regions, radius }: { regions: RegionNode[]; radius: numbe
   const geometry = useMemo(() => new IcosahedronGeometry(1, 1), [])
   const material = useMemo(
     () =>
-      new MeshStandardMaterial({
+      new MeshBasicMaterial({
         color: '#ffffff',
-        roughness: 0.4,
-        metalness: 0.05,
         transparent: true,
-        opacity: 0.92,
+        opacity: 0.96,
         vertexColors: true,
       }),
     [],
@@ -811,12 +808,10 @@ function GlobeLayer({ radius }: { radius: number }) {
     <group>
       <mesh scale={radius}>
         <icosahedronGeometry args={[1, 4]} />
-        <meshStandardMaterial
-          color="#0f1827"
-          emissive="#050b14"
-          emissiveIntensity={0.65}
-          roughness={0.92}
-          metalness={0.08}
+        <meshBasicMaterial
+          color="#1d2f47"
+          transparent
+          opacity={0.96}
         />
       </mesh>
       <mesh scale={radius * 1.03}>
@@ -824,7 +819,7 @@ function GlobeLayer({ radius }: { radius: number }) {
         <meshBasicMaterial
           color="#6db9ff"
           transparent
-          opacity={0.08}
+          opacity={0.15}
           side={DoubleSide}
           depthWrite={false}
         />
@@ -856,9 +851,9 @@ function MapStageScene({
   return (
     <>
       <PerspectiveCamera makeDefault position={[0, 0, radius * 2.45]} fov={35} />
-      <ambientLight intensity={1.2} />
-      <directionalLight position={[2, 1, 2]} intensity={1.1} color="#d6e8ff" />
-      <pointLight position={[-2, -1, -2]} intensity={0.7} color="#7cc7ff" />
+      <ambientLight intensity={1.7} />
+      <directionalLight position={[2, 1, 2]} intensity={1.45} color="#d6e8ff" />
+      <pointLight position={[-2, -1, -2]} intensity={0.95} color="#7cc7ff" />
       <group ref={rootRef}>
         <GlobeLayer radius={radius} />
         <RegionLayer regions={scene.regions} radius={radius} />

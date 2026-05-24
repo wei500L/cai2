@@ -7,6 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.api.rest.deps import get_clock, get_repositories
 from app.core.clock import FrozenClock
+from app.core.config import get_settings
 from app.domain.enums import FactionId
 from app.main import app
 from app.repositories.factory import make_repositories
@@ -40,6 +41,7 @@ def test_debug_router_registers_required_routes() -> None:
 
 
 def test_runtime_config(rest_client: TestClient) -> None:
+    settings = get_settings()
     response = rest_client.get("/debug/v1/runtime/config")
 
     assert response.status_code == 200
@@ -47,7 +49,7 @@ def test_runtime_config(rest_client: TestClient) -> None:
     assert body["ws_path"] == "/ws"
     assert body["rest_prefix"] == "/debug/v1"
     assert body["env"] == "dev"
-    assert body["llm_provider"] == "mock"
+    assert body["llm_provider"] == settings.llm_provider
     assert isinstance(body["server_time_ms"], int)
 
 

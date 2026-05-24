@@ -249,21 +249,33 @@ async def test_call_with_retry_raises_original_after_limit(llm_request: LLMReque
 
 
 @pytest.mark.asyncio
-async def test_openai_and_claude_clients_fallback_to_mock(llm_request: LLMRequest) -> None:
+async def test_openai_and_claude_clients_raise_when_not_configured(
+    llm_request: LLMRequest,
+) -> None:
     openai = OpenAICompatibleClient(api_key="", base_url="https://example.invalid", model="m")
     claude = ClaudeCompatibleClient(api_key="", base_url="https://example.invalid", model="m")
 
-    assert (await openai.call_settlement_model(llm_request)).model == "mock"
-    assert (await claude.call_settlement_model(llm_request)).model == "mock"
+    with pytest.raises(RuntimeError, match="LLM not configured"):
+        await openai.call_settlement_model(llm_request)
+
+    with pytest.raises(RuntimeError, match="LLM not configured"):
+        await claude.call_settlement_model(llm_request)
 
 
 def test_make_llm_client_mock_returns_mock() -> None:
     assert isinstance(make_llm_client("mock"), MockLLMClient)
 
 
-def test_make_llm_client_openai_and_claude_are_wired() -> None:
-    assert isinstance(make_llm_client("openai"), OpenAICompatibleClient)
-    assert isinstance(make_llm_client("claude"), ClaudeCompatibleClient)
+def test_make_llm_client_openai_and_claude_are_wired(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LLM_TIMEOUT_S", "17")
+
+    openai = make_llm_client("openai")
+    claude = make_llm_client("claude")
+
+    assert isinstance(openai, OpenAICompatibleClient)
+    assert isinstance(claude, ClaudeCompatibleClient)
+    assert getattr(openai, "timeout_s", None) == 17.0
+    assert getattr(claude, "timeout_s", None) == 17.0
 
 
 class FailOnceClient:

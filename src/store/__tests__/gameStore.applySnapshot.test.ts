@@ -254,7 +254,26 @@ describe('gameStore reconnect snapshot', () => {
         status: 'running',
         mode: 'multi_4v4',
         max_players: 4,
-        players: [],
+        players: [
+          {
+            id: 'player-1',
+            display_name: 'Alice',
+            faction_id: 'ironCrown',
+            connected: true,
+            ready: false,
+            ai_takeover: false,
+          },
+          ,
+          {
+            id: 'player-2',
+            display_name: 'Bob',
+            faction_id: 'starlight',
+            connected: false,
+            ready: true,
+            ai_takeover: false,
+          },
+        ] as unknown as ReconnectFullState['room']['players'],
+        ai_factions: ['aurora', , 'darkTide'] as unknown as NonNullable<ReconnectFullState['room']['ai_factions']>,
       },
       current_turn: {
         epoch: 3,
@@ -264,7 +283,29 @@ describe('gameStore reconnect snapshot', () => {
         phase_started_at_ms: 1_800,
         phase_duration_ms: 30_000,
       },
-      factions: [],
+      factions: [
+        {
+          id: 'ironCrown',
+          military: 88,
+          economy: 62,
+          diplomacy: 38,
+          culture: 46,
+          morale: 74,
+          totalPower: 308,
+          status: 'stable',
+        },
+        ,
+        {
+          id: 'starlight',
+          military: 56,
+          economy: 70,
+          diplomacy: 82,
+          culture: 66,
+          morale: 68,
+          totalPower: 342,
+          status: 'stable',
+        },
+      ] as unknown as ReconnectFullState['factions'],
       regions: [
         {
           id: 'region-1',
@@ -300,10 +341,107 @@ describe('gameStore reconnect snapshot', () => {
           neighbors: ['region-1'],
         },
       ] as unknown as ReconnectFullState['regions'],
-      relationships: [],
-      treaties: [],
-      recent_events: [],
-      recent_messages: [],
+      relationships: [
+        {
+          from: 'ironCrown',
+          to: 'starlight',
+          value: -80,
+          status: 'hostile',
+          treaties: ['non_aggression'],
+        },
+        ,
+        {
+          from: 'starlight',
+          to: 'ironCrown',
+          value: -75,
+          status: 'hostile',
+          treaties: [],
+        },
+      ] as unknown as ReconnectFullState['relationships'],
+      treaties: [
+        {
+          id: 'treaty-1',
+          kind: 'trade',
+          parties: ['ironCrown', 'starlight'],
+          started_epoch: 2,
+          started_turn: 1,
+          ends_epoch: null,
+          ends_turn: null,
+          active: true,
+          metadata: {},
+        },
+        ,
+        {
+          id: 'treaty-2',
+          kind: 'alliance',
+          parties: ['starlight', 'darkTide'],
+          started_epoch: 2,
+          started_turn: 1,
+          ends_epoch: null,
+          ends_turn: null,
+          active: true,
+          metadata: {},
+        },
+      ] as unknown as ReconnectFullState['treaties'],
+      recent_events: [
+        {
+          id: 'event-1',
+          seq: 11,
+          createdAt: 1_010,
+          epoch: 3,
+          turn: 2,
+          phase: 'resolve',
+          priority: 'P2',
+          kind: 'speech',
+          actor: 'ironCrown',
+          target: 'starlight',
+          payload: { order: 1 },
+          narration: 'older',
+        },
+        ,
+        {
+          id: 'event-2',
+          seq: 12,
+          createdAt: 1_020,
+          epoch: 3,
+          turn: 2,
+          phase: 'resolve',
+          priority: 'P2',
+          kind: 'narration',
+          actor: 'starlight',
+          payload: { order: 2 },
+          narration: 'middle',
+        },
+      ] as unknown as ReconnectFullState['recent_events'],
+      recent_messages: [
+        {
+          id: 'msg-private-1',
+          room_id: 'room-9',
+          epoch: 3,
+          turn: 2,
+          phase: 'resolve',
+          from_faction: 'ironCrown',
+          to_factions: ['starlight'],
+          visibility: { scope: 'private', faction_ids: ['starlight'] },
+          content: 'private-1',
+          created_at_ms: 1_040,
+          kind: 'private',
+        },
+        ,
+        {
+          id: 'msg-private-2',
+          room_id: 'room-9',
+          epoch: 3,
+          turn: 2,
+          phase: 'resolve',
+          from_faction: 'starlight',
+          to_factions: ['ironCrown'],
+          visibility: { scope: 'private', faction_ids: ['ironCrown'] },
+          content: 'private-2',
+          created_at_ms: 1_050,
+          kind: 'private',
+        },
+      ] as unknown as ReconnectFullState['recent_messages'],
       ai_thinking_state: null,
       border_tension: [],
       winner: null,
@@ -318,7 +456,14 @@ describe('gameStore reconnect snapshot', () => {
     })
 
     const state = useGameStore.getState()
+    expect(state.roomPlayers).toHaveLength(2)
+    expect(state.aiFactions).toEqual(['aurora', 'darkTide'])
+    expect(state.factions).toHaveLength(2)
     expect(state.regions).toHaveLength(2)
+    expect(state.relationships).toHaveLength(2)
+    expect(state.treaties).toHaveLength(2)
+    expect(state.events).toHaveLength(2)
+    expect(state.privateMessages).toHaveLength(2)
     expect(state.regions.map((region) => region.id)).toEqual(['region-1', 'region-2'])
   })
 })

@@ -10,7 +10,7 @@ from app.llm.openai_client import OpenAICompatibleClient
 
 
 def make_llm_client(provider: str, *, settings: Any = None) -> LLMClient:
-    timeout_s = float(getenv("LLM_TIMEOUT_S", "60"))
+    timeout_s = float(getenv("LLM_TIMEOUT_S", "8"))
     if provider == "mock":
         return MockLLMClient()
     if provider == "openai":
@@ -40,6 +40,7 @@ def make_llm_client(provider: str, *, settings: Any = None) -> LLMClient:
                 "CLAUDE_MODEL",
                 "claude-3-5-sonnet-20241022",
             ),
+            timeout_s=timeout_s,
         )
     raise ValueError(f"unknown llm provider: {provider}")
 

@@ -146,7 +146,7 @@ class SettlementService:
         )
 
         self._log_step(room_id, epoch, turn, "call_llm")
-        llm_content = await self._call_llm_or_fallback_text(room_id, epoch, turn, llm_request)
+        llm_content = await self._call_llm_text(room_id, epoch, turn, llm_request)
 
         self._log_step(room_id, epoch, turn, "parse_model_output")
         model_output = self._parser.parse(llm_content)
@@ -345,14 +345,19 @@ class SettlementService:
             summary_narration=summary_narration,
         )
 
-    async def _call_llm_or_fallback_text(
+    async def _call_llm_text(
         self,
         room_id: str,
         epoch: int,
         turn: int,
         request: LLMRequest,
     ) -> str:
-        response = await self._llm_client.call_settlement_model(request)
+        try:
+            response = await self._llm_client.call_settlement_model(request)
+        except Exception as error:
+            self._log_repo_error(room_id, epoch, turn, "call_llm", error)
+            raise DiplomacyError("failed to call settlement model") from error
+
         return response.content
 
     async def _resolve_explosions(

@@ -847,23 +847,15 @@ function normalizeSnapshotPayload(payload: unknown) {
 
   return {
     currentTurn,
-    factions: Array.isArray(raw.factions) ? raw.factions.map((faction) => normalizeFaction(faction)) : [],
+    factions: compactDefined(raw.factions).map((faction) => normalizeFaction(faction)),
     regions: compactDefined(raw.regions).map((region) => normalizeRegion(region)),
-    relationships: Array.isArray(raw.relationships)
-      ? raw.relationships.map((relationship) => normalizeRelationship(relationship))
-      : [],
-    treaties: Array.isArray(raw.treaties)
-      ? raw.treaties.map((treaty) => ({ ...treaty }))
-      : [],
-    events: Array.isArray(raw.recent_events)
-      ? raw.recent_events.map((event) => normalizeGameEvent(event))
-      : [],
-    privateMessages: Array.isArray(raw.recent_messages)
-      ? raw.recent_messages
-          .filter((message) => isReconnectPrivateMessage(message))
-          .map((message) => normalizePrivateMessage(message))
-          .filter((message): message is PrivateMessage => message !== null)
-      : [],
+    relationships: compactDefined(raw.relationships).map((relationship) => normalizeRelationship(relationship)),
+    treaties: compactDefined(raw.treaties).map((treaty) => ({ ...treaty })),
+    events: compactDefined(raw.recent_events).map((event) => normalizeGameEvent(event)),
+    privateMessages: compactDefined(raw.recent_messages)
+      .filter((message) => isReconnectPrivateMessage(message))
+      .map((message) => normalizePrivateMessage(message))
+      .filter((message): message is PrivateMessage => message !== null),
     aiThinkingState: raw.ai_thinking_state
       ? { ...(raw.ai_thinking_state as ReconnectAIThinkingState), fallback: false }
       : null,
@@ -880,11 +872,9 @@ function normalizeVisibleSnapshot(payload: unknown) {
 
   return {
     epoch,
-    factions: Array.isArray(raw.factions) ? raw.factions.map((faction) => normalizeFaction(faction)) : [],
+    factions: compactDefined(raw.factions).map((faction) => normalizeFaction(faction)),
     regions: compactDefined(raw.regions).map((region) => normalizeRegion(region)),
-    relationships: Array.isArray(raw.relationships)
-      ? raw.relationships.map((relationship) => normalizeRelationship(relationship))
-    : [],
+    relationships: compactDefined(raw.relationships).map((relationship) => normalizeRelationship(relationship)),
   }
 }
 
@@ -895,13 +885,10 @@ function normalizeRoomSnapshot(payload: unknown) {
     room_id: toStringValue(raw.room_id ?? raw.roomId ?? raw.id),
     mode: (raw.mode as RoomMode) ?? 'solo_1v7',
     status: toStringValue(raw.status, 'unknown'),
-    players: Array.isArray(raw.players) ? raw.players.map(normalizeRoomPlayer) : [],
-    ai_factions: Array.isArray(raw.ai_factions)
-      ? raw.ai_factions.filter(
-          (faction): faction is FactionId =>
-            typeof faction === 'string' && (FACTION_IDS as readonly string[]).includes(faction),
-        )
-      : [],
+    players: compactDefined(raw.players).map(normalizeRoomPlayer),
+    ai_factions: compactDefined(raw.ai_factions).filter(
+      (faction): faction is FactionId => typeof faction === 'string' && (FACTION_IDS as readonly string[]).includes(faction),
+    ),
     settings: normalizeGameSettings(raw.settings),
   }
 }
@@ -929,12 +916,10 @@ function normalizeRoomStartedPayload(payload: unknown) {
 
 function normalizeActionEvents(payload: unknown) {
   const raw = isRecord(payload) ? payload : {}
-  const events = Array.isArray(raw.events) ? raw.events.map((event) => normalizeGameEvent(event)) : []
-  const privateMessages = Array.isArray(raw.private_messages)
-    ? raw.private_messages
-        .map((message) => normalizePrivateMessage(message))
-        .filter((message): message is PrivateMessage => message !== null)
-    : []
+  const events = compactDefined(raw.events).map((event) => normalizeGameEvent(event))
+  const privateMessages = compactDefined(raw.private_messages)
+    .map((message) => normalizePrivateMessage(message))
+    .filter((message): message is PrivateMessage => message !== null)
 
   return { events, privateMessages }
 }
@@ -1920,7 +1905,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   _applyEvents: (payload) => {
     const normalized = Array.isArray(payload)
       ? {
-          events: payload.map((event) => normalizeGameEvent(event)),
+          events: compactDefined(payload).map((event) => normalizeGameEvent(event)),
           privateMessages: [],
         }
       : normalizeActionEvents(payload)
@@ -1980,7 +1965,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   },
 
   _applyDiplomaticArcs: (payload) => {
-    const arcs = Array.isArray(payload) ? payload : payload.arcs
+    const arcs = Array.isArray(payload) ? compactDefined(payload) : compactDefined(payload.arcs)
 
     if (arcs.length === 0) {
       return
@@ -2002,7 +1987,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   },
 
   _applyRipples: (payload) => {
-    const ripples = Array.isArray(payload) ? payload : payload.ripples
+    const ripples = Array.isArray(payload) ? compactDefined(payload) : compactDefined(payload.ripples)
 
     if (ripples.length === 0) {
       return
@@ -2025,7 +2010,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
   _applyMapDiff: (payload) => {
     const rawPayload: Record<string, unknown> = isRecord(payload) ? payload : {}
-    const changes = (Array.isArray(payload) ? payload : payload.changes)
+    const changes = compactDefined(Array.isArray(payload) ? payload : payload.changes)
       .map((change) => normalizeRegionPatch(change))
       .filter((change): change is MapRegionPatch => change !== null)
     const borderTensionMap = Array.isArray(payload)
@@ -2100,13 +2085,13 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
         seed: payload.seed,
         hex_resolution: payload.hex_resolution,
         total_cells: payload.total_cells,
-        factions: payload.factions.map((capital) => ({
+        factions: compactDefined(payload.factions).map((capital) => ({
           id: capital.id,
           capital_hex_id: capital.capital_hex_id,
           capital_lat: capital.capital_lat,
           capital_lng: capital.capital_lng,
         })),
-        capitals: payload.factions.map((capital) => ({
+        capitals: compactDefined(payload.factions).map((capital) => ({
           id: capital.id,
           capital_hex_id: capital.capital_hex_id,
           capital_lat: capital.capital_lat,

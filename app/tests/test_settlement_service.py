@@ -8,6 +8,7 @@ from typing import Any
 import pytest
 
 from app.core.clock import FrozenClock
+from app.core.errors import DiplomacyError
 from app.domain.enums import (
     EventKind,
     FactionId,
@@ -367,7 +368,7 @@ async def test_run_turn_settlement_persists_state_and_outbound_bundle(
 
 
 @pytest.mark.asyncio
-async def test_llm_failure_uses_mock_fallback_and_returns_bundle(
+async def test_llm_failure_raises_diplomacy_error(
     repos: Repositories,
     clock: FrozenClock,
 ) -> None:
@@ -375,12 +376,8 @@ async def test_llm_failure_uses_mock_fallback_and_returns_bundle(
     await _seed_actions(repos)
     service = _service(repos, clock, llm_client=FailingLLMClient())
 
-    bundle = await service.run_turn_settlement(room.id, 1, 2)
-
-    stored = await repos.settlements.get(room.id, 1, 2)
-    assert stored is not None
-    assert stored.narration_events
-    assert bundle.resolve_events
+    with pytest.raises(DiplomacyError, match="failed to call settlement model"):
+        await service.run_turn_settlement(room.id, 1, 2)
 
 
 @pytest.mark.asyncio

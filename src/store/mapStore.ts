@@ -49,7 +49,7 @@ type MapStoreState = {
   setSunPosition: (lat: number, lng: number) => void
 }
 
-type MapPersistedState = Pick<MapStoreState, 'renderer' | 'lighting' | 'cinematicEnabled' | 'reducedMotion'>
+type MapPersistedState = Pick<MapStoreState, 'lighting' | 'cinematicEnabled' | 'reducedMotion'>
 
 const memoryStorage = (() => {
   const values = new Map<string, string>()
@@ -256,11 +256,25 @@ export const useMapStore = create<MapStoreState>()(
       name: 'mapRenderer',
       storage,
       partialize: (state): MapPersistedState => ({
-        renderer: state.renderer,
         lighting: state.lighting,
         cinematicEnabled: state.cinematicEnabled,
         reducedMotion: state.reducedMotion,
       }),
+      merge: (persistedState, currentState): MapStoreState => {
+        const persisted = persistedState as Partial<MapPersistedState> | null
+        return {
+          ...currentState,
+          lighting: persisted?.lighting
+            ? {
+                ...currentState.lighting,
+                ...persisted.lighting,
+              }
+            : currentState.lighting,
+          cinematicEnabled: persisted?.cinematicEnabled ?? currentState.cinematicEnabled,
+          reducedMotion: persisted?.reducedMotion ?? currentState.reducedMotion,
+          renderer: 'globe',
+        }
+      },
     },
   ),
 )

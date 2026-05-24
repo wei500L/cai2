@@ -15,9 +15,5 @@ export function resolveTransportMode({
     return 'mock'
   }
 
-  if (pathname === '/game' && !roomIdFromQuery) {
-    return 'mock'
-  }
-
   return 'ws'
 }

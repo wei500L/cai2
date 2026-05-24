@@ -11,7 +11,7 @@ class OpenAICompatibleClient(RealLLMClient):
         api_key: str,
         base_url: str,
         model: str,
-        timeout_s: float = 60.0,
+        timeout_s: float = 8.0,
     ) -> None:
         super().__init__(api_key=api_key, base_url=base_url, model=model, timeout_s=timeout_s)
 

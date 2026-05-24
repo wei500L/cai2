@@ -9,6 +9,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.errors import DiplomacyError
 from app.core.clock import Clock
 from app.domain.enums import EventKind, EventPriority, FactionId
 from app.domain.factions import FACTION_META
@@ -113,8 +114,11 @@ async def generate_epic_narration(
         },
     )
 
-    response = await llm.call_epic_narration(request)
-    model_output = EpicNarrationModelOutput.model_validate_json(response.content)
+    try:
+        response = await llm.call_epic_narration(request)
+        model_output = EpicNarrationModelOutput.model_validate_json(response.content)
+    except Exception as error:
+        raise DiplomacyError(f"failed to generate epic narration: {error}") from error
     payload = EpicNarrationPayload(
         epoch=epoch_state.epoch,
         source="llm",
@@ -145,23 +149,26 @@ async def generate_summary_narration(
         },
     )
 
-    response = await llm.call_summary_narration(request)
-    model_output = SummaryNarrationModelOutput.model_validate_json(response.content)
-    payload = SummaryNarrationPayload.model_validate_json(
-        json.dumps(
-            {
-                "epoch": epoch_state.epoch,
-                "source": "llm",
-                "headline": model_output.headline,
-                "highlights": model_output.highlights.model_dump(mode="json"),
-                "rankings": [row.model_dump(mode="json") for row in model_output.rankings],
-                "model": response.model,
-                "generatedAtMs": epoch_state.generated_at_ms,
-            },
-            ensure_ascii=False,
-            default=str,
+    try:
+        response = await llm.call_summary_narration(request)
+        model_output = SummaryNarrationModelOutput.model_validate_json(response.content)
+        payload = SummaryNarrationPayload.model_validate_json(
+            json.dumps(
+                {
+                    "epoch": epoch_state.epoch,
+                    "source": "llm",
+                    "headline": model_output.headline,
+                    "highlights": model_output.highlights.model_dump(mode="json"),
+                    "rankings": [row.model_dump(mode="json") for row in model_output.rankings],
+                    "model": response.model,
+                    "generatedAtMs": epoch_state.generated_at_ms,
+                },
+                ensure_ascii=False,
+                default=str,
+            )
         )
-    )
+    except Exception as error:
+        raise DiplomacyError(f"failed to generate summary narration: {error}") from error
     return payload
 
 

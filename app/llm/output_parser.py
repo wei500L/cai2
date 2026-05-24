@@ -9,7 +9,7 @@ from pydantic import ValidationError
 
 from app.core.errors import ModelOutputError
 from app.core.logging import get_logger
-from app.llm.output_schema import NarrativeEvent, SettlementModelOutput
+from app.llm.output_schema import SettlementModelOutput
 
 _FENCE_RE = re.compile(r"^\s*```(?:json)?\s*(?P<body>.*?)\s*```\s*$", re.DOTALL | re.IGNORECASE)
 
@@ -39,26 +39,13 @@ def coerce_to_dict(text: str) -> dict[str, Any]:
     return parsed
 
 
-def fallback_output() -> SettlementModelOutput:
-    return SettlementModelOutput(
-        narrative_events=[
-            NarrativeEvent(
-                kind="custom",
-                actor=None,
-                target=None,
-                narration="裁决系统暂未响应，本回合按规则继续。",
-            )
-        ]
-    )
-
-
 class ModelOutputParser:
     def parse(self, llm_text: str) -> SettlementModelOutput:
         try:
             return self.parse_strict(llm_text)
         except ModelOutputError as error:
-            logger.warning("Failed to parse settlement model output: %s", error)
-            return fallback_output()
+            logger.error("Failed to parse settlement model output: %s", error)
+            raise
 
     def parse_strict(self, llm_text: str) -> SettlementModelOutput:
         try:

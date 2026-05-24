@@ -57,12 +57,15 @@ export function DevModeBanner() {
   if (isMockMode) {
     return (
       <motion.div
-        className="fixed inset-x-0 top-0 z-[210] flex h-6 items-center border-b border-[color:rgba(255,168,64,0.45)] bg-[color:rgba(34,18,6,0.96)] px-3 font-hud text-[0.58rem] tracking-[0.14em] text-[color:rgba(255,224,186,0.92)]"
+        className="fixed inset-x-0 top-0 z-[210] flex min-h-6 items-center overflow-hidden border-b border-[color:rgba(255,168,64,0.45)] bg-[color:rgba(34,18,6,0.96)] px-2 py-1 font-hud text-[0.5rem] leading-none tracking-[0.12em] text-[color:rgba(255,224,186,0.92)] sm:h-6 sm:px-3 sm:text-[0.58rem] sm:tracking-[0.14em]"
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.18 }}
       >
-        <span className="animate-pulse">
+        <span className="animate-pulse sm:hidden">
+          MOCK MODE · mockEvents={debug.mockEventEmittedCount}
+        </span>
+        <span className="hidden animate-pulse sm:inline">
           MOCK MODE · 该模式仅供 dev 调试 · 后端事件不会响应 · mockEvents={debug.mockEventEmittedCount}
         </span>
       </motion.div>

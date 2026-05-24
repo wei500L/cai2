@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from app.core.errors import DiplomacyError
 from app.domain.enums import FactionId
 from app.llm.client import LLMRequest, LLMResponse
 from app.llm.mock_client import MockLLMClient
@@ -135,20 +136,15 @@ async def test_generate_summary_narration_with_mock_llm_keeps_war_and_speech_hig
 
 
 @pytest.mark.asyncio
-async def test_generate_narrations_fallback_to_templates_on_llm_failure() -> None:
+async def test_generate_narrations_raise_on_llm_failure() -> None:
     state = _state()
     client = FailingNarrationClient()
 
-    epic = await generate_epic_narration(state, client)
-    summary = await generate_summary_narration(state, client)
+    with pytest.raises(DiplomacyError, match="failed to generate epic narration"):
+        await generate_epic_narration(state, client)
 
-    assert epic.source == "template_fallback"
-    assert len(epic.narrative) >= 200
-    assert epic.keyEvents
-    assert summary.source == "template_fallback"
-    assert summary.headline
-    assert summary.highlights.wars
-    assert any(event.kind == "speech" for event in summary.highlights.majorEvents)
+    with pytest.raises(DiplomacyError, match="failed to generate summary narration"):
+        await generate_summary_narration(state, client)
 
 
 @pytest.mark.asyncio

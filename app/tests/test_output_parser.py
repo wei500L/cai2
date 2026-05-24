@@ -11,7 +11,6 @@ from app.domain.enums import FactionId
 from app.llm.output_parser import (
     ModelOutputParser,
     coerce_to_dict,
-    fallback_output,
     strip_markdown_fences,
 )
 from app.llm.output_schema import SettlementModelOutput
@@ -50,16 +49,11 @@ def test_json_with_surrounding_text_parses_successfully() -> None:
     assert result.culture_impacts[0].delta == 3.0
 
 
-def test_invalid_json_parse_returns_fallback_and_strict_raises() -> None:
-    parser = ModelOutputParser()
+def test_invalid_json_parse_raises() -> None:
     broken = '{"relationship_deltas": ['
 
-    result = parser.parse(broken)
-
-    assert result.relationship_deltas == []
-    assert result.narrative_events[0].narration
     with pytest.raises(ModelOutputError):
-        parser.parse_strict(broken)
+        ModelOutputParser().parse(broken)
 
 
 def test_missing_whole_field_uses_default_empty_list() -> None:
@@ -77,12 +71,8 @@ def test_out_of_range_relationship_delta_rejects_output() -> None:
     payload = _valid_payload()
     payload["relationship_deltas"][0]["delta"] = 999
 
-    result = parser.parse(_json_text(payload))
-
-    assert result.relationship_deltas == []
-    assert result.narrative_events[0].kind == "custom"
     with pytest.raises(ModelOutputError) as exc_info:
-        parser.parse_strict(_json_text(payload))
+        parser.parse(_json_text(payload))
     assert isinstance(exc_info.value.__cause__, ValidationError)
 
 
@@ -98,21 +88,12 @@ def test_extra_fields_are_ignored() -> None:
     assert not hasattr(result.relationship_deltas[0], "unexpected_nested")
 
 
-def test_ai_speech_content_too_long_returns_fallback() -> None:
+def test_ai_speech_content_too_long_raises() -> None:
     payload = _valid_payload()
     payload["ai_speeches"][0]["content"] = "x" * 401
 
-    result = ModelOutputParser().parse(_json_text(payload))
-
-    assert result.ai_speeches == []
-    assert result.narrative_events[0].narration == "裁决系统暂未响应，本回合按规则继续。"  # noqa: RUF001
-
-
-def test_fallback_output_has_non_empty_narration() -> None:
-    result = fallback_output()
-
-    assert result.relationship_deltas == []
-    assert result.narrative_events[0].narration
+    with pytest.raises(ModelOutputError):
+        ModelOutputParser().parse(_json_text(payload))
 
 
 def test_strip_markdown_fences_handles_json_and_plain_fences() -> None:

@@ -38,7 +38,10 @@ app.include_router(websocket_router)
 @app.on_event("startup")
 async def startup() -> None:
     if settings.env != "prod" and settings.dev_banner_enabled:
-        logger.info("DEV MODE · LLM_PROVIDER=mock · MOCK NARRATION FALLBACK ENABLED")
+        if settings.llm_provider == "mock":
+            logger.info("DEV MODE · LLM_PROVIDER=mock · MOCK NARRATION FALLBACK ENABLED")
+        else:
+            logger.info("DEV MODE · LLM_PROVIDER=%s · REAL NARRATION ENABLED", settings.llm_provider)
     await gateway.startup()
 
 

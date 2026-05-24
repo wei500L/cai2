@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import Globe from 'globe.gl'
 import type { GlobeInstance } from 'globe.gl'
 import { MeshLambertMaterial, type Camera, type Scene, type WebGLRenderer } from 'three'
@@ -8,7 +8,7 @@ import {
   hexPolygonMargin,
   type HexPolygonInput,
 } from '@/render/globe/buildHexPolygons'
-import { buildArcsData, type GlobeCapitalDatum } from '@/render/globe/dataLayers'
+import { buildArcsData, buildPointsData, type GlobeCapitalDatum } from '@/render/globe/dataLayers'
 import { hexPolygonColor } from '@/render/globe/stylePresets'
 import { GlobeInstanceProvider } from '@/render/globe/GlobeInstanceProvider'
 import type { GlobeInstanceSnapshot } from '@/render/globe/globeTypes'
@@ -28,6 +28,11 @@ type GlobeApi = GlobeInstance & {
   arcDashGap: (value: unknown) => GlobeInstance
   arcDashAnimateTime: (value: unknown) => GlobeInstance
   arcAltitude: (value: unknown) => GlobeInstance
+  pointsData: (data: unknown[]) => GlobeInstance
+  pointColor: (value: unknown) => GlobeInstance
+  pointRadius: (value: unknown) => GlobeInstance
+  pointAltitude: (value: unknown) => GlobeInstance
+  pointResolution: (value: unknown) => GlobeInstance
 }
 
 function toSnapshot(globe: GlobeInstance): GlobeInstanceSnapshot {
@@ -53,6 +58,23 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
   const worldGeometry = useGameStore((state) => state.worldGeometry)
   const scorchedRegions = useMapStore((state) => state.scorchedRegions)
   const factionMetaById = useAllFactionMeta()
+  const capitals = useMemo<GlobeCapitalDatum[]>(() => {
+    if (!worldGeometry?.factions.length) {
+      return []
+    }
+
+    return worldGeometry.factions.map((capital) => {
+      const meta = factionMetaById.find((faction) => faction.id === capital.id)
+      return {
+        id: capital.id,
+        lat: capital.capital_lat,
+        lng: capital.capital_lng,
+        name: meta?.name ?? capital.id,
+        glow: meta?.glow ?? '#8fcaff',
+        badge: '中立' as const,
+      }
+    })
+  }, [factionMetaById, worldGeometry])
 
   useEffect(() => {
     const container = containerRef.current
@@ -145,29 +167,35 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
       return undefined
     }
 
-    const capitals = worldGeometry?.factions.length
-      ? worldGeometry.factions.map((capital) => {
-          const meta = factionMetaById.find((faction) => faction.id === capital.id)
-          return {
-            id: capital.id,
-            lat: capital.capital_lat,
-            lng: capital.capital_lng,
-            name: meta?.name ?? capital.id,
-            glow: meta?.glow ?? '#8fcaff',
-            badge: '中立' as const,
-          } satisfies GlobeCapitalDatum
-        })
-      : undefined
-
     globe
-      .arcsData(buildArcsData(diplomaticArcs, capitals))
+      .arcsData(buildArcsData(diplomaticArcs, capitals.length > 0 ? capitals : undefined))
       .arcColor('color')
       .arcStroke('stroke')
       .arcDashLength('dashLength')
       .arcDashGap('dashGap')
       .arcDashAnimateTime('dashAnimateTime')
       .arcAltitude(() => 0.12)
-  }, [diplomaticArcs, factionMetaById, worldGeometry])
+  }, [capitals, diplomaticArcs])
+
+  useEffect(() => {
+    const globe = globeRef.current as GlobeApi | null
+    if (!globe) {
+      return undefined
+    }
+
+    const capitalMarkers = buildPointsData(capitals).map((marker) => ({
+      ...marker,
+      altitude: 0.035,
+      radius: 0.9,
+    }))
+
+    globe
+      .pointsData(capitalMarkers)
+      .pointColor('color')
+      .pointRadius('radius')
+      .pointAltitude('altitude')
+      .pointResolution(12)
+  }, [capitals])
 
   return (
     <GlobeInstanceProvider value={published}>

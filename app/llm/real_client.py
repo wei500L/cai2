@@ -25,7 +25,7 @@ class RealLLMClient:
         api_key: str,
         base_url: str,
         model: str,
-        timeout_s: float = 60.0,
+        timeout_s: float = 8.0,
     ) -> None:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
@@ -130,7 +130,7 @@ class RealLLMClient:
         payload = self._build_payload(request)
         headers = self._build_headers()
         raw_response: dict[str, Any] = {}
-        socket_timeout = min(self.timeout_s * 0.8, self.timeout_s - 5)
+        socket_timeout = max(1.0, self.timeout_s - 1.0)
 
         def _blocking_call() -> tuple[str, dict[str, Any], int]:
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")

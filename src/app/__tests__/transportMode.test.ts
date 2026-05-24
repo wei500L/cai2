@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { resolveTransportMode } from '../transportMode'
 
 describe('resolveTransportMode', () => {
-  it('uses mock mode for /game without a room id', () => {
+  it('uses ws mode for /game without a room id', () => {
     expect(
       resolveTransportMode({
         pathname: '/game',
@@ -10,7 +10,7 @@ describe('resolveTransportMode', () => {
         allowMockFallback: false,
         forceMockMode: false,
       }),
-    ).toBe('mock')
+    ).toBe('ws')
   })
 
   it('keeps ws mode for /game when a room id is present', () => {

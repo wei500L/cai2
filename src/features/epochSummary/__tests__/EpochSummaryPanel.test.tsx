@@ -63,11 +63,11 @@ describe('EpochSummaryPanel', () => {
     container.remove()
   })
 
-  it('shows a timeout message after five seconds without narration', () => {
+  it('shows a timeout message after sixty seconds without narration', () => {
     const { container, root } = renderPanel()
 
     act(() => {
-      vi.advanceTimersByTime(5_000)
+      vi.advanceTimersByTime(60_000)
     })
 
     expect(container.textContent).toContain('旁白生成超时，请刷新')

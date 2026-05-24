@@ -27,7 +27,7 @@ export function EpochSummaryPanel() {
       return undefined
     }
 
-    const timer = window.setTimeout(() => setTimedOut(true), 5_000)
+    const timer = window.setTimeout(() => setTimedOut(true), 60_000)
     return () => window.clearTimeout(timer)
   }, [currentEpoch, summary])
 
