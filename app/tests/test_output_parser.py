@@ -41,12 +41,11 @@ def test_plain_fence_parses_successfully() -> None:
     assert result.treaty_decisions[0].accepted is True
 
 
-def test_json_with_surrounding_text_parses_successfully() -> None:
+def test_json_with_surrounding_text_is_rejected() -> None:
     text = f"Here's the result:\n{_json_text(_valid_payload())}\nThanks"
 
-    result = ModelOutputParser().parse(text)
-
-    assert result.culture_impacts[0].delta == 3.0
+    with pytest.raises(ModelOutputError):
+        ModelOutputParser().parse(text)
 
 
 def test_invalid_json_parse_raises() -> None:
@@ -101,10 +100,9 @@ def test_strip_markdown_fences_handles_json_and_plain_fences() -> None:
     assert strip_markdown_fences("```\n{}\n```") == "{}"
 
 
-def test_coerce_to_dict_extracts_json_object_substring() -> None:
-    assert coerce_to_dict('prefix {"relationship_deltas": []} suffix') == {
-        "relationship_deltas": []
-    }
+def test_coerce_to_dict_rejects_surrounding_text() -> None:
+    with pytest.raises(json.JSONDecodeError):
+        coerce_to_dict('prefix {"relationship_deltas": []} suffix')
 
 
 def _valid_payload() -> dict[str, Any]:

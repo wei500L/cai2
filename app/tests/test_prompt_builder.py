@@ -30,10 +30,13 @@ from app.domain import (
 from app.game.settlement_aggregator import SettlementInput
 from app.llm.prompt_builder import (
     EPIC_NARRATION_JSON_SCHEMA_HINT,
+    OPENING_NARRATION_JSON_SCHEMA_HINT,
     SUMMARY_NARRATION_JSON_SCHEMA_HINT,
     OUTPUT_JSON_SCHEMA_HINT,
     PromptBuilder,
+    OpeningNarrationPrompt,
     SettlementPrompt,
+    STRICT_JSON_OUTPUT_RULES,
     truncate,
 )
 
@@ -176,6 +179,8 @@ def test_build_settlement_prompt_contains_required_sections(
     assert "region_iron_01 -> region_star_02" in prompt.user
     assert "确认星辉联邦是否在河谷集结" in prompt.user
     assert "上一回合，铁冠帝国和星辉联邦" in prompt.user
+    assert STRICT_JSON_OUTPUT_RULES in prompt.user
+    assert "只输出一个 JSON 对象" in prompt.system
 
     for field_name in (
         "relationship_deltas",
@@ -293,12 +298,30 @@ def test_build_epoch_narration_prompts_include_required_sections() -> None:
     assert "重大背叛" in epic.user
     assert "铁冠帝国发动边境攻势" in epic.user
     assert EPIC_NARRATION_JSON_SCHEMA_HINT in epic.json_schema_hint
+    assert STRICT_JSON_OUTPUT_RULES in epic.user
+    assert "只输出一个 JSON 对象" in epic.system
     assert epic.temperature > summary.temperature
 
     assert "排名快照" in summary.user
     assert "战争摘要" in summary.user
     assert "背叛摘要" in summary.user
     assert SUMMARY_NARRATION_JSON_SCHEMA_HINT in summary.json_schema_hint
+    assert STRICT_JSON_OUTPUT_RULES in summary.user
+    assert "只输出一个 JSON 对象" in summary.system
+
+
+def test_build_opening_narration_prompt_enforces_json_only() -> None:
+    prompt = PromptBuilder().build_opening_narration_prompt(
+        faction_ids=[FactionId.ironCrown, FactionId.starlight],
+        relationships_summary="- ironCrown ↔ starlight: wary(+10)",
+        ai_faction_ids=[FactionId.ironCrown],
+    )
+
+    assert isinstance(prompt, OpeningNarrationPrompt)
+    assert "八大势力" in prompt.user
+    assert STRICT_JSON_OUTPUT_RULES in prompt.user
+    assert "只输出一个 JSON 对象" in prompt.system
+    assert OPENING_NARRATION_JSON_SCHEMA_HINT in prompt.json_schema_hint
 
 
 def test_prompt_builder_has_no_forbidden_project_imports() -> None:

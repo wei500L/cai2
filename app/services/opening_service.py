@@ -1,17 +1,18 @@
 # ruff: noqa: RUF001, RUF002, RUF003
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.core.errors import DiplomacyError
 from app.core.clock import Clock
 from app.core.logging import get_logger
 from app.domain.enums import FactionId, RelationshipStatus
 from app.domain.factions import FACTION_META, all_faction_ids
 from app.domain.models import FactionState, Relationship
 from app.llm.client import LLMClient, LLMRequest
+from app.llm.output_parser import parse_model_output
 from app.llm.output_schema import OpeningNarrationModelOutput
 from app.llm.prompt_builder import OpeningNarrationPrompt, PromptBuilder
 
@@ -63,8 +64,11 @@ class OpeningService:
             metadata={"kind": "opening_narration"},
         )
 
-        response = await self._llm.call_opening_narration(request)
-        parsed = OpeningNarrationModelOutput.model_validate_json(response.content)
+        try:
+            response = await self._llm.call_opening_narration(request)
+            parsed = parse_model_output(response.content, OpeningNarrationModelOutput)
+        except Exception as error:
+            raise DiplomacyError(f"failed to generate opening narration: {error}") from error
 
         return OpeningContentBundle(
             room_id=room_id,

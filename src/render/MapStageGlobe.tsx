@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import Globe from 'globe.gl'
 import type { GlobeInstance } from 'globe.gl'
 import { MeshLambertMaterial, type Camera, type Scene, type WebGLRenderer } from 'three'
@@ -17,6 +18,7 @@ import { useGameStore } from '@/store/gameStore'
 import { useMapStore } from '@/store/mapStore'
 
 const GLOBE_BASE_COLOR = '#101824'
+const ARC_MAX_ALTITUDE = 0.028
 
 type GlobeApi = GlobeInstance & {
   globeImageUrl(url: string | null): GlobeInstance
@@ -49,9 +51,10 @@ function unwrapHexPolygonData<T>(hexPolygon: T | { __data?: T }): T {
 }
 
 export function MapStageGlobe({ children }: { children?: ReactNode }) {
-  const containerRef = useRef<HTMLDivElement | null>(null)
   const globeRef = useRef<GlobeInstance | null>(null)
   const [published, setPublished] = useState<GlobeInstanceSnapshot | null>(null)
+  const [portalHost, setPortalHost] = useState<HTMLDivElement | null>(null)
+  const [containerEl, setContainerEl] = useState<HTMLDivElement | null>(null)
 
   const diplomaticArcs = useGameStore((state) => state.diplomaticArcs)
   const regions = useGameStore((state) => state.regions)
@@ -77,14 +80,38 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
   }, [factionMetaById, worldGeometry])
 
   useEffect(() => {
-    const container = containerRef.current
-    if (!container) return undefined
+    if (typeof document === 'undefined') return undefined
 
-    const globe = new Globe(container)
+    const portalHostElement = document.createElement('div')
+    portalHostElement.dataset.layer = 'globe.gl'
+    Object.assign(portalHostElement.style, {
+      position: 'fixed',
+      inset: '0',
+      overflow: 'hidden',
+      pointerEvents: 'none',
+      zIndex: '0',
+      background: 'black',
+    })
+    document.body.insertBefore(portalHostElement, document.body.firstChild)
+    setPortalHost(portalHostElement)
+
+    return () => {
+      setPublished(null)
+      setPortalHost(null)
+      portalHostElement.remove()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!portalHost || !containerEl) {
+      return undefined
+    }
+
+    const globe = new Globe(containerEl)
     globeRef.current = globe
 
-    const w = Math.max(1, Math.round(container.clientWidth || 1))
-    const h = Math.max(1, Math.round(container.clientHeight || 1))
+    const w = Math.max(1, Math.round(containerEl.clientWidth || 1))
+    const h = Math.max(1, Math.round(containerEl.clientHeight || 1))
     globe.width(w).height(h)
 
     const globeApi = globe as GlobeApi
@@ -96,7 +123,22 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
 
     setPublished(toSnapshot(globe))
 
+    const resize = () => {
+      const w = Math.max(1, Math.round(containerEl.clientWidth || 1))
+      const h = Math.max(1, Math.round(containerEl.clientHeight || 1))
+      globe.width(w).height(h)
+    }
+
+    resize()
+
+    const observer =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(() => resize())
+    observer?.observe(containerEl)
+
     return () => {
+      observer?.disconnect()
       setPublished(null)
       try {
         const renderer = globe.renderer()
@@ -104,29 +146,9 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
         renderer.dispose()
       } finally {
         globeRef.current = null
-        container.replaceChildren()
       }
     }
-  }, [])
-
-  useEffect(() => {
-    const globe = globeRef.current
-    const container = containerRef.current
-    if (!globe || !container) return undefined
-
-    const resize = () => {
-      const w = Math.max(1, Math.round(container.clientWidth || 1))
-      const h = Math.max(1, Math.round(container.clientHeight || 1))
-      globe.width(w).height(h)
-    }
-
-    resize()
-
-    if (typeof ResizeObserver === 'undefined') return undefined
-    const observer = new ResizeObserver(() => resize())
-    observer.observe(container)
-    return () => observer.disconnect()
-  }, [published])
+  }, [containerEl, portalHost])
 
   useEffect(() => {
     const globe = globeRef.current
@@ -174,7 +196,9 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
       .arcDashLength('dashLength')
       .arcDashGap('dashGap')
       .arcDashAnimateTime('dashAnimateTime')
-      .arcAltitude(() => 0.12)
+      // Keep diplomatic arcs close to the globe surface so they read as attached
+      // overlays instead of a separate floating ring.
+      .arcAltitude(() => ARC_MAX_ALTITUDE)
   }, [capitals, diplomaticArcs])
 
   useEffect(() => {
@@ -199,9 +223,14 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
 
   return (
     <GlobeInstanceProvider value={published}>
-      <div ref={containerRef} className="relative h-full w-full overflow-hidden bg-black">
-        {children ? <div className="absolute inset-0">{children}</div> : null}
-      </div>
+      {portalHost
+        ? createPortal(
+            <div ref={setContainerEl} className="relative h-full w-full overflow-hidden bg-black">
+              {children ? <div className="absolute inset-0">{children}</div> : null}
+            </div>,
+            portalHost,
+          )
+        : null}
     </GlobeInstanceProvider>
   )
 }

@@ -16,6 +16,7 @@ from app.domain.factions import FACTION_META
 from app.domain.models import FactionState, GameEvent, SettlementResult
 from app.game.settlement_aggregator import SettlementAggregator
 from app.llm.client import LLMClient, LLMRequest
+from app.llm.output_parser import parse_model_output
 from app.llm.output_schema import EpicNarrationModelOutput, SummaryNarrationModelOutput
 from app.llm.prompt_builder import PromptBuilder
 from app.protocol.narration_events import (
@@ -116,7 +117,7 @@ async def generate_epic_narration(
 
     try:
         response = await llm.call_epic_narration(request)
-        model_output = EpicNarrationModelOutput.model_validate_json(response.content)
+        model_output = parse_model_output(response.content, EpicNarrationModelOutput)
     except Exception as error:
         raise DiplomacyError(f"failed to generate epic narration: {error}") from error
     payload = EpicNarrationPayload(
@@ -151,7 +152,7 @@ async def generate_summary_narration(
 
     try:
         response = await llm.call_summary_narration(request)
-        model_output = SummaryNarrationModelOutput.model_validate_json(response.content)
+        model_output = parse_model_output(response.content, SummaryNarrationModelOutput)
         payload = SummaryNarrationPayload.model_validate_json(
             json.dumps(
                 {

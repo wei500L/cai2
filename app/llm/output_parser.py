@@ -3,8 +3,9 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Any
+from typing import Any, TypeVar
 
+from pydantic import BaseModel
 from pydantic import ValidationError
 
 from app.core.errors import ModelOutputError
@@ -12,6 +13,7 @@ from app.core.logging import get_logger
 from app.llm.output_schema import SettlementModelOutput
 
 _FENCE_RE = re.compile(r"^\s*```(?:json)?\s*(?P<body>.*?)\s*```\s*$", re.DOTALL | re.IGNORECASE)
+ModelT = TypeVar("ModelT", bound=BaseModel)
 
 logger = get_logger(__name__)
 
@@ -28,15 +30,16 @@ def coerce_to_dict(text: str) -> dict[str, Any]:
     try:
         parsed = json.loads(stripped)
     except json.JSONDecodeError as error:
-        start = stripped.find("{")
-        end = stripped.rfind("}")
-        if start == -1 or end == -1 or end <= start:
-            raise error
-        parsed = json.loads(stripped[start : end + 1])
+        raise error
 
     if not isinstance(parsed, dict):
         raise TypeError("model output must be a JSON object")
     return parsed
+
+
+def parse_model_output(text: str, model: type[ModelT]) -> ModelT:
+    payload = coerce_to_dict(text)
+    return model.model_validate_json(json.dumps(payload, ensure_ascii=False, default=str))
 
 
 class ModelOutputParser:
@@ -49,9 +52,7 @@ class ModelOutputParser:
 
     def parse_strict(self, llm_text: str) -> SettlementModelOutput:
         try:
-            stripped = strip_markdown_fences(llm_text)
-            payload = coerce_to_dict(stripped)
-            return SettlementModelOutput.model_validate(payload)
+            return parse_model_output(llm_text, SettlementModelOutput)
         except (json.JSONDecodeError, TypeError, ValueError, ValidationError) as error:
             raise ModelOutputError("invalid settlement model output") from error
 

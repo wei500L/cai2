@@ -16,6 +16,7 @@ from app.llm.output_schema import (
     SettlementModelOutput,
     SummaryNarrationModelOutput,
 )
+from app.llm.output_parser import coerce_to_dict
 
 
 class RealLLMClient:
@@ -165,12 +166,7 @@ class RealLLMClient:
         raise NotImplementedError
 
     def _validate_schema(self, text: str, schema: type[BaseModel]) -> dict[str, Any]:
-        stripped = text.strip()
-        start = stripped.find("{")
-        end = stripped.rfind("}")
-        if start != -1 and end != -1 and end > start:
-            stripped = stripped[start : end + 1]
-        data = json.loads(stripped)
+        data = coerce_to_dict(text)
         validated = schema.model_validate(data)
         return validated.model_dump(mode="json")
 
