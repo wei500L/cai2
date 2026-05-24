@@ -10,6 +10,7 @@ from app.llm.openai_client import OpenAICompatibleClient
 
 
 def make_llm_client(provider: str, *, settings: Any = None) -> LLMClient:
+    timeout_s = float(getenv("LLM_TIMEOUT_S", "60"))
     if provider == "mock":
         return MockLLMClient()
     if provider == "openai":
@@ -22,6 +23,7 @@ def make_llm_client(provider: str, *, settings: Any = None) -> LLMClient:
                 "https://api.openai.com/v1",
             ),
             model=_read_setting(settings, "openai_model", "OPENAI_MODEL", "gpt-4.1-mini"),
+            timeout_s=timeout_s,
         )
     if provider == "claude":
         return ClaudeCompatibleClient(
