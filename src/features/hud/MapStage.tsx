@@ -32,7 +32,7 @@ export function MapStage() {
   const rendererLabel = renderer === 'globe' ? 'GLOBE' : renderer === 'r3f' ? 'R3F' : '2D'
 
   return (
-    <GlowPanel className="h-full w-full rounded-none">
+    <GlowPanel className="h-full w-full rounded-none bg-transparent">
       <div className="relative flex h-full min-h-[18rem] items-center justify-center overflow-hidden">
         <motion.div
           className="absolute inset-0"
@@ -40,7 +40,7 @@ export function MapStage() {
           transition={{ duration: phaseConfig.transitionMs / 1000, ease: [0.22, 1, 0.36, 1] }}
           style={{ transformOrigin: 'center' }}
         >
-          <MapSwitcher />
+          <MapSwitcher zoom={phaseConfig.mapZoom} transitionMs={phaseConfig.transitionMs} />
         </motion.div>
         {phaseConfig.borderSparkBoost > 1 ? (
           <motion.div

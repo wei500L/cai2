@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import { motion } from 'framer-motion'
 import Globe from 'globe.gl'
 import type { GlobeInstance } from 'globe.gl'
 import { MeshLambertMaterial, type Camera, type Scene, type WebGLRenderer } from 'three'
@@ -50,7 +51,15 @@ function unwrapHexPolygonData<T>(hexPolygon: T | { __data?: T }): T {
   return ((hexPolygon as { __data?: T }).__data ?? hexPolygon) as T
 }
 
-export function MapStageGlobe({ children }: { children?: ReactNode }) {
+export function MapStageGlobe({
+  children,
+  zoom = 1,
+  transitionMs = 400,
+}: {
+  children?: ReactNode
+  zoom?: number
+  transitionMs?: number
+}) {
   const globeRef = useRef<GlobeInstance | null>(null)
   const [published, setPublished] = useState<GlobeInstanceSnapshot | null>(null)
   const [portalHost, setPortalHost] = useState<HTMLDivElement | null>(null)
@@ -89,7 +98,7 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
       inset: '0',
       overflow: 'hidden',
       pointerEvents: 'none',
-      zIndex: '0',
+      zIndex: '1',
       background: 'black',
     })
     document.body.insertBefore(portalHostElement, document.body.firstChild)
@@ -225,9 +234,16 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
     <GlobeInstanceProvider value={published}>
       {portalHost
         ? createPortal(
-            <div ref={setContainerEl} className="relative h-full w-full overflow-hidden bg-black">
-              {children ? <div className="absolute inset-0">{children}</div> : null}
-            </div>,
+            <motion.div
+              className="absolute inset-0 overflow-hidden"
+              animate={{ scale: zoom }}
+              transition={{ duration: transitionMs / 1000, ease: [0.22, 1, 0.36, 1] }}
+              style={{ transformOrigin: 'center' }}
+            >
+              <div ref={setContainerEl} className="relative h-full w-full overflow-hidden bg-black">
+                {children ? <div className="absolute inset-0">{children}</div> : null}
+              </div>
+            </motion.div>,
             portalHost,
           )
         : null}
