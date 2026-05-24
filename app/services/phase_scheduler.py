@@ -20,6 +20,7 @@ class PhaseScheduler:
         *,
         phase_service: Any,
         settlement_service: Any,
+        opening_service: Any | None = None,
         repos: Repositories,
         clock: Clock,
         dispatcher: OutboundDispatcher,
@@ -27,12 +28,14 @@ class PhaseScheduler:
     ) -> None:
         self._phase_service = phase_service
         self._settlement_service = settlement_service
+        self._opening_service = opening_service
         self._repos = repos
         self._clock = clock
         self._dispatcher = dispatcher
         self.tick_interval_s = tick_interval_s
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._settlement_tasks: set[asyncio.Task[None]] = set()
+        self._settling_rooms: set[str] = set()
 
     async def start_room(self, room_id: str) -> None:
         task = self._tasks.get(room_id)
@@ -44,6 +47,14 @@ class PhaseScheduler:
             name=f"phase-scheduler:{room_id}",
         )
         logger.info("phase scheduler started room_id=%s", room_id)
+
+        if self._opening_service is not None:
+            opening_task = asyncio.create_task(
+                self._run_opening_narration(room_id),
+                name=f"opening-narration:{room_id}",
+            )
+            self._settlement_tasks.add(opening_task)
+            opening_task.add_done_callback(self._settlement_tasks.discard)
 
     async def stop_room(self, room_id: str) -> None:
         task = self._tasks.pop(room_id, None)
@@ -83,6 +94,9 @@ class PhaseScheduler:
             except asyncio.CancelledError:
                 pass
 
+    def is_settling(self, room_id: str) -> bool:
+        return room_id in self._settling_rooms
+
     async def _room_loop(self, room_id: str) -> None:
         try:
             while True:
@@ -102,6 +116,9 @@ class PhaseScheduler:
                         room_id,
                     )
                     break
+
+                if room_id in self._settling_rooms:
+                    continue
 
                 previous = _phase_key(current)
                 new_turn = await self._phase_service.maybe_advance_by_clock(room_id)
@@ -153,14 +170,12 @@ class PhaseScheduler:
                     self._settlement_tasks.add(task)
                     task.add_done_callback(self._settlement_tasks.discard)
                 elif (
-                    current.phase == GamePhase.arbitrate
-                    and current.arbitrate_phase == ArbitratePhase.summary
-                    and new_turn.phase == GamePhase.observe
-                    and new_turn.epoch == current.epoch + 1
+                    new_turn.phase == GamePhase.arbitrate
+                    and new_turn.arbitrate_phase == ArbitratePhase.battle
                 ):
                     task = asyncio.create_task(
-                        self._run_epoch_narration(room_id, current.epoch),
-                        name=f"epoch-narration:{room_id}:{current.epoch}",
+                        self._run_epoch_narration(room_id, new_turn.epoch),
+                        name=f"epoch-narration:{room_id}:{new_turn.epoch}",
                     )
                     self._settlement_tasks.add(task)
                     task.add_done_callback(self._settlement_tasks.discard)
@@ -185,6 +200,7 @@ class PhaseScheduler:
         await self._dispatcher.dispatch_phase_change(room_id, payload.model_dump(mode="json"))
 
     async def _run_settlement(self, room_id: str, epoch: int, turn: int) -> None:
+        self._settling_rooms.add(room_id)
         try:
             await self._dispatcher.dispatch_ai_thinking(room_id)
             bundle = await self._settlement_service.run_turn_settlement(room_id, epoch, turn)
@@ -202,8 +218,11 @@ class PhaseScheduler:
                 "error_code": "SETTLEMENT_FAILED",
                 "request_id": None,
             })
+        finally:
+            self._settling_rooms.discard(room_id)
 
     async def _run_epoch_narration(self, room_id: str, epoch: int) -> None:
+        self._settling_rooms.add(room_id)
         try:
             bundle = await self._settlement_service.run_epoch_settlement(room_id, epoch)
             await self._dispatcher.dispatch_epoch_narration_bundle(room_id, bundle)
@@ -219,6 +238,34 @@ class PhaseScheduler:
                 "error_code": "EPOCH_NARRATION_FAILED",
                 "request_id": None,
             })
+        finally:
+            self._settling_rooms.discard(room_id)
+
+    async def _run_opening_narration(self, room_id: str) -> None:
+        try:
+            room = await self._repos.rooms.get(room_id)
+            if room is None:
+                return
+            factions = await self._repos.state.get_factions(room_id)
+            relationships = await self._repos.state.get_relationships(room_id)
+            if not factions or not relationships:
+                logger.warning("opening narration skipped: missing state room_id=%s", room_id)
+                return
+
+            bundle = await self._opening_service.generate_opening_content(
+                room_id=room_id,
+                factions=factions,
+                relationships=relationships,
+                ai_faction_ids=list(room.ai_factions),
+            )
+            await self._dispatcher.dispatch_opening_content(room_id, bundle)
+            logger.info("opening narration dispatched room_id=%s", room_id)
+        except Exception as error:
+            logger.exception(
+                "opening narration failed room_id=%s error=%s",
+                room_id,
+                error,
+            )
 
 
 def _phase_key(current: EpochTurn) -> tuple[int, int, GamePhase, object | None]:

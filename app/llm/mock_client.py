@@ -20,6 +20,7 @@ from app.llm.explosion_prompt import parse_explosion_prompt
 from app.llm.output_schema import (
     EpicNarrationModelOutput,
     ExplosionJudgeOutput,
+    OpeningNarrationModelOutput,
     SettlementModelOutput,
     SummaryNarrationModelOutput,
 )
@@ -95,6 +96,24 @@ class MockLLMClient:
             await asyncio.sleep(self._latency_ms / 1000)
 
         output = self._consume_explosion_output(prompt)
+        return LLMResponse(
+            content=json.dumps(output, ensure_ascii=False, separators=(",", ":"), sort_keys=True),
+            model=self.name(),
+            prompt_tokens=None,
+            completion_tokens=None,
+            latency_ms=self._latency_ms,
+            raw=output,
+        )
+
+    async def call_opening_narration(self, request: LLMRequest) -> LLMResponse:
+        if self._latency_ms > 0:
+            await asyncio.sleep(self._latency_ms / 1000)
+
+        output = self._consume_output(
+            request,
+            schema=OpeningNarrationModelOutput,
+            default_factory=_default_opening_narration_output,
+        )
         return LLMResponse(
             content=json.dumps(output, ensure_ascii=False, separators=(",", ":"), sort_keys=True),
             model=self.name(),
@@ -591,3 +610,47 @@ def _mock_loss(kind: str) -> float:
 
 def _mock_hint(center_hex_id: str, kind: str) -> str:
     return f"{kind} strike centered on {center_hex_id}"
+
+
+def _default_opening_narration_output(request: LLMRequest) -> dict[str, Any]:
+    output = {
+        "world_prologue": (
+            "旧秩序的裂痕已无法掩饰。八大势力在大陆的边缘彼此试探，"
+            "贸易路线上的商队开始携带武器，外交使节的马车里藏着密信。"
+            "这是风暴前最后的平静——或者说，风暴已经开始，只是还没有人愿意承认。"
+            "铁与火的时代即将降临，而每一个选择都将决定文明的走向。"
+        ),
+        "faction_briefs": [
+            {"faction_id": "ironCrown", "situation": "铁冠帝国的军工厂日夜不停，边境驻军已达历史最高水平。帝国议会中主战派的声音越来越大。", "goal_hint": "寻找开战的正当理由"},
+            {"faction_id": "starlight", "situation": "星辉联邦的情报网络捕捉到多方异动，联邦议会正在紧急评估威胁等级。", "goal_hint": "建立防御性同盟网络"},
+            {"faction_id": "emerald", "situation": "翡翠王庭的商队遍布大陆，但贸易利润正在被边境摩擦侵蚀。商会急需稳定的外交环境。", "goal_hint": "通过贸易协定锁定盟友"},
+            {"faction_id": "ashen", "situation": "灰烬部族的战士们在篝火旁磨砺武器，族长的荣誉誓言要求他们回应任何挑衅。", "goal_hint": "捍卫荣誉，回应威胁"},
+            {"faction_id": "voidChurch", "situation": "虚空教廷的预言者声称看到了'大清洗'的征兆，信徒们在各国暗中扩张影响力。", "goal_hint": "扩大信仰版图"},
+            {"faction_id": "aurora", "situation": "极光共和的学者们正在研究一项可能改变力量平衡的技术，但需要时间和和平环境。", "goal_hint": "争取研发时间"},
+            {"faction_id": "magma", "situation": "熔岩议会控制着大陆最丰富的矿脉，各方势力的采购订单堆满了议事厅。", "goal_hint": "以资源换取安全保障"},
+            {"faction_id": "darkTide", "situation": "暗潮商会的情报网已渗透到每个势力的核心圈层，手中握有足以颠覆格局的秘密。", "goal_hint": "贩卖情报，操纵局势"},
+        ],
+        "relationship_backstories": [
+            {"from_faction": "ashen", "to_faction": "ironCrown", "backstory": "三代人前的'焦土之战'让灰烬部族失去了祖地，这笔血债从未被遗忘。铁冠帝国至今仍占据着那片土地。"},
+            {"from_faction": "starlight", "to_faction": "aurora", "backstory": "两国共享'理性之光'的学术传统，联合研究院已运作百年。科技合作是双方关系的基石。"},
+            {"from_faction": "emerald", "to_faction": "darkTide", "backstory": "翡翠王庭的贸易网络与暗潮商会的情报网络深度交织，双方在灰色地带有着默契的利益分配。"},
+            {"from_faction": "voidChurch", "to_faction": "ashen", "backstory": "虚空教廷曾试图在灰烬部族传教，被视为对战士荣誉的侮辱而遭驱逐。双方至今互不信任。"},
+        ],
+        "opening_events": [
+            {"headline": "边境商队遇袭", "narration": "一支翡翠王庭的商队在铁冠帝国边境遭到不明武装袭击，货物被劫。各方互相指责，真相扑朔迷离。", "involved_factions": ["emerald", "ironCrown"]},
+            {"headline": "预言者公开宣言", "narration": "虚空教廷的大预言者在圣殿广场发表公开宣言，声称'旧世界的终结已经开始'，引发各国关注。", "involved_factions": ["voidChurch"]},
+            {"headline": "矿脉争端升温", "narration": "熔岩议会宣布提高稀有矿石出口关税，多个依赖进口的势力表示强烈不满。", "involved_factions": ["magma", "ironCrown", "starlight"]},
+        ],
+        "faction_speeches": [
+            {"faction_id": "ironCrown", "content": "帝国的意志如钢铁般坚定。我们不寻求战争，但绝不惧怕任何挑战。"},
+            {"faction_id": "starlight", "content": "数据表明当前局势的不稳定系数已超过警戒线。我们呼吁各方回到谈判桌前。"},
+            {"faction_id": "emerald", "content": "贸易是文明的血脉。我们愿与任何尊重契约精神的势力建立互利关系。"},
+            {"faction_id": "ashen", "content": "灰烬部族的战士不会忘记过去的耻辱。我们的刀刃已经准备好了。"},
+            {"faction_id": "voidChurch", "content": "命运的齿轮已经转动。信仰虚空者将在风暴中找到庇护。"},
+            {"faction_id": "aurora", "content": "知识是最强大的武器。我们希望和平能持续足够长的时间。"},
+            {"faction_id": "magma", "content": "矿脉是我们的，价格由我们定。想要资源？拿出诚意来谈。"},
+            {"faction_id": "darkTide", "content": "每个人都有秘密。问题是，你愿意付出什么代价来保守它？"},
+        ],
+    }
+    OpeningNarrationModelOutput.model_validate(output)
+    return output

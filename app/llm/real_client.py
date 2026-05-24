@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from typing import Any
 from urllib import request as urllib_request
 
@@ -11,6 +12,7 @@ from app.llm.client import LLMRequest, LLMResponse
 from app.llm.output_schema import (
     EpicNarrationModelOutput,
     ExplosionJudgeOutput,
+    OpeningNarrationModelOutput,
     SettlementModelOutput,
     SummaryNarrationModelOutput,
 )
@@ -34,7 +36,7 @@ class RealLLMClient:
         return await self._call_json_model(
             request,
             schema=SettlementModelOutput,
-            retries=1,
+            retries=2,
             payload_kind="settlement",
         )
 
@@ -67,6 +69,14 @@ class RealLLMClient:
             schema=ExplosionJudgeOutput,
             retries=3,
             payload_kind="explosion",
+        )
+
+    async def call_opening_narration(self, request: LLMRequest) -> LLMResponse:
+        return await self._call_json_model(
+            request,
+            schema=OpeningNarrationModelOutput,
+            retries=2,
+            payload_kind="opening_narration",
         )
 
     async def _call_json_model(
@@ -120,6 +130,7 @@ class RealLLMClient:
         payload = self._build_payload(request)
         headers = self._build_headers()
         raw_response: dict[str, Any] = {}
+        socket_timeout = min(self.timeout_s * 0.8, self.timeout_s - 5)
 
         def _blocking_call() -> tuple[str, dict[str, Any], int]:
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -129,11 +140,14 @@ class RealLLMClient:
                 headers=headers,
                 method="POST",
             )
-            with urllib_request.urlopen(req, timeout=self.timeout_s) as response:
+
+            t0 = time.perf_counter()
+            with urllib_request.urlopen(req, timeout=socket_timeout) as response:
                 response_bytes = response.read()
                 response_text = response_bytes.decode("utf-8")
                 parsed = json.loads(response_text)
-                return _extract_response_text(parsed), parsed, 0
+                latency_ms = int((time.perf_counter() - t0) * 1000)
+                return _extract_response_text(parsed), parsed, latency_ms
 
         response_text, raw_response, latency_ms = await asyncio.to_thread(_blocking_call)
         return response_text, raw_response, latency_ms

@@ -28,6 +28,7 @@ from app.protocol.outgoing import (
 from app.repositories.factory import Repositories
 from app.services.epoch_narration_service import EpochNarrationBundle
 from app.services.factions_meta_service import FactionsMetaService
+from app.services.opening_service import OpeningContentBundle
 from app.services.room_service import build_snapshot
 from app.services.settlement_service import SettlementOutboundBundle
 
@@ -109,6 +110,14 @@ class OutboundDispatcher:
                 room_id,
                 _envelope("ai.thinking", payload.model_dump(mode="json")),
             )
+
+    async def dispatch_opening_content(
+        self,
+        room_id: str,
+        bundle: OpeningContentBundle,
+    ) -> None:
+        payload = bundle.model_dump(mode="json")
+        await self.dispatch_to_room(room_id, _envelope("game.opening", payload))
 
     async def dispatch_room_snapshot(self, room_id: str) -> None:
         room = await self._repos.rooms.get(room_id)

@@ -68,18 +68,9 @@ function getFactionId(region: HexPolygonRegion) {
   return region.factionId ?? region.owner ?? region.faction ?? null
 }
 
-function buildGeometry(lat: number, lng: number) {
-  // Delta was a typo (0.08 instead of 8.0), which resulted in 17km squares instead of 1700km squares,
-  // causing h3.polyfill to drop them or render sparse dots instead of a continuous mosaic.
-  const delta = 8.0
+function buildGeometry(lat: number, lng: number, delta = 2.8) {
   const north = clamp(lat + delta, -89.9, 89.9)
   const south = clamp(lat - delta, -89.9, 89.9)
-
-  // DO NOT use wrapLongitude here! If the polygon crosses the antimeridian,
-  // wrapping it back to -180 causes h3.polyfill to interpret the polygon as
-  // wrapping the LONG way around the globe (344 degrees instead of 16 degrees).
-  // This generates millions of hexes and crashes the renderer, resulting in a black globe.
-  // h3-js and three-globe natively support longitudes > 180 or < -180 for this exact reason.
   const east = lng + delta
   const west = lng - delta
 

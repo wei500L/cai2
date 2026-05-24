@@ -1,4 +1,4 @@
-"""本模块仅产出 prompt 文本，不调用模型。模型调用由 app.llm.client 负责，且只在结算阶段触发。"""
+"""本模块仅产出 prompt 文本，不调用模型。模型调用由 app.llm.client 负责。"""
 # ruff: noqa: RUF001, RUF002, RUF003
 
 from __future__ import annotations
@@ -8,6 +8,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
+from app.domain.enums import FactionId
+from app.domain.factions import FACTION_META, FactionMeta
 from app.game.settlement_aggregator import SettlementInput
 
 SYSTEM_PROMPT_TEMPLATE = """你是《外交风云》的裁决与叙事 AI。
@@ -196,6 +198,45 @@ SUMMARY_NARRATION_JSON_SCHEMA_HINT = """{
   }
 }"""
 
+OPENING_NARRATION_SYSTEM_PROMPT = """你是《外交风云》的开局叙事生成器。
+你只在游戏开局时工作一次，为八大势力的世界生成背景叙事和开场白。
+你会收到八大势力的基本信息（文明特征、优势、性格）和初始关系设定。
+你的任务是：
+1. 生成一段有氛围感的世界开场白（100-300字），描述这个时代的总体格局和风暴前夜的气氛。
+2. 为每个势力生成当前处境简报（50-100字），暗示其短期目标。
+3. 为有明确预设关系的势力对解释背景故事（为什么敌对/亲近）。
+4. 生成2-3条开局世界事件（新闻），让玩家有信息可以反应。
+5. 为每个AI势力生成一句开场公开发言，符合该势力的语气风格。
+发言风格参考：
+- commanding_imperial: 威严、命令式、帝王口吻
+- analytical_diplomatic: 理性、数据驱动、外交辞令
+- charming_mercantile: 圆滑、利益导向、商人口吻
+- passionate_warrior: 热血、直接、战士口吻
+- mystical_prophetic: 神秘、预言式、宗教口吻
+- academic_neutral: 学术、中立、温和
+- gruff_pragmatic: 粗犷、务实、少废话
+- smooth_conspiratorial: 老练、暗示、情报口吻
+输出必须是严格JSON，符合用户提供的schema形态。
+不要输出markdown围栏。不要输出JSON之外的解释性文字。
+所有faction_id必须使用枚举ID字符串（ironCrown, starlight, emerald, ashen, voidChurch, aurora, magma, darkTide）。
+保持叙事有世界观氛围，但不要过于冗长。"""
+
+OPENING_NARRATION_JSON_SCHEMA_HINT = """{
+  "world_prologue": "string(100..300字，时代背景叙事)",
+  "faction_briefs": [
+    {"faction_id": "faction_id", "situation": "string(50..100字)", "goal_hint": "string(20..60字)"}
+  ],
+  "relationship_backstories": [
+    {"from_faction": "faction_id", "to_faction": "faction_id", "backstory": "string(30..150字)"}
+  ],
+  "opening_events": [
+    {"headline": "string(5..30字)", "narration": "string(30..150字)", "involved_factions": ["faction_id"]}
+  ],
+  "faction_speeches": [
+    {"faction_id": "faction_id", "content": "string(20..150字，符合该势力speech_style)"}
+  ]
+}"""
+
 
 class SettlementPrompt(BaseModel):
     model_config = ConfigDict(strict=True)
@@ -215,6 +256,16 @@ class NarrationPrompt(BaseModel):
     json_schema_hint: str
     temperature: float = 0.45
     max_tokens: int = 800
+
+
+class OpeningNarrationPrompt(BaseModel):
+    model_config = ConfigDict(strict=True)
+
+    system: str
+    user: str
+    json_schema_hint: str
+    temperature: float = 0.75
+    max_tokens: int = 3000
 
 
 class PromptBuilder:
@@ -344,6 +395,39 @@ class PromptBuilder:
             json_schema_hint=SUMMARY_NARRATION_JSON_SCHEMA_HINT,
             temperature=0.35,
             max_tokens=540,
+        )
+
+    def build_opening_narration_prompt(
+        self,
+        *,
+        faction_ids: list[FactionId],
+        relationships_summary: str,
+        ai_faction_ids: list[FactionId],
+    ) -> OpeningNarrationPrompt:
+        faction_lines: list[str] = []
+        for fid in faction_ids:
+            meta = FACTION_META[fid]
+            faction_lines.append(
+                f"- {fid.value}({meta.name}): "
+                f"文明={meta.civilization}; 原型={meta.archetype}; "
+                f"优势={meta.advantage}; 语气={meta.speech_style}"
+            )
+
+        ai_ids_str = ", ".join(fid.value for fid in ai_faction_ids)
+
+        user = "\n\n".join(
+            [
+                "## 八大势力\n" + "\n".join(faction_lines),
+                "## 初始关系设定\n" + relationships_summary,
+                f"## AI 控制的势力（需要生成开场发言）\n{ai_ids_str}",
+                "## 输出格式\n" + OPENING_NARRATION_JSON_SCHEMA_HINT,
+            ]
+        )
+
+        return OpeningNarrationPrompt(
+            system=OPENING_NARRATION_SYSTEM_PROMPT,
+            user=user,
+            json_schema_hint=OPENING_NARRATION_JSON_SCHEMA_HINT,
         )
 
 

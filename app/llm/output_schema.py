@@ -181,6 +181,53 @@ class SummaryNarrationModelOutput(BaseModel):
     highlights: SummaryHighlightBundleOutput
 
 
+class FactionBriefOutput(BaseModel):
+    model_config = ConfigDict(strict=False, extra="ignore")
+
+    faction_id: FactionId
+    situation: str = Field(min_length=10, max_length=200)
+    goal_hint: str = Field(min_length=4, max_length=100)
+
+
+class RelationshipBackstoryOutput(BaseModel):
+    model_config = ConfigDict(strict=False, extra="ignore")
+
+    from_faction: FactionId
+    to_faction: FactionId
+    backstory: str = Field(min_length=10, max_length=200)
+
+
+class OpeningEventOutput(BaseModel):
+    model_config = ConfigDict(strict=False, extra="ignore")
+
+    headline: str = Field(min_length=2, max_length=40)
+    narration: str = Field(min_length=10, max_length=200)
+    involved_factions: list[FactionId] = Field(default_factory=list, max_length=4)
+
+
+class FactionOpeningSpeechOutput(BaseModel):
+    model_config = ConfigDict(strict=False, extra="ignore")
+
+    faction_id: FactionId
+    content: str = Field(min_length=4, max_length=200)
+
+
+class OpeningNarrationModelOutput(BaseModel):
+    model_config = ConfigDict(strict=False, extra="ignore")
+
+    world_prologue: str = Field(min_length=50, max_length=600)
+    faction_briefs: list[FactionBriefOutput] = Field(default_factory=list, max_length=8)
+    relationship_backstories: list[RelationshipBackstoryOutput] = Field(
+        default_factory=list, max_length=8
+    )
+    opening_events: list[OpeningEventOutput] = Field(
+        default_factory=list, min_length=1, max_length=4
+    )
+    faction_speeches: list[FactionOpeningSpeechOutput] = Field(
+        default_factory=list, max_length=8
+    )
+
+
 class ExplosionJudgeOutput(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid", validate_assignment=True)
 

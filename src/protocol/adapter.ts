@@ -48,6 +48,9 @@ export function attachAdapter(transport: Transport, gameStore: GameStoreApiLike)
       case 'room.start':
         store.applyRoomStarted(message.p)
         break
+      case 'game.opening':
+        store._applyOpeningContent(message.p)
+        break
       case 'room.factions_meta':
         factionMetaStore.getState().applyFactionsMeta(message.p)
         break

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any
 
@@ -11,7 +10,7 @@ from app.api.websocket.dispatcher import OutboundDispatcher, build_world_geometr
 from app.core.clock import Clock
 from app.core.config import get_settings
 from app.core.errors import DiplomacyError
-from app.domain.enums import FactionId, GamePhase
+from app.domain.enums import FactionId
 from app.domain.models import GameEvent, Player
 from app.domain.world_geometry import WorldGeometry
 from app.game.map_neighbors import build_region_neighbors
@@ -65,7 +64,6 @@ class InboundRouter:
         self._dispatcher = dispatcher
         self._takeover_service = takeover_service
         self._auth_tokens: dict[str, str] = {}
-        self._settlement_tasks: set[asyncio.Task[None]] = set()
 
     async def handle_raw(self, player_id: str, raw: dict[str, Any]) -> dict[str, Any] | None:
         envelope = parse_incoming(raw)
@@ -275,9 +273,7 @@ class InboundRouter:
                         payload.room_id,
                         phase_payload.model_dump(mode="json"),
                     )
-                    self._schedule_settlement_if_needed(payload.room_id, current)
                     return None
-                self._schedule_settlement_if_needed(payload.room_id, current)
                 return self._dump(
                     "phase.change",
                     phase_payload,
@@ -309,39 +305,6 @@ class InboundRouter:
             return outbound
 
         return None
-
-    def _schedule_settlement_if_needed(self, room_id: str, current: Any) -> None:
-        if current.phase != GamePhase.resolve or self._settlement_service is None:
-            return
-
-        async def run() -> None:
-            try:
-                if self._dispatcher is not None:
-                    await self._dispatcher.dispatch_ai_thinking(room_id)
-                bundle = await self._settlement_service.run_turn_settlement(
-                    room_id,
-                    current.epoch,
-                    current.turn,
-                )
-                if self._dispatcher is not None:
-                    await self._dispatcher.dispatch_resolve_bundle(room_id, bundle)
-            except Exception as exc:
-                logger.error("settlement failed room_id=%s error=%s", room_id, exc)
-                if self._dispatcher is not None:
-                    await self._dispatcher.dispatch_to_room(
-                        room_id,
-                        {
-                            "type": "error.message",
-                            "p": {
-                                "reason": f"LLM调用失败: {exc}",
-                                "error_code": "LLM_CALL_FAILED",
-                            },
-                        },
-                    )
-
-        task = asyncio.create_task(run())
-        self._settlement_tasks.add(task)
-        task.add_done_callback(self._settlement_tasks.discard)
 
     def _action_broadcast(self, room_id: str, ack: BaseModel) -> dict[str, Any]:
         return self._dump(

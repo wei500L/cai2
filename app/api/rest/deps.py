@@ -18,6 +18,7 @@ from app.llm.prompt_builder import PromptBuilder
 from app.repositories.factory import Repositories, make_repositories
 from app.services.action_service import ActionService
 from app.services.factions_meta_service import FactionsMetaService
+from app.services.opening_service import OpeningService
 from app.services.phase_scheduler import PhaseScheduler
 from app.services.phase_service import PhaseService
 from app.services.replay_service import ReplayService
@@ -133,6 +134,8 @@ def get_phase_scheduler() -> PhaseScheduler:
     repos = get_repositories()
     clock = get_clock()
     dispatcher = get_outbound_dispatcher()
+    settings = get_settings()
+    llm_client = make_llm_client(settings.llm_provider, settings=settings)
     return PhaseScheduler(
         phase_service=PhaseService(
             repos,
@@ -140,6 +143,7 @@ def get_phase_scheduler() -> PhaseScheduler:
             on_room_finished=_build_room_finished_callback(repos, clock, dispatcher),
         ),
         settlement_service=get_settlement_service(repos, clock),
+        opening_service=OpeningService(llm_client=llm_client, clock=clock),
         repos=repos,
         clock=clock,
         dispatcher=dispatcher,

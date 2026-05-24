@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest app/tests/test_llm_mock_client.py -x -q)",
+      "Bash(python -m pytest app/tests/test_llm_mock_client.py -x -q -k \"not fallback_to_mock\")",
+      "Bash(python *)"
+    ]
+  }
+}

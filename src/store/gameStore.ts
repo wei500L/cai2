@@ -72,6 +72,16 @@ const activeRippleTimers = new Map<string, ReturnType<typeof setTimeout>>()
 const MAX_AI_SPEAK_QUEUE = 50
 const MAX_AI_REACTIONS_PER_EVENT = 12
 
+type OpeningContentPayload = {
+  room_id: string
+  generated_at_ms: number
+  world_prologue: string
+  faction_briefs: Array<{ faction_id: FactionId; situation: string; goal_hint: string }>
+  relationship_backstories: Array<{ from_faction: FactionId; to_faction: FactionId; backstory: string }>
+  opening_events: Array<{ headline: string; narration: string; involved_factions: FactionId[] }>
+  faction_speeches: Array<{ faction_id: FactionId; content: string }>
+}
+
 type AIThinkingState = ReconnectAIThinkingState & {
   fallback: boolean
   factionId: FactionId
@@ -186,6 +196,7 @@ type GameStoreActions = {
     faction_id: FactionId
   }) => void
   _applyRoomFinished: (payload: RoomFinishedPayload) => void
+  _applyOpeningContent: (payload: OpeningContentPayload) => void
 }
 
 export type GameStoreState = GameState & {
@@ -217,6 +228,7 @@ export type GameStoreState = GameState & {
   } | null
   winner: FactionId | null
   finalNarration: string | null
+  openingContent: OpeningContentPayload | null
   serverClockOffsetMs: number
   serverClockSampleAtMs: number
   aiDiaries: Record<FactionId, DiaryEntry[]>
@@ -1397,6 +1409,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
   worldGeometry: null,
   winner: null,
   finalNarration: null,
+  openingContent: null,
   serverClockOffsetMs: 0,
   serverClockSampleAtMs: 0,
   aiDiaries: emptyAIDiaries(),
@@ -2551,6 +2564,10 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
         connected: true,
       }),
     }))
+  },
+
+  _applyOpeningContent: (payload) => {
+    set({ openingContent: payload })
   },
 
   _applyRoomFinished: (payload) => {

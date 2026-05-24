@@ -340,7 +340,7 @@ class RuleResolver:
             maintenance_cost = faction.military * 0.08
             war_cost = active_wars * 5.0 + self._attack_order_count(faction.id, input) * 3.0
             net_income = region_income + trade_income - maintenance_cost - war_cost
-            crisis = net_income < 0.0 and self._negative_income_streak(faction.id, input) >= 3
+            crisis = net_income < 0.0 and self._negative_income_streak(faction.id, input) >= 2
 
             changes.append(
                 FactionStatChange(
@@ -774,7 +774,7 @@ class RuleResolver:
         )
 
     def _negative_income_streak(self, faction_id: FactionId, input: SettlementInput) -> int:
-        streak = 1
+        streak = 0
         previous = [
             event
             for event in input.recent_events

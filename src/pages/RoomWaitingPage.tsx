@@ -138,7 +138,7 @@ export default function RoomWaitingPage() {
     }
 
     setBusy('create')
-    const result = ActionDispatcher.createRoom('multi_4v4', trimmedName)
+    const result = ActionDispatcher.createRoom('solo_1v7', trimmedName)
     if (!result.ok) {
       setBusy(null)
       setMessage(result.error ?? '创建房间失败')

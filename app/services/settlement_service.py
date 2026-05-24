@@ -35,7 +35,6 @@ from app.llm.client import LLMClient, LLMRequest
 from app.llm.output_parser import ModelOutputParser
 from app.llm.output_schema import SettlementModelOutput
 from app.llm.prompt_builder import PromptBuilder
-from app.llm.retry import call_with_retry
 from app.repositories.factory import Repositories
 from app.services.ai_output_service import AIOutputBundle, AIOutputService
 from app.services.ai_templates import (
@@ -353,7 +352,7 @@ class SettlementService:
         turn: int,
         request: LLMRequest,
     ) -> str:
-        response = await call_with_retry(self._llm_client, request, max_retries=1)
+        response = await self._llm_client.call_settlement_model(request)
         return response.content
 
     async def _resolve_explosions(
@@ -1195,35 +1194,6 @@ def _read_bool_env(name: str, default: bool) -> bool:
 
 def _dump_event(event: GameEvent) -> dict[str, Any]:
     return _dump_model(event)
-
-
-def _build_narration_event(
-    *,
-    room_id: str,
-    epoch: int,
-    turn: int,
-    seq: int,
-    payload: Any,
-    created_at_ms: int,
-    narrative: str,
-) -> GameEvent:
-    event_kind = "epic" if hasattr(payload, "narrative") else "summary"
-    return GameEvent(
-        id=f"arbitrate:{room_id}:{epoch}:{turn}:{seq}:{event_kind}",
-        room_id=room_id,
-        seq=seq,
-        epoch=epoch,
-        turn=turn,
-        phase=GamePhase.arbitrate,
-        created_at_ms=created_at_ms,
-        priority=EventPriority.P1,
-        kind=EventKind.narration,
-        actor_faction=None,
-        target_faction=None,
-        payload=payload.model_dump(mode="json"),
-        narration=narrative,
-        visibility=MessageVisibility(scope=VisibilityScope.public, faction_ids=[]),
-    )
 
 
 def _build_narration_event(
