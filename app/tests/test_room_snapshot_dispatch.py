@@ -35,6 +35,10 @@ def _snapshot_messages(socket: FakeSocket) -> list[dict[str, Any]]:
     ]
 
 
+def _messages(socket: FakeSocket) -> list[dict[str, Any]]:
+    return [json.loads(text) for text in socket.sent_texts]
+
+
 @pytest.mark.asyncio
 async def test_room_mutations_dispatch_room_snapshot_once_per_state_change() -> None:
     repos: Repositories = make_repositories("memory")
@@ -63,6 +67,7 @@ async def test_room_mutations_dispatch_room_snapshot_once_per_state_change() -> 
     assert created is not None
     room_id = created["p"]["room_id"]
     assert len(_snapshot_messages(socket_1)) == 1
+    assert any(message["t"] == "room.factions_meta" for message in _messages(socket_1))
 
     socket_1.sent_texts.clear()
     joined = await router.handle_raw(
@@ -97,3 +102,53 @@ async def test_room_mutations_dispatch_room_snapshot_once_per_state_change() -> 
     await router.handle_raw("p2", _raw("room.leave", {"room_id": room_id}, "leave"))
     assert len(_snapshot_messages(socket_1)) == 1
     assert len(_snapshot_messages(socket_2)) == 0
+
+
+@pytest.mark.asyncio
+async def test_ws_room_start_dispatches_initial_state_meta_and_geometry() -> None:
+    repos: Repositories = make_repositories("memory")
+    clock = FrozenClock(1000)
+    manager = ConnectionManager()
+    socket = FakeSocket()
+    await manager.register("p1", socket)
+    dispatcher = OutboundDispatcher(manager, repos)
+    router = InboundRouter(
+        room_service=RoomService(repos, clock),
+        action_service=ActionService(repos, clock),
+        phase_service=PhaseService(repos, clock),
+        settlement_service=None,
+        repos=repos,
+        clock=clock,
+        connection_manager=manager,
+        dispatcher=dispatcher,
+    )
+
+    created = await router.handle_raw(
+        "p1",
+        _raw("room.create", {"mode": "solo_1v7", "display_name": "host", "seed": 42}, "create"),
+    )
+    assert created is not None
+    room_id = created["p"]["room_id"]
+
+    socket.sent_texts.clear()
+    await router.handle_raw(
+        "p1",
+        _raw("room.select_faction", {"room_id": room_id, "faction_id": "ironCrown"}, "select"),
+    )
+    await router.handle_raw("p1", _raw("room.ready", {"room_id": room_id, "ready": True}, "ready"))
+    socket.sent_texts.clear()
+
+    started = await router.handle_raw("p1", _raw("room.start", {"room_id": room_id}, "start"))
+
+    assert started is None
+    messages = _messages(socket)
+    assert [message["t"] for message in messages[:4]] == [
+        "room.start",
+        "room.factions_meta",
+        "room.world_geometry",
+        "room.snapshot",
+    ]
+    assert len(messages[1]["p"]["factions"]) == 8
+    assert messages[1]["p"]["factions"][0]["primary"] == "#8B1A1A"
+    assert messages[2]["p"]["total_cells"] > 0
+    assert messages[3]["p"]["status"] == "running"

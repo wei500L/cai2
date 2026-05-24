@@ -9,9 +9,12 @@ type ReactionTagProps = {
   eventId: string
 }
 
+const EMPTY_REACTIONS: NonNullable<ReturnType<typeof useGameStore.getState>['lastAIReaction']>[] = []
+
 export function ReactionTag({ eventId }: ReactionTagProps) {
   const [visible, setVisible] = useState(true)
-  const reactions = useGameStore((state) => state.aiReactionByEvent.get(eventId) ?? [])
+  const aiReactionByEvent = useGameStore((state) => state.aiReactionByEvent)
+  const reactions = aiReactionByEvent.get(eventId) ?? EMPTY_REACTIONS
   const factionId = reactions[0]?.factionId ?? null
   const faction = useFactionMeta(factionId ?? 'starlight')
   const token = factionTokens[factionId ?? 'starlight']

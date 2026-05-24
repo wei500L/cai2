@@ -26,6 +26,7 @@ export function ConfirmBar({ selectedFaction }: ConfirmBarProps) {
     if (currentRoomId) {
       ActionDispatcher.selectFaction(selectedFaction.id)
       ActionDispatcher.setReady(true)
+      ActionDispatcher.startRoom()
     }
     navigateToGame()
   }

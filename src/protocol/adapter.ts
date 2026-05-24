@@ -1,4 +1,5 @@
 import { useUIStore } from '@/store/uiStore'
+import { useMapStore } from '@/store/mapStore'
 import type { GameStoreState } from '@/store/gameStore'
 import { factionMetaStore } from '@/store/factionMetaStore'
 import { ActionDispatcher, dispatchEpochNarrationMessage } from './dispatcher'
@@ -32,8 +33,13 @@ export function attachAdapter(transport: Transport, gameStore: GameStoreApiLike)
       case 'turn.begin':
         store._applyTurnBegin(message.p)
         break
+      case 'turn.end':
+        break
       case 'room.joined':
         store._applyRoomJoined(message.p.room_snapshot)
+        break
+      case 'room.created':
+        store._applyRoomCreated(message.p)
         break
       case 'room.snapshot':
         store.applySnapshot(message.p)
@@ -80,6 +86,9 @@ export function attachAdapter(transport: Transport, gameStore: GameStoreApiLike)
       case 'resolve.stats_diff':
         store._applyStatsDiff(message.p)
         break
+      case 'resolve.world_lighting':
+        useMapStore.getState().setSunPosition(message.p.sun_lat, message.p.sun_lng)
+        break
       case 'arbitrate.epic_narration':
       case 'arbitrate.summary_narration':
         dispatchEpochNarrationMessage(message)
@@ -123,6 +132,9 @@ export function attachAdapter(transport: Transport, gameStore: GameStoreApiLike)
       case 'action.rejected':
         useUIStore.getState().setLastError(message.p.reason)
         break
+      case 'error.message':
+        useUIStore.getState().setLastError(message.p.reason)
+        break
       case 'reconnect.catchup':
         {
           store._applyServerClockSample(message.p.server_time_ms, Date.now())
@@ -157,6 +169,7 @@ export function attachAdapter(transport: Transport, gameStore: GameStoreApiLike)
         store.applySnapshot(message.p)
         break
       default:
+        console.warn('[ws] unhandled message type:', (message as { t: string }).t)
         break
     }
   }

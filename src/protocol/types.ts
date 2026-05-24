@@ -3,7 +3,6 @@ import type {
   ArbitratePhase,
   EpicNarrationPayload,
   FactionId,
-  FactionMeta,
   GameEvent,
   GamePhase,
   MapRegion,
@@ -279,6 +278,9 @@ export type RoomReadyMessage = Envelope<'room.ready', {
   room_id: string
   ready: boolean
 }>
+export type RoomStartRequestMessage = Envelope<'room.start', {
+  room_id: string
+}>
 export type RoomCreatedMessage = Envelope<'room.created', {
   room_id: string
   mode: RoomMode
@@ -323,7 +325,8 @@ export type RoomSnapshotMessage = Envelope<'room.snapshot', RoomSnapshotPayload>
 export interface FactionMetaPayload {
   room_id?: string
   schema_version?: string
-  factions_meta: FactionMeta[]
+  factions?: unknown[]
+  factions_meta?: unknown[]
 }
 export type RoomFactionsMetaMessage = Envelope<'room.factions_meta', FactionMetaPayload>
 export type RoomPlayerJoinMessage = Envelope<'room.player_join', {
@@ -514,6 +517,24 @@ export type ActionRejectedMessage = Envelope<'action.rejected', {
 
 export type PhaseChangeMessage = Envelope<'phase.change', PhasePayload>
 export type TurnBeginMessage = Envelope<'turn.begin', TurnBeginPayload>
+export type TurnEndMessage = Envelope<'turn.end', {
+  room_id: string
+  epoch: number
+  turn: number
+  next_epoch: number
+  next_turn: number
+  server_time_ms: number
+}>
+export type ResolveWorldLightingMessage = Envelope<'resolve.world_lighting', {
+  room_id: string
+  epoch: number
+  turn: number
+  sun_lat: number
+  sun_lng: number
+  day_color: string
+  night_color: string
+  phase_label: string
+}>
 export type ResolveEventsMessage = Envelope<'resolve.events', EventBundlePayload & {
   epoch: number
   turn: number
@@ -602,6 +623,7 @@ export type IncomingMessage =
   | RoomFinishedMessage
   | PhaseChangeMessage
   | TurnBeginMessage
+  | TurnEndMessage
   | ActionBroadcastMessage
   | ActionPrivateMessage
   | ActionRejectedMessage
@@ -612,6 +634,7 @@ export type IncomingMessage =
   | ResolveEventsMessage
   | ResolveMapDiffMessage
   | ResolveStatsDiffMessage
+  | ResolveWorldLightingMessage
   | EpicNarrationMessage
   | SummaryNarrationMessage
   | AIThinkingMessage
@@ -633,6 +656,7 @@ export type OutgoingMessage =
   | RoomLeaveMessage
   | RoomSelectFactionMessage
   | RoomReadyMessage
+  | RoomStartRequestMessage
   | ActionSpeakMessage
   | ActionPrivateSubmitMessage
   | ActionTreatyMessage

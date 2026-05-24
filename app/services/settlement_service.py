@@ -36,7 +36,6 @@ from app.llm.output_parser import ModelOutputParser
 from app.llm.output_schema import SettlementModelOutput
 from app.llm.prompt_builder import PromptBuilder
 from app.llm.retry import call_with_retry
-from app.protocol.narration_events import EpicNarrationPayload, SummaryNarrationPayload
 from app.repositories.factory import Repositories
 from app.services.ai_output_service import AIOutputBundle, AIOutputService
 from app.services.ai_templates import (
@@ -365,6 +364,15 @@ class SettlementService:
                 turn,
                 error,
             )
+            return await self._mock_fallback_text(request)
+
+    async def _mock_fallback_text(self, request: LLMRequest) -> str:
+        from app.llm.mock_client import MockLLMClient
+
+        try:
+            response = await MockLLMClient().call_settlement_model(request)
+            return response.content
+        except Exception:
             return ""
 
     async def _resolve_explosions(
@@ -1243,7 +1251,7 @@ def _build_narration_event(
     epoch: int,
     turn: int,
     seq: int,
-    payload: EpicNarrationPayload | SummaryNarrationPayload,
+    payload: Any,
     created_at_ms: int,
     narrative: str,
     kind: str,

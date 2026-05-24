@@ -92,6 +92,7 @@ app/tests/test_aggregator_with_diary.py
 app/tests/test_ai_event_emission.py
 app/tests/test_ai_output_service.py
 app/tests/test_animation_params.py
+app/tests/test_arbitrate_service.py
 app/tests/test_arc_builder.py
 app/tests/test_border_tension_helper.py
 app/tests/test_diary_repository.py
@@ -100,6 +101,7 @@ app/tests/test_dispatcher_strips_internal.py
 app/tests/test_dispatcher_visibility.py
 app/tests/test_domain_models.py
 app/tests/test_enums_consistency.py
+app/tests/test_epoch_narration_service.py
 app/tests/test_explosion_dispatcher.py
 app/tests/test_factions_meta_service.py
 app/tests/test_gateway_router.py

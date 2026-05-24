@@ -32,6 +32,7 @@ import type {
   RegionChange,
   ScorchedDiffPayload,
   ReconnectEpochTurn,
+  RoomPlayerSnapshot,
   RoomSnapshotPayload,
   RoomStartedPayload,
   StatsDiffPayload,
@@ -69,6 +70,7 @@ export type TransportConfig = {
   mock?: {
     latencyMs?: number
     startGameLoop?: boolean
+    lobbyMode?: boolean
   }
 }
 
@@ -101,7 +103,23 @@ function nextEnvelope<T extends IncomingMessage['t']>(
 }
 
 function getRoomId() {
-  return gameStoreApi.getState().currentRoomId ?? DEFAULT_ROOM_ID
+  const currentRoomId = gameStoreApi.getState().currentRoomId
+  if (currentRoomId) {
+    return currentRoomId
+  }
+
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = window.localStorage.getItem('diplomacy_current_room_id')
+      if (stored) {
+        return stored
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return DEFAULT_ROOM_ID
 }
 
 function createPhaseKey(epoch: Epoch) {
@@ -626,11 +644,13 @@ export class MockTransport implements Transport {
   private connected = false
   private latencyMs = 0
   private startMockLoopOnConnect = false
+  private lobbyMode = false
   private stopMockLoop: (() => void) | null = null
 
-  constructor(config: { latencyMs?: number; startGameLoop?: boolean } = {}) {
+  constructor(config: { latencyMs?: number; startGameLoop?: boolean; lobbyMode?: boolean } = {}) {
     this.latencyMs = Math.max(0, config.latencyMs ?? 0)
     this.startMockLoopOnConnect = Boolean(config.startGameLoop)
+    this.lobbyMode = Boolean(config.lobbyMode)
   }
 
   connect() {
@@ -712,10 +732,12 @@ export class MockTransport implements Transport {
       schema_version: 'mock',
       factions_meta: factionMetaFixtures,
     }))
-    this.emit(nextEnvelope('room.snapshot', roomSnapshot))
-    this.emit(nextEnvelope('room.started', roomStarted))
-    this.emitTurnBegin(developmentState.epoch, developmentState)
-    this.emit(nextEnvelope('room.world_geometry', createMockWorldGeometry(fixtureSeed)))
+    if (!this.lobbyMode) {
+      this.emit(nextEnvelope('room.snapshot', roomSnapshot))
+      this.emit(nextEnvelope('room.started', roomStarted))
+      this.emitTurnBegin(developmentState.epoch, developmentState)
+      this.emit(nextEnvelope('room.world_geometry', createMockWorldGeometry(fixtureSeed)))
+    }
     if (this.startMockLoopOnConnect) {
       void this.ensureMockLoop()
     }
@@ -762,6 +784,86 @@ export class MockTransport implements Transport {
 
     if (message.t === 'room.ready') {
       this.advancePhase()
+      return { ok: true }
+    }
+
+    if (message.t === 'room.create') {
+      const roomId = `mock-room-${Date.now()}`
+      const mode = message.p.mode
+      const hostPlayerId = gameStoreApi.getState().currentPlayerId ?? gameStoreApi.getState().selectedFactionId ?? 'starlight'
+      const player: RoomPlayerSnapshot = {
+        player_id: hostPlayerId,
+        display_name: message.p.display_name,
+        faction_id: null,
+        connected: true,
+        ready: false,
+        ai_takeover: false,
+      }
+      const snapshot: RoomSnapshotPayload = {
+        room_id: roomId,
+        mode,
+        status: 'lobby',
+        players: [player],
+        ai_factions: [],
+        settings: createInitialState().settings,
+        recent_events: [],
+        recent_messages: [],
+        border_tension: [],
+      }
+      this.emit(nextEnvelope('room.created', { room_id: roomId, mode }))
+      this.emit(nextEnvelope('room.snapshot', snapshot))
+      this.emit(nextEnvelope('room.joined', {
+        room_id: roomId,
+        room_snapshot: {
+          room: {
+            id: roomId,
+            mode,
+            status: 'lobby',
+            players: [player],
+            ai_factions: [],
+          },
+          current_player_id: hostPlayerId,
+        },
+      }))
+      return { ok: true }
+    }
+
+    if (message.t === 'room.join') {
+      const roomId = message.p.room_id || `mock-room-${Date.now()}`
+      const playerId = gameStoreApi.getState().currentPlayerId ?? gameStoreApi.getState().selectedFactionId ?? 'starlight'
+      const player: RoomPlayerSnapshot = {
+        player_id: playerId,
+        display_name: message.p.display_name,
+        faction_id: null,
+        connected: true,
+        ready: false,
+        ai_takeover: false,
+      }
+      const snapshot: RoomSnapshotPayload = {
+        room_id: roomId,
+        mode: 'multi_4v4',
+        status: 'lobby',
+        players: [player],
+        ai_factions: [],
+        settings: createInitialState().settings,
+        recent_events: [],
+        recent_messages: [],
+        border_tension: [],
+      }
+      this.emit(nextEnvelope('room.joined', {
+        room_id: roomId,
+        room_snapshot: {
+          room: {
+            id: roomId,
+            mode: 'multi_4v4',
+            status: 'lobby',
+            players: [player],
+            ai_factions: [],
+          },
+          current_player_id: playerId,
+        },
+      }))
+      this.emit(nextEnvelope('room.snapshot', snapshot))
       return { ok: true }
     }
 

@@ -64,6 +64,26 @@ function getQueryParam(name: string) {
   return new URLSearchParams(window.location.search).get(name) ?? ''
 }
 
+function getStoredSessionValue(key: string) {
+  if (typeof window === 'undefined') {
+    return ''
+  }
+
+  try {
+    return window.localStorage.getItem(key) ?? ''
+  } catch {
+    return ''
+  }
+}
+
+function shouldAutoCreateRoom(pathname: string) {
+  return (
+    pathname === '/faction-select' ||
+    pathname === '/factions' ||
+    pathname === '/game'
+  )
+}
+
 function showMetaFallbackToast(setToastMessage: (message: string | null) => void) {
   setToastMessage('WS 未下发势力元数据，正在 REST 兜底拉取...')
 }
@@ -89,10 +109,16 @@ export function RealtimeConnection({
   const connectionFailureReason = useUIStore((state) => state.connectionFailureReason)
   const setConnectionFailureReason = useUIStore((state) => state.setConnectionFailureReason)
   const setLastHeartbeatTs = useUIStore((state) => state.setLastHeartbeatTs)
-  const roomIdFromQuery = useMemo(() => getQueryParam('room_id'), [])
-  const playerIdFromQuery = useMemo(() => getQueryParam('player_id'), [])
+  const roomIdFromQuery = useMemo(
+    () => getQueryParam('room_id') || getStoredSessionValue('diplomacy_current_room_id'),
+    [],
+  )
+  const playerIdFromQuery = useMemo(
+    () => getQueryParam('player_id') || getStoredSessionValue('diplomacy_current_player_id'),
+    [],
+  )
   const displayNameFromQuery = useMemo(
-    () => getQueryParam('display_name') || 'Player',
+    () => getQueryParam('display_name') || getStoredSessionValue('diplomacy_lobby_display_name') || 'Player',
     [],
   )
 
@@ -107,12 +133,50 @@ export function RealtimeConnection({
 
   useEffect(() => {
     let cancelled = false
-    let roomId = roomIdFromQuery || 'mock-room'
+    let roomId = roomIdFromQuery || ''
     let playerId = playerIdFromQuery || ''
+    let createRoomRequested = false
     let joinRequested = false
+    let directGameStartRequested = false
     const restFallbackAbortController = new AbortController()
 
-    if (pathname === '/game') {
+    const requestSoloRoom = () => {
+      if (
+        cancelled ||
+        transportMode !== 'ws' ||
+        roomIdFromQuery ||
+        createRoomRequested ||
+        !shouldAutoCreateRoom(pathname) ||
+        Boolean(gameStoreApi.getState().currentRoomId)
+      ) {
+        return
+      }
+
+      createRoomRequested = true
+      ActionDispatcher.createRoom('solo_1v7', displayNameFromQuery)
+    }
+
+    const maybeStartDirectGame = (nextRoomId: string) => {
+      if (
+        cancelled ||
+        transportMode !== 'ws' ||
+        pathname !== '/game' ||
+        roomIdFromQuery ||
+        directGameStartRequested ||
+        !nextRoomId
+      ) {
+        return
+      }
+
+      directGameStartRequested = true
+      const factionId = gameStoreApi.getState().selectedFactionId ?? 'starlight'
+      gameStoreApi.getState().selectFaction(factionId)
+      ActionDispatcher.selectFaction(factionId, nextRoomId)
+      ActionDispatcher.setReady(true, nextRoomId)
+      ActionDispatcher.startRoom(nextRoomId)
+    }
+
+    if (pathname === '/game' || pathname === '/room-waiting') {
       gameStoreApi.getState().bootstrapEmpty()
     }
 
@@ -177,7 +241,13 @@ export function RealtimeConnection({
               },
             },
           }
-        : { kind: 'mock', mock: { startGameLoop: pathname === '/game' } },
+        : {
+            kind: 'mock',
+            mock: {
+              startGameLoop: pathname === '/game',
+              lobbyMode: pathname === '/room-waiting',
+            },
+          },
     )
 
     transportRef.current = transport
@@ -203,14 +273,28 @@ export function RealtimeConnection({
 
       if (message.t === 'conn.auth.ok') {
         playerId = message.p.player_id
-        if (roomIdFromQuery && !joinRequested) {
+        gameStoreApi.setState({ currentPlayerId: playerId })
+        try {
+          window.localStorage.setItem('diplomacy_current_player_id', playerId)
+        } catch {
+          // ignore
+        }
+        if (roomIdFromQuery && !playerIdFromQuery && !joinRequested) {
           joinRequested = true
           ActionDispatcher.joinRoom(roomIdFromQuery, displayNameFromQuery)
+        } else if (!roomIdFromQuery) {
+          requestSoloRoom()
         }
       }
 
       if ('room_id' in message.p && typeof message.p.room_id === 'string') {
         roomId = message.p.room_id
+        try {
+          window.localStorage.setItem('diplomacy_current_room_id', roomId)
+        } catch {
+          // ignore
+        }
+        maybeStartDirectGame(roomId)
       }
 
       if (
@@ -228,6 +312,12 @@ export function RealtimeConnection({
         const nextRoomId = room?.id
         if (typeof nextRoomId === 'string') {
           roomId = nextRoomId
+          try {
+            window.localStorage.setItem('diplomacy_current_room_id', roomId)
+          } catch {
+            // ignore
+          }
+          maybeStartDirectGame(roomId)
         }
       }
 
@@ -240,7 +330,11 @@ export function RealtimeConnection({
     }
 
     transport.on(handleTransportMessage)
-    transport.connect()
+    const connectTimer = window.setTimeout(() => {
+      if (!cancelled) {
+        transport.connect()
+      }
+    }, 0)
 
     const metadataTimeoutTimer = window.setTimeout(() => {
       if (cancelled || factionMetaStore.getState().source !== 'pending') {
@@ -255,7 +349,12 @@ export function RealtimeConnection({
     }, 5_000)
 
     const restFallbackTimer = window.setTimeout(() => {
-      if (cancelled || transportMode !== 'ws' || factionMetaStore.getState().source !== 'pending') {
+      if (
+        cancelled ||
+        transportMode !== 'ws' ||
+        !roomId ||
+        factionMetaStore.getState().source !== 'pending'
+      ) {
         return
       }
 
@@ -289,6 +388,7 @@ export function RealtimeConnection({
 
     return () => {
       cancelled = true
+      window.clearTimeout(connectTimer)
       window.clearTimeout(metadataTimeoutTimer)
       window.clearTimeout(restFallbackTimer)
       restFallbackAbortController.abort()

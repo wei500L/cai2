@@ -8,6 +8,7 @@ import type {
   AISpeakMessage,
   EpicNarrationMessage,
   OutgoingMessage,
+  RoomMode,
   SummaryNarrationMessage,
 } from './types'
 import type { Transport } from './transport'
@@ -83,9 +84,28 @@ function getActor(): FactionId {
   return gameStoreApi.getState().selectedFactionId ?? 'starlight'
 }
 
-function getRoomId() {
+function getRoomId(roomId?: string) {
+  if (roomId) {
+    return roomId
+  }
+
   const state = gameStoreApi.getState()
-  return state.currentRoomId ?? DEFAULT_ROOM_ID
+  if (state.currentRoomId) {
+    return state.currentRoomId
+  }
+
+  if (typeof window !== 'undefined') {
+    try {
+      const stored = window.localStorage.getItem('diplomacy_current_room_id')
+      if (stored) {
+        return stored
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  return DEFAULT_ROOM_ID
 }
 
 function buildOutgoingMessage(submission: CommandSubmission): OutgoingMessage {
@@ -189,14 +209,30 @@ export class ActionDispatcher {
     return result ?? { ok: true }
   }
 
-  static selectFaction(factionId: FactionId): SubmitSpeechResult {
+  static createRoom(mode: RoomMode = 'solo_1v7', displayName = 'Player', seed?: number): SubmitSpeechResult {
+    if (!ActionDispatcher.transport) {
+      return { ok: false, error: '协议通道尚未连接' }
+    }
+
+    const result = ActionDispatcher.transport.send(
+      envelope('room.create', {
+        mode,
+        display_name: displayName,
+        seed,
+      }),
+    )
+
+    return result ?? { ok: true }
+  }
+
+  static selectFaction(factionId: FactionId, roomId?: string): SubmitSpeechResult {
     if (!ActionDispatcher.transport) {
       return { ok: false, error: '协议通道尚未连接' }
     }
 
     const result = ActionDispatcher.transport.send(
       envelope('room.select_faction', {
-        room_id: getRoomId(),
+        room_id: getRoomId(roomId),
         faction_id: factionId,
       }),
     )
@@ -204,15 +240,29 @@ export class ActionDispatcher {
     return result ?? { ok: true }
   }
 
-  static setReady(ready: boolean): SubmitSpeechResult {
+  static setReady(ready: boolean, roomId?: string): SubmitSpeechResult {
     if (!ActionDispatcher.transport) {
       return { ok: false, error: '协议通道尚未连接' }
     }
 
     const result = ActionDispatcher.transport.send(
       envelope('room.ready', {
-        room_id: getRoomId(),
+        room_id: getRoomId(roomId),
         ready,
+      }),
+    )
+
+    return result ?? { ok: true }
+  }
+
+  static startRoom(roomId?: string): SubmitSpeechResult {
+    if (!ActionDispatcher.transport) {
+      return { ok: false, error: '协议通道尚未连接' }
+    }
+
+    const result = ActionDispatcher.transport.send(
+      envelope('room.start', {
+        room_id: getRoomId(roomId),
       }),
     )
 

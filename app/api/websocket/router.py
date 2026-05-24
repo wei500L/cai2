@@ -101,6 +101,7 @@ class InboundRouter:
                 host_player_id=player_id,
             )
             await self._attach_and_snapshot(player_id, room.id)
+            await self._dispatch_factions_meta(room.id)
             return self._dump(
                 "room.created",
                 RoomCreatedPayload(room_id=room.id, mode=room.mode),
@@ -113,6 +114,7 @@ class InboundRouter:
                 player_id=player_id,
             )
             await self._attach_and_snapshot(joined_player.id, room.id)
+            await self._dispatch_factions_meta(room.id)
             return self._dump(
                 "room.joined",
                 RoomJoinedPayload(
@@ -163,6 +165,16 @@ class InboundRouter:
                 "room.joined",
                 RoomJoinedPayload(room_id=room.id, room_snapshot=_room_snapshot(room, player_id)),
             )
+
+        if envelope.t == "room.start":
+            room = await self._room_service.start_game(
+                room_id=payload.room_id,
+                requester_player_id=player_id,
+            )
+            if self._dispatcher is not None:
+                await self._dispatcher.dispatch_room_start(room.id)
+                await self._dispatcher.dispatch_room_snapshot(room.id)
+            return None
 
         if envelope.t == "action.speak":
             ack = await self._action_service.record_speech(
@@ -366,6 +378,10 @@ class InboundRouter:
     async def _dispatch_room_snapshot(self, room_id: str) -> None:
         if self._dispatcher is not None:
             await self._dispatcher.dispatch_room_snapshot(room_id)
+
+    async def _dispatch_factions_meta(self, room_id: str) -> None:
+        if self._dispatcher is not None:
+            await self._dispatcher.dispatch_factions_meta(room_id)
 
     async def _dispatch_action_events(self, room_id: str, action_id: str | None) -> bool:
         if self._dispatcher is None or action_id is None:

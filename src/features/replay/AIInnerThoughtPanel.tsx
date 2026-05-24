@@ -6,7 +6,7 @@ import type { FactionId } from '@/types/faction'
 import type { AIInnerThought, ReplayTimelineNode } from '@/types/replay'
 import type { DiaryEntry } from '@/protocol/types'
 import { useGameStore } from '@/store/gameStore'
-import { useReplay } from '@/store/replayStore'
+import { selectReplayAIInnerThoughts, useReplay } from '@/store/replayStore'
 import { formatReplayTime, getFactionName } from './replayViewUtils'
 
 type AIInnerThoughtPanelProps = {
@@ -15,7 +15,7 @@ type AIInnerThoughtPanelProps = {
 }
 
 export function AIInnerThoughtPanel({ replayTime, currentFocusFaction }: AIInnerThoughtPanelProps) {
-  const thoughts = useReplay((state) => state.data?.aiInnerThoughts ?? [])
+  const thoughts = useReplay(selectReplayAIInnerThoughts)
   const aiDiaries = useGameStore((state) => state.aiDiaries)
   const hasDiariesRevealed = useGameStore((state) => state.hasDiariesRevealed())
   const currentThoughts = useMemo(

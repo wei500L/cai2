@@ -18,8 +18,10 @@ const keywordClass: Record<KeywordTone, string> = {
 }
 
 export function PublicSpeechBubble() {
-  const publicSpeeches = useGameStore((state) =>
-    state.aiSpeakQueue.filter((item) => item.kind === 'public').slice(0, MAX_VISIBLE_SPEECHES),
+  const aiSpeakQueue = useGameStore((state) => state.aiSpeakQueue)
+  const publicSpeeches = useMemo(
+    () => aiSpeakQueue.filter((item) => item.kind === 'public').slice(0, MAX_VISIBLE_SPEECHES),
+    [aiSpeakQueue],
   )
 
   if (publicSpeeches.length === 0) {

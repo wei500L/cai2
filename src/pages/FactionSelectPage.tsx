@@ -70,7 +70,17 @@ export default function FactionSelectPage() {
   const activeIndex = Math.min(Math.max(rawActiveIndex, 0), Math.max(factions.length - 1, 0))
   const setActiveIndex = useCallback(
     (index: number) => {
-      setActiveIndexState({ factionsKey, index, selectedFactionId })
+      setActiveIndexState((current) => {
+        if (
+          current.factionsKey === factionsKey &&
+          current.selectedFactionId === selectedFactionId &&
+          current.index === index
+        ) {
+          return current
+        }
+
+        return { factionsKey, index, selectedFactionId }
+      })
     },
     [factionsKey, selectedFactionId],
   )

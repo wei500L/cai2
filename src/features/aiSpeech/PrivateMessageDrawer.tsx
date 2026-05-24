@@ -17,8 +17,10 @@ function formatTime(createdAt: number) {
 
 export function PrivateMessageDrawer() {
   const selectedFactionId = useGameStore((state) => state.selectedFactionId)
-  const privateMessages = useGameStore((state) =>
-    state.aiSpeakQueue.filter((item) => item.kind === 'private'),
+  const aiSpeakQueue = useGameStore((state) => state.aiSpeakQueue)
+  const privateMessages = useMemo(
+    () => aiSpeakQueue.filter((item) => item.kind === 'private'),
+    [aiSpeakQueue],
   )
   const rightPanelOpen = useUIStore((state) => state.rightPanelOpen)
   const open = useUIStore((state) => state.privateDrawerOpen)

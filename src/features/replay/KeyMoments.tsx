@@ -1,10 +1,10 @@
 import type { CSSProperties } from 'react'
 import { factionTokens } from '@/components/hudTheme'
-import { useReplay } from '@/store/replayStore'
+import { selectReplayKeyMoments, useReplay } from '@/store/replayStore'
 import { formatReplayTime, getFactionName } from './replayViewUtils'
 
 export function KeyMoments() {
-  const moments = useReplay((state) => state.data?.keyMoments ?? [])
+  const moments = useReplay(selectReplayKeyMoments)
 
   return (
     <section className="border border-[color:rgba(255,204,102,0.18)] bg-[color:rgba(12,7,4,0.78)] p-3">

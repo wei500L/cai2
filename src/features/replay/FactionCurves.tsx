@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react'
 import { factionTokens } from '@/components/hudTheme'
-import { useReplay } from '@/store/replayStore'
+import { selectReplayFactionCurves, useReplay } from '@/store/replayStore'
 import type { ReplayData } from '@/types/replay'
 import { getFactionName } from './replayViewUtils'
 
@@ -23,7 +23,7 @@ function buildPath(points: ReplayData['factionCurves'][number]['points'], minPow
 }
 
 export function FactionCurves() {
-  const curves = useReplay((state) => state.data?.factionCurves ?? [])
+  const curves = useReplay(selectReplayFactionCurves)
   const powers = curves.flatMap((curve) => curve.points.map((point) => point.totalPower))
   const minPower = Math.min(...powers, 80)
   const maxPower = Math.max(...powers, 420)

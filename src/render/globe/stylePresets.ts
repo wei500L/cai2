@@ -32,6 +32,8 @@ export type GlobeCinematicMode = 'focus_short' | 'full'
 export type GlobeQualityPreset = {
   hexResolution: number
   hexAltitudeScale: number
+  globeCurvatureResolution: number
+  hexCurvatureResolution: number
   bloomEnabled: boolean
   bloomPostprocessEnabled: boolean
   bloomStrength: number
@@ -53,6 +55,8 @@ export const globeQualityPresets: Record<MapQuality, GlobeQualityPreset> = {
   low: {
     hexResolution: 3,
     hexAltitudeScale: 0.5,
+    globeCurvatureResolution: 4,
+    hexCurvatureResolution: 4,
     bloomEnabled: false,
     bloomPostprocessEnabled: false,
     bloomStrength: 0,
@@ -70,6 +74,8 @@ export const globeQualityPresets: Record<MapQuality, GlobeQualityPreset> = {
   mid: {
     hexResolution: 4,
     hexAltitudeScale: 1,
+    globeCurvatureResolution: 6,
+    hexCurvatureResolution: 5,
     bloomEnabled: true,
     bloomPostprocessEnabled: true,
     bloomStrength: 1,
@@ -81,12 +87,14 @@ export const globeQualityPresets: Record<MapQuality, GlobeQualityPreset> = {
     smokeColumnEnabled: true,
     cinematicMode: 'focus_short',
     renderScale: 0.75,
-    renderCellBudget: 144,
+    renderCellBudget: 1000,
     estimatedCells: 642,
   },
   high: {
-    hexResolution: 4,
+    hexResolution: 5,
     hexAltitudeScale: 1,
+    globeCurvatureResolution: 8,
+    hexCurvatureResolution: 6,
     bloomEnabled: true,
     bloomPostprocessEnabled: true,
     bloomStrength: 1.4,
@@ -98,8 +106,8 @@ export const globeQualityPresets: Record<MapQuality, GlobeQualityPreset> = {
     smokeColumnEnabled: true,
     cinematicMode: 'full',
     renderScale: 1,
-    renderCellBudget: 144,
-    estimatedCells: 642,
+    renderCellBudget: 1000,
+    estimatedCells: 842,
   },
 }
 

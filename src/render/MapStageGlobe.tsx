@@ -287,6 +287,7 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
 
     const initialPreset = globeQualityPresets[useUIStore.getState().mapQuality]
     const initialLighting = useMapStore.getState().lighting
+    globeApi.globeCurvatureResolution(initialPreset.globeCurvatureResolution)
     renderer.outputColorSpace = SRGBColorSpace
     renderer.toneMapping = NoToneMapping
     renderer.setPixelRatio(
@@ -342,12 +343,10 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
     }
 
     const resize = () => {
-      const rect = container.getBoundingClientRect()
-      const width = Math.max(1, Math.round(rect.width || container.clientWidth || 1))
-      const height = Math.max(1, Math.round(rect.height || container.clientHeight || 1))
+      const width = Math.max(1, Math.round(container.clientWidth || 1))
+      const height = Math.max(1, Math.round(container.clientHeight || 1))
       globe.width(width).height(height)
     }
-
     resize()
 
     if (typeof ResizeObserver === 'undefined') {
@@ -444,6 +443,7 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
 
     const globe = globeRef.current
     if (globe) {
+      globe.globeCurvatureResolution(qualityPreset.globeCurvatureResolution)
       const renderer = globe.renderer() as WebGLRenderer
       const devicePixelRatio = typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1
       const pixelRatio = Math.max(0.5, devicePixelRatio * qualityPreset.renderScale)
@@ -643,7 +643,7 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
         const region = unwrapHexPolygonData<HexPolygonInput>(hexPolygon)
         return Number((hexPolygonAltitude(region, scorchedLookup) * qualityPreset.hexAltitudeScale).toFixed(4))
       })
-      .hexPolygonCurvatureResolution(5)
+      .hexPolygonCurvatureResolution(qualityPreset.hexCurvatureResolution)
       .hexPolygonMargin(hexPolygonMargin())
       .hexPolygonUseDots(false)
       .pointsData(capitalPointsData)
@@ -658,7 +658,7 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
       .htmlElementsData(capitalHtmlElementsData)
       .htmlLat('lat')
       .htmlLng('lng')
-      .htmlAltitude(0.016)
+      .htmlAltitude(0.02)
       .htmlElement((datum) => createLabelDiv(datum as GlobeCapitalDatum))
       .htmlElementVisibilityModifier((element, isVisible) => {
         element.style.opacity = isVisible ? '1' : '0'
@@ -672,6 +672,7 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
     worldGeometry,
     lighting.dayNightMaskAlpha,
     qualityPreset.hexResolution,
+    qualityPreset.hexCurvatureResolution,
     qualityPreset.hexAltitudeScale,
   ])
 

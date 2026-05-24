@@ -3,10 +3,11 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { useGameStore } from '@/store/gameStore'
 
 export function NarrationBanner() {
-  const narrations = useGameStore((state) =>
-    state.aiSpeakQueue.filter((item) => item.kind === 'narration'),
+  const aiSpeakQueue = useGameStore((state) => state.aiSpeakQueue)
+  const latestNarration = useMemo(
+    () => aiSpeakQueue.find((item) => item.kind === 'narration') ?? null,
+    [aiSpeakQueue],
   )
-  const latestNarration = useMemo(() => narrations[0] ?? null, [narrations])
 
   return latestNarration ? <NarrationBannerItem key={latestNarration.id} text={latestNarration.text} /> : null
 }

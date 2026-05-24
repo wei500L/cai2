@@ -117,7 +117,33 @@ class PhaseScheduler:
                     new_turn.phase,
                     new_turn.arbitrate_phase,
                 )
+
+                turn_changed = (previous[0], previous[1]) != (new_turn.epoch, new_turn.turn)
+
+                if turn_changed:
+                    await self._dispatcher.emit(room_id, "turn.end", {
+                        "room_id": room_id,
+                        "epoch": previous[0],
+                        "turn": previous[1],
+                        "next_epoch": new_turn.epoch,
+                        "next_turn": new_turn.turn,
+                        "server_time_ms": self._clock.now_ms(),
+                    })
+
                 await self._dispatch_phase_change(room_id, new_turn)
+
+                if turn_changed:
+                    await self._dispatcher.emit(room_id, "turn.begin", {
+                        "room_id": room_id,
+                        "epoch": new_turn.epoch,
+                        "turn": new_turn.turn,
+                        "phase": new_turn.phase.value,
+                        "arbitrate_phase": new_turn.arbitrate_phase.value if new_turn.arbitrate_phase else None,
+                        "phase_duration_ms": new_turn.phase_duration_ms,
+                        "phase_started_at_ms": new_turn.phase_started_at_ms,
+                        "server_time_ms": self._clock.now_ms(),
+                        "visible_snapshot": {},
+                    })
 
                 if new_turn.phase == GamePhase.resolve:
                     task = asyncio.create_task(
@@ -171,6 +197,11 @@ class PhaseScheduler:
                 turn,
                 error,
             )
+            await self._dispatcher.emit(room_id, "error.message", {
+                "reason": f"Settlement failed: {error}",
+                "error_code": "SETTLEMENT_FAILED",
+                "request_id": None,
+            })
 
     async def _run_epoch_narration(self, room_id: str, epoch: int) -> None:
         try:
@@ -183,6 +214,11 @@ class PhaseScheduler:
                 epoch,
                 error,
             )
+            await self._dispatcher.emit(room_id, "error.message", {
+                "reason": f"Epoch narration failed: {error}",
+                "error_code": "EPOCH_NARRATION_FAILED",
+                "request_id": None,
+            })
 
 
 def _phase_key(current: EpochTurn) -> tuple[int, int, GamePhase, object | None]:

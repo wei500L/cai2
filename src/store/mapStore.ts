@@ -31,6 +31,8 @@ type MapStoreState = {
   explosionQueue: ExplosionEvent[]
   scorchedRegions: Map<string, ScorchedRegionEntry>
   lighting: MapLightingState
+  sunLat: number
+  sunLng: number
   setRenderer: (renderer: GlobeRenderer) => void
   setCameraPreset: (preset: CameraPreset, options?: { immediate?: boolean }) => void
   focusOnRegion: (regionId: string) => void
@@ -44,6 +46,7 @@ type MapStoreState = {
   applyScorchedDiff: (payload: ScorchedDiffPayload | { turn: number; changes: ScorchedDiffPayload['changes'] }) => void
   advanceScorched: (turn: number) => void
   setLighting: (lighting: Partial<MapLightingState>) => void
+  setSunPosition: (lat: number, lng: number) => void
 }
 
 type MapPersistedState = Pick<MapStoreState, 'renderer' | 'lighting' | 'cinematicEnabled' | 'reducedMotion'>
@@ -141,6 +144,8 @@ export const useMapStore = create<MapStoreState>()(
         dayNightMaskAlpha: DEFAULT_DAY_NIGHT_MASK_ALPHA,
         noiseEnabled: true,
       },
+      sunLat: 10,
+      sunLng: 0,
       setRenderer: (renderer) => {
         set({ renderer })
       },
@@ -242,6 +247,9 @@ export const useMapStore = create<MapStoreState>()(
             ...lighting,
           },
         }))
+      },
+      setSunPosition: (lat, lng) => {
+        set({ sunLat: lat, sunLng: lng })
       },
     }),
     {

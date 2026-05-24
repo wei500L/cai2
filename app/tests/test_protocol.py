@@ -61,6 +61,7 @@ def _incoming_payloads() -> dict[str, dict[str, object]]:
             "faction_id": "ironCrown",
         },
         "room.ready": {"room_id": "room-1", "ready": True},
+        "room.start": {"room_id": "room-1"},
         "action.speak": {
             "room_id": "room-1",
             "mode": "speech",

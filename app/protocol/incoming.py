@@ -52,6 +52,11 @@ class RoomReadyPayload(IncomingPayloadModel):
     ready: bool
 
 
+class RoomStartRequestPayload(IncomingPayloadModel):
+    t: Literal["room.start"] = Field("room.start", exclude=True)
+    room_id: str
+
+
 class ActionSpeakPayload(IncomingPayloadModel):
     t: Literal["action.speak"] = Field("action.speak", exclude=True)
     room_id: str
@@ -120,6 +125,7 @@ IncomingMessage: TypeAlias = Annotated[
     | RoomLeavePayload
     | RoomSelectFactionPayload
     | RoomReadyPayload
+    | RoomStartRequestPayload
     | ActionSpeakPayload
     | ActionPrivatePayload
     | ActionTreatyPayload

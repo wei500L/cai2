@@ -166,6 +166,7 @@ type GameStoreActions = {
   applyRoomStarted: (payload: RoomStartedPayload | RoomStartMessage['p']) => void
   _applySnapshot: (payload: RoomSnapshotPayload | ReconnectSnapshotMessage['p'] | ReconnectFullState) => void
   _applyRoomStarted: (payload: RoomStartedPayload | RoomStartMessage['p']) => void
+  _applyRoomCreated: (payload: { room_id: string; mode: RoomMode }) => void
   _applyServerClockSample: (serverTimeMs: number, clientTimeMs?: number) => void
   togglePause: () => void
   selectFaction: (id: FactionId) => void
@@ -2305,6 +2306,16 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
 
   _applyRoomStarted: (payload) => {
     get().applyRoomStarted(payload)
+  },
+
+  _applyRoomCreated: (payload) => {
+    set((state) => ({
+      currentRoomId: payload.room_id,
+      roomMode: payload.mode,
+      roomStatus: 'lobby',
+      roomPlayers: state.roomPlayers,
+      aiFactions: state.aiFactions,
+    }))
   },
 
   _applyServerClockSample: (serverTimeMs, clientTimeMs = Date.now()) => {

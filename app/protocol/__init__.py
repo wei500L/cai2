@@ -26,6 +26,7 @@ from app.protocol.incoming import (
     RoomLeavePayload,
     RoomReadyPayload,
     RoomSelectFactionPayload,
+    RoomStartRequestPayload,
 )
 from app.protocol.narration_events import (
     EpicNarrationEvent,
@@ -157,6 +158,7 @@ __all__ = [
     "RoomSelectFactionPayload",
     "RoomSettingsPayload",
     "RoomSnapshotPayload",
+    "RoomStartRequestPayload",
     "RoomStartPayload",
     "ScorchedChange",
     "ScorchedDiffEvent",

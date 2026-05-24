@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { hexPolygonColor, terrainColors } from '../stylePresets'
+import { globeQualityPresets, hexPolygonColor, terrainColors } from '../stylePresets'
 
 describe('stylePresets', () => {
   afterEach(() => {
@@ -120,5 +120,17 @@ describe('stylePresets', () => {
     expect(falloutAlpha).toBeGreaterThan(0.58)
     expect(falloutScorch).not.toBe(calmScorch)
     expect(calmGreen).toBeGreaterThanOrEqual(calmBlue)
+  })
+
+  it('keeps the globe quality ladder ordered from low to high fidelity', () => {
+    expect(globeQualityPresets.low.hexResolution).toBeLessThan(globeQualityPresets.mid.hexResolution)
+    expect(globeQualityPresets.mid.hexResolution).toBeLessThan(globeQualityPresets.high.hexResolution)
+    expect(globeQualityPresets.low.renderCellBudget).toBeLessThan(globeQualityPresets.high.renderCellBudget)
+    expect(globeQualityPresets.low.globeCurvatureResolution).toBeLessThan(
+      globeQualityPresets.high.globeCurvatureResolution,
+    )
+    expect(globeQualityPresets.low.hexCurvatureResolution).toBeLessThan(
+      globeQualityPresets.high.hexCurvatureResolution,
+    )
   })
 })

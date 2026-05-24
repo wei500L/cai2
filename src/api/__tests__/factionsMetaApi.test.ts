@@ -22,6 +22,15 @@ describe('factionsMetaApi', () => {
     )
   })
 
+  it('accepts backend payloads with factions field', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ factions: factionMetaFixtures }),
+    }))
+
+    await expect(fetchFactionsMeta('room-1')).resolves.toEqual(factionMetaFixtures)
+  })
+
   it('throws on failed responses', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
       ok: false,

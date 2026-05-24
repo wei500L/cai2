@@ -32,7 +32,7 @@ export function EnterButton({ onHoverChange }: EnterButtonProps) {
   }
 
   const navigateToFactionSelect = () => {
-    window.history.pushState(null, '', '/faction-select')
+    window.history.pushState(null, '', '/room-waiting')
     window.dispatchEvent(new PopStateEvent('popstate'))
   }
 
@@ -57,7 +57,7 @@ export function EnterButton({ onHoverChange }: EnterButtonProps) {
         icon={<EnterIcon />}
         onClick={navigateToFactionSelect}
       >
-        进入指挥系统
+        进入联机大厅
       </PixelButton>
     </div>
   )

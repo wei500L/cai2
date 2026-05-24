@@ -74,9 +74,9 @@ function buildGeometry(lat: number, lng: number) {
   const delta = 8.0
   const north = clamp(lat + delta, -89.9, 89.9)
   const south = clamp(lat - delta, -89.9, 89.9)
-  
-  // DO NOT use wrapLongitude here! If the polygon crosses the antimeridian, 
-  // wrapping it back to -180 causes h3.polyfill to interpret the polygon as 
+
+  // DO NOT use wrapLongitude here! If the polygon crosses the antimeridian,
+  // wrapping it back to -180 causes h3.polyfill to interpret the polygon as
   // wrapping the LONG way around the globe (344 degrees instead of 16 degrees).
   // This generates millions of hexes and crashes the renderer, resulting in a black globe.
   // h3-js and three-globe natively support longitudes > 180 or < -180 for this exact reason.

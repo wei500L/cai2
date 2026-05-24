@@ -27,6 +27,9 @@ const emptyState = {
 }
 
 let loadToken = 0
+const emptyAIInnerThoughts: ReplayData['aiInnerThoughts'] = []
+const emptyFactionCurves: ReplayData['factionCurves'] = []
+const emptyKeyMoments: ReplayData['keyMoments'] = []
 
 function setLoadedState(data: ReplayData, roomId: string, status: ReplayStatus) {
   return {
@@ -100,6 +103,18 @@ export const replayStore = create<ReplayState>((set, get) => ({
     set(setLoadedState(fixture, roomId ?? 'mock', 'mock'))
   },
 }))
+
+export function selectReplayAIInnerThoughts(state: ReplayState): ReplayData['aiInnerThoughts'] {
+  return state.data?.aiInnerThoughts ?? emptyAIInnerThoughts
+}
+
+export function selectReplayFactionCurves(state: ReplayState): ReplayData['factionCurves'] {
+  return state.data?.factionCurves ?? emptyFactionCurves
+}
+
+export function selectReplayKeyMoments(state: ReplayState): ReplayData['keyMoments'] {
+  return state.data?.keyMoments ?? emptyKeyMoments
+}
 
 export function useReplay<T>(selector: (state: ReplayState) => T): T
 export function useReplay(): ReplayState

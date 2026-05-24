@@ -22,6 +22,7 @@ from app.protocol.incoming import (
     RoomLeavePayload,
     RoomReadyPayload,
     RoomSelectFactionPayload,
+    RoomStartRequestPayload,
 )
 from app.protocol.narration_events import EpicNarrationEvent, SummaryNarrationEvent
 from app.protocol.outgoing import (
@@ -69,6 +70,7 @@ INCOMING_PAYLOAD_TYPES: dict[str, type[BaseModel]] = {
     "room.leave": RoomLeavePayload,
     "room.select_faction": RoomSelectFactionPayload,
     "room.ready": RoomReadyPayload,
+    "room.start": RoomStartRequestPayload,
     "action.speak": ActionSpeakPayload,
     "action.private": ActionPrivatePayload,
     "action.treaty": ActionTreatyPayload,

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.domain.enums import FactionId
 
@@ -32,7 +32,25 @@ class FactionMeta(BaseModel):
     speech_style_description: str
     civilization_traits: list[str] = Field(min_length=3, max_length=4)
     ai_archetype: str
+    civilization: str = ""
+    archetype: str = ""
+    advantage: str = ""
+    slogan: str = ""
+    trigger_words: list[str] = Field(default_factory=list)
     capital_hex_id: str | None = None
+    primary: str | None = Field(default=None, pattern=r"^#[0-9A-F]{6}$")
+    glow: str | None = Field(default=None, pattern=r"^#[0-9A-F]{6}$")
+    shadow: str | None = Field(default=None, pattern=r"^#[0-9A-F]{6}$")
+
+    @model_validator(mode="after")
+    def _fill_frontend_aliases(self) -> FactionMeta:
+        if self.primary is None:
+            object.__setattr__(self, "primary", self.primary_color)
+        if self.glow is None:
+            object.__setattr__(self, "glow", self.glow_color)
+        if self.shadow is None:
+            object.__setattr__(self, "shadow", self.shadow_color)
+        return self
 
 
 def validate_complete_faction_meta(meta_by_id: dict[FactionId, FactionMeta]) -> None:

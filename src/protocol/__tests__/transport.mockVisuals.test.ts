@@ -112,6 +112,29 @@ describe('MockTransport diplomatic visuals', () => {
     expect(useGameStore.getState().ripples).toHaveLength(0)
   })
 
+  it('applies room.create in lobby mode', () => {
+    transport = new MockTransport({ lobbyMode: true })
+    attachAdapter(transport, gameStoreApi)
+    transport.connect()
+
+    transport.send({
+      v: 1,
+      id: 'create-1',
+      t: 'room.create',
+      ts: Date.now(),
+      seq: 1,
+      p: {
+        mode: 'multi_4v4',
+        display_name: 'Host',
+      },
+    })
+
+    const state = useGameStore.getState()
+    expect(state.currentRoomId).toMatch(/^mock-room-/)
+    expect(state.roomStatus).toBe('lobby')
+    expect(state.roomPlayers).toHaveLength(1)
+  })
+
   it('emits epic and summary narration payloads during arbitrate phase advances', () => {
     transport = new MockTransport()
     attachAdapter(transport, gameStoreApi)

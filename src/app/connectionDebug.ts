@@ -17,7 +17,17 @@ let snapshot: ConnectionDebugSnapshot = {
 const listeners = new Set<() => void>()
 
 export function setConnectionDebugSnapshot(next: Partial<ConnectionDebugSnapshot>) {
-  snapshot = { ...snapshot, ...next }
+  const merged = { ...snapshot, ...next }
+  if (
+    merged.lastInboundSeq === snapshot.lastInboundSeq &&
+    merged.queueDepth === snapshot.queueDepth &&
+    merged.wsUrl === snapshot.wsUrl &&
+    merged.mockEventEmittedCount === snapshot.mockEventEmittedCount
+  ) {
+    return
+  }
+
+  snapshot = merged
   listeners.forEach((listener) => listener())
 }
 

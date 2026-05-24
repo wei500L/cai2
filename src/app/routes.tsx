@@ -1,5 +1,6 @@
 import type { ComponentType } from 'react'
 import LandingPage from '@/pages/LandingPage'
+import RoomWaitingPage from '@/pages/RoomWaitingPage'
 import FactionSelectPage from '@/pages/FactionSelectPage'
 import GamePage from '@/pages/GamePage'
 import EpochSummaryPage from '@/pages/EpochSummaryPage'
@@ -13,6 +14,7 @@ export type AppRoute = {
 export const appRoutes: AppRoute[] = [
   { path: '/', element: LandingPage },
   { path: '/design-system', element: LandingPage },
+  { path: '/room-waiting', element: RoomWaitingPage },
   { path: '/faction-select', element: FactionSelectPage },
   { path: '/factions', element: FactionSelectPage },
   { path: '/game', element: GamePage },

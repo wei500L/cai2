@@ -10,7 +10,10 @@ function parseFactionsMetaPayload(value: unknown): FactionMeta[] {
   if (typeof value === 'object' && value !== null) {
     const payload = value as Partial<FactionMetaPayload>
     if (Array.isArray(payload.factions_meta)) {
-      return payload.factions_meta
+      return payload.factions_meta as FactionMeta[]
+    }
+    if (Array.isArray(payload.factions)) {
+      return payload.factions as FactionMeta[]
     }
   }
 

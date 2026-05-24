@@ -62,10 +62,10 @@ export function createStarfield(scene: Scene, density: number) {
   geometry.setAttribute('color', new Float32BufferAttribute(colors, 3))
 
   const material = new PointsMaterial({
-    size: 1.35,
+    size: 1.15,
     sizeAttenuation: false,
     transparent: true,
-    opacity: 0.9,
+    opacity: 0.6,
     vertexColors: true,
     depthWrite: false,
     blending: AdditiveBlending,
