@@ -51,10 +51,10 @@ PowerShell：
 npm run dev
 ```
 
-默认仍使用前端 mock transport，不影响纯前端调试。切到真实 WebSocket 联调：
+默认使用真实 WebSocket 配置，读取 `.env.development` / `.env` 中的 `VITE_WS_URL` 和 `VITE_BACKEND_REST_BASE`。需要强制 mock 时，设置兼容开关：
 
 ```bash
-VITE_USE_WS=true npm run dev
+VITE_ALLOW_MOCK_FALLBACK=true npm run dev
 ```
 
 健康检查与联调握手：
@@ -63,7 +63,7 @@ VITE_USE_WS=true npm run dev
 - `http://localhost:8000/readyz`
 - `http://localhost:8000/debug/v1/runtime/config`
 
-该启动方式仅用于本机前后端联调，未做鉴权、未做 TLS、未连接数据库。联调期间保持 `LLM_PROVIDER=mock`；行动期不调用 LLM 仍是架构红线，联调改动不得绕过这条边界。
+该启动方式仅用于本机前后端联调，未做鉴权、未做 TLS、未连接数据库。`scripts/dev-up.sh` / `scripts/dev-up.ps1` 会读取 `.env` 中的 `LLM_PROVIDER`，因此本地开发服务器也可以按生产式 LLM 配置启动；未配置时默认回退到 `mock`。
 
 ## Mock 边界
 

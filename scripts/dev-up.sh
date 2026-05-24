@@ -50,7 +50,7 @@ fi
 
 export ENV="${ENV:-dev}"
 export LOG_LEVEL="${LOG_LEVEL:-INFO}"
-export LLM_PROVIDER="mock"
+export LLM_PROVIDER="${LLM_PROVIDER:-mock}"
 export ENABLE_PERSISTENCE="${ENABLE_PERSISTENCE:-false}"
 export EXTRA_CORS_ORIGINS="${EXTRA_CORS_ORIGINS:-}"
 export HOST="${HOST:-127.0.0.1}"
@@ -84,7 +84,7 @@ if [ "$ready" != "true" ]; then
   exit 1
 fi
 
-echo "Backend ready · Frontend will use REAL WS"
+echo "Backend ready · Frontend will use REAL WS · LLM_PROVIDER=${LLM_PROVIDER}"
 echo "Starting frontend: npm run dev -- --host=127.0.0.1"
 npm run dev -- --host=127.0.0.1 &
 FRONTEND_PID=$!

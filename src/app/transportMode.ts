@@ -1,16 +1,12 @@
 export type TransportMode = 'ws' | 'mock'
 
-export function resolveTransportMode({
-  pathname,
-  roomIdFromQuery,
-  allowMockFallback,
-  forceMockMode,
-}: {
+export function resolveTransportMode(options: {
   pathname: string
   roomIdFromQuery: string
   allowMockFallback: boolean
   forceMockMode: boolean
 }): TransportMode {
+  const { allowMockFallback, forceMockMode } = options
   if (forceMockMode || allowMockFallback) {
     return 'mock'
   }

@@ -14,7 +14,7 @@ import { epochSummaryStore } from '@/store/epochSummaryStore'
 import { factionMetaStore } from '@/store/factionMetaStore'
 import { gameStoreApi } from '@/store/gameStore'
 import { useUIStore } from '@/store/uiStore'
-import { resolveTransportMode } from '@/app/transportMode'
+import { resolveTransportMode, type TransportMode } from '@/app/transportMode'
 
 const FORCE_MOCK_SESSION_KEY = 'diplomacy_force_mock_once'
 
@@ -42,7 +42,7 @@ function consumeMockModeOverride() {
   }
 }
 
-function publishConnectionDebugSnapshot(transport: Transport) {
+function publishConnectionDebugSnapshot(transport: Transport, transportMode: TransportMode) {
   const source = transport as {
     getLastInboundSeq?: () => number
     getQueueDepth?: () => number
@@ -52,6 +52,7 @@ function publishConnectionDebugSnapshot(transport: Transport) {
     lastInboundSeq: source.getLastInboundSeq?.() ?? 0,
     queueDepth: source.getQueueDepth?.() ?? 0,
     wsUrl: ENV.wsUrl,
+    transportMode,
   })
 }
 
@@ -194,6 +195,7 @@ export function RealtimeConnection({
       queueDepth: 0,
       wsUrl: ENV.wsUrl,
       mockEventEmittedCount: 0,
+      transportMode,
     })
 
     const transport = createTransport(
@@ -256,7 +258,7 @@ export function RealtimeConnection({
     )
 
     transportRef.current = transport
-    publishConnectionDebugSnapshot(transport)
+    publishConnectionDebugSnapshot(transport, transportMode)
 
     const detachAdapter = attachAdapter(transport, gameStoreApi)
     ActionDispatcher.setTransport(transport)
@@ -270,7 +272,7 @@ export function RealtimeConnection({
         incrementMockEventEmittedCount()
       }
 
-      publishConnectionDebugSnapshot(transport)
+      publishConnectionDebugSnapshot(transport, transportMode)
 
       if (message.t === 'conn.pong') {
         setLastHeartbeatTs(Date.now())

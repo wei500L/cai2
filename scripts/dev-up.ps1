@@ -27,7 +27,7 @@ if (Test-Path ".env") {
 
 if (-not $env:ENV) { $env:ENV = "dev" }
 if (-not $env:LOG_LEVEL) { $env:LOG_LEVEL = "INFO" }
-$env:LLM_PROVIDER = "mock"
+if (-not $env:LLM_PROVIDER) { $env:LLM_PROVIDER = "mock" }
 if (-not $env:ENABLE_PERSISTENCE) { $env:ENABLE_PERSISTENCE = "false" }
 if (-not $env:EXTRA_CORS_ORIGINS) { $env:EXTRA_CORS_ORIGINS = "" }
 if (-not $env:HOST) { $env:HOST = "127.0.0.1" }
@@ -74,7 +74,7 @@ try {
         throw "Timed out waiting for backend healthz after 20s."
     }
 
-    Write-Host "Backend ready · Frontend will use REAL WS"
+    Write-Host "Backend ready · Frontend will use REAL WS · LLM_PROVIDER=$env:LLM_PROVIDER"
     Write-Host "Starting frontend: npm run dev -- --host=127.0.0.1"
     $frontendJob = Start-Job -Name "diplomacy-frontend-dev" -ArgumentList $RootDir -ScriptBlock {
         param($RepoRoot)

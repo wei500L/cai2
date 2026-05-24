@@ -21,7 +21,7 @@ settings = get_settings()
 app = FastAPI(title="Diplomacy Backend", version="0.1.0")
 logger = get_logger(__name__)
 
-if settings.env == "dev":
+if settings.env in {"dev", "development"}:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.allowed_cors_origins(),

@@ -5,6 +5,7 @@ export type ConnectionDebugSnapshot = {
   queueDepth: number
   wsUrl: string
   mockEventEmittedCount: number
+  transportMode: 'ws' | 'mock' | 'unknown'
 }
 
 let snapshot: ConnectionDebugSnapshot = {
@@ -12,6 +13,7 @@ let snapshot: ConnectionDebugSnapshot = {
   queueDepth: 0,
   wsUrl: '',
   mockEventEmittedCount: 0,
+  transportMode: 'unknown',
 }
 
 const listeners = new Set<() => void>()
@@ -22,7 +24,8 @@ export function setConnectionDebugSnapshot(next: Partial<ConnectionDebugSnapshot
     merged.lastInboundSeq === snapshot.lastInboundSeq &&
     merged.queueDepth === snapshot.queueDepth &&
     merged.wsUrl === snapshot.wsUrl &&
-    merged.mockEventEmittedCount === snapshot.mockEventEmittedCount
+    merged.mockEventEmittedCount === snapshot.mockEventEmittedCount &&
+    merged.transportMode === snapshot.transportMode
   ) {
     return
   }
