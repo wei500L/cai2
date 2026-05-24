@@ -255,6 +255,19 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
 
     const globe = new Globe(container)
     globeRef.current = globe
+
+    const initW = Math.max(1, Math.round(container.clientWidth || 1))
+    const initH = Math.max(1, Math.round(container.clientHeight || 1))
+    globe.width(initW).height(initH)
+
+    const sceneContainer = container.querySelector(':scope > div') as HTMLElement | null
+    if (sceneContainer) {
+      const css2dOverlay = sceneContainer.querySelector(':scope > div') as HTMLElement | null
+      if (css2dOverlay) {
+        css2dOverlay.style.left = '0px'
+      }
+    }
+
     const scene = globe.scene() as Scene
     const camera = globe.camera() as Camera
     const renderer = globe.renderer() as WebGLRenderer
@@ -487,6 +500,7 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
       seenExplosionIdsRef.current.clear()
     }
 
+    const toConsume: string[] = []
     for (const event of explosionQueue) {
       if (!seenExplosionIdsRef.current.has(event.id)) {
         director.onResolveEvent(event)
@@ -495,8 +509,13 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
       fxLoop.add(spawnExplosion(published.scene, event, {
         particleMultiplier: qualityPreset.particleMultiplier,
       }))
-      consumeExplosion(event.id)
+      toConsume.push(event.id)
     }
+    queueMicrotask(() => {
+      for (const id of toConsume) {
+        consumeExplosion(id)
+      }
+    })
   }, [consumeExplosion, explosionQueue, fxLoop, published?.scene, currentRoomId, qualityPreset.particleMultiplier])
 
   useEffect(() => {

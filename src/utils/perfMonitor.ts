@@ -14,6 +14,10 @@ export function startPerfMonitor(): PerfMonitor {
   const criticalFrameThreshold = 90
   const qualityDowngradeCooldownMs = 10_000
 
+  let lastReportedFps = 60
+  let lastReportTime = 0
+  const REPORT_INTERVAL_MS = 500
+
   const tick = (time: number) => {
     const delta = Math.max(1, time - lastTime)
     frameTimes.push({ at: time, dt: delta })
@@ -25,7 +29,11 @@ export function startPerfMonitor(): PerfMonitor {
     const fps = 1000 / averageFrameMs
     const ui = useUIStore.getState()
 
-    ui.setPerfStats({ fps })
+    if (time - lastReportTime >= REPORT_INTERVAL_MS && Math.abs(fps - lastReportedFps) > 2) {
+      ui.setPerfStats({ fps })
+      lastReportedFps = fps
+      lastReportTime = time
+    }
 
     if (fps < 45) {
       lowFrames += 1

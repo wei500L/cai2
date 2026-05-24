@@ -1214,7 +1214,8 @@ function estimateCultureGain(content: string, toneHeat: number) {
 }
 
 function canDirectIntel(actor: FactionId) {
-  return actor === 'darkTide' || actor === 'starlight' || actor === 'voidChurch'
+  const meta = factionMetaStore.getState().byId[actor]
+  return meta?.intel_capable ?? false
 }
 
 function validateSubmission(submission: CommandSubmission) {

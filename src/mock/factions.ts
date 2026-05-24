@@ -38,6 +38,7 @@ const baseFactionMeta: Record<
     speech_style_description: speechStyleDescriptions[SpeechStyle.CommandingImperial],
     slogan: '臣服，才配获得秩序。',
     trigger_words: ['臣服', '投降', '弱者'],
+    intel_capable: false,
   },
   starlight: {
     civilization: '科技民主，重视规则',
@@ -47,6 +48,7 @@ const baseFactionMeta: Record<
     speech_style_description: speechStyleDescriptions[SpeechStyle.AnalyticalDiplomatic],
     slogan: '数据证明，合作是当前最优解。',
     trigger_words: ['数据', '逻辑', '证据'],
+    intel_capable: true,
   },
   emerald: {
     civilization: '商贸帝国，富可敌国',
@@ -56,6 +58,7 @@ const baseFactionMeta: Record<
     speech_style_description: speechStyleDescriptions[SpeechStyle.CharmingMercantile],
     slogan: '一笔好交易，能让敌人变成伙伴。',
     trigger_words: ['利润', '交易', '合作'],
+    intel_capable: false,
   },
   ashen: {
     civilization: '游牧战士，崇尚荣誉',
@@ -65,6 +68,7 @@ const baseFactionMeta: Record<
     speech_style_description: speechStyleDescriptions[SpeechStyle.PassionateWarrior],
     slogan: '懦夫退后，让有勇气的人迎接战斗。',
     trigger_words: ['懦夫', '荣誉', '勇气', '战斗'],
+    intel_capable: false,
   },
   voidChurch: {
     civilization: '宗教文明，精神控制',
@@ -74,6 +78,7 @@ const baseFactionMeta: Record<
     speech_style_description: speechStyleDescriptions[SpeechStyle.MysticalProphetic],
     slogan: '预言已经低语，命运正在靠近。',
     trigger_words: ['命运', '预言', '信仰'],
+    intel_capable: true,
   },
   aurora: {
     civilization: '科研至上，和平主义',
@@ -83,6 +88,7 @@ const baseFactionMeta: Record<
     speech_style_description: speechStyleDescriptions[SpeechStyle.AcademicNeutral],
     slogan: '和平不是软弱，而是最精密的研究成果。',
     trigger_words: ['研究', '和平', '知识'],
+    intel_capable: false,
   },
   magma: {
     civilization: '地底文明，资源丰富',
@@ -92,6 +98,7 @@ const baseFactionMeta: Record<
     speech_style_description: speechStyleDescriptions[SpeechStyle.GruffPragmatic],
     slogan: '矿脉归谁，领土就归谁。',
     trigger_words: ['资源', '矿脉', '领土'],
+    intel_capable: false,
   },
   darkTide: {
     civilization: '情报网络，无处不在',
@@ -101,6 +108,7 @@ const baseFactionMeta: Record<
     speech_style_description: speechStyleDescriptions[SpeechStyle.SmoothConspiratorial],
     slogan: '每个秘密都有价格，关键是你拿什么交换。',
     trigger_words: ['秘密', '情报', '交换'],
+    intel_capable: true,
   },
 }
 

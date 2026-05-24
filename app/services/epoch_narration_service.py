@@ -113,21 +113,18 @@ async def generate_epic_narration(
         },
     )
 
-    try:
-        response = await llm.call_epic_narration(request)
-        model_output = EpicNarrationModelOutput.model_validate_json(response.content)
-        payload = EpicNarrationPayload(
-            epoch=epoch_state.epoch,
-            source="llm",
-            narrative=model_output.narrative,
-            tone=model_output.tone,
-            keyEvents=list(model_output.key_events),
-            model=response.model,
-            generatedAtMs=epoch_state.generated_at_ms,
-        )
-        return payload
-    except Exception:
-        return _fallback_epic_payload(epoch_state)
+    response = await llm.call_epic_narration(request)
+    model_output = EpicNarrationModelOutput.model_validate_json(response.content)
+    payload = EpicNarrationPayload(
+        epoch=epoch_state.epoch,
+        source="llm",
+        narrative=model_output.narrative,
+        tone=model_output.tone,
+        keyEvents=list(model_output.key_events),
+        model=response.model,
+        generatedAtMs=epoch_state.generated_at_ms,
+    )
+    return payload
 
 
 async def generate_summary_narration(
@@ -148,116 +145,24 @@ async def generate_summary_narration(
         },
     )
 
-    try:
-        response = await llm.call_summary_narration(request)
-        model_output = SummaryNarrationModelOutput.model_validate_json(response.content)
-        payload = SummaryNarrationPayload.model_validate_json(
-            json.dumps(
-                {
-                    "epoch": epoch_state.epoch,
-                    "source": "llm",
-                    "headline": model_output.headline,
-                    "highlights": model_output.highlights.model_dump(mode="json"),
-                    "rankings": [row.model_dump(mode="json") for row in model_output.rankings],
-                    "model": response.model,
-                    "generatedAtMs": epoch_state.generated_at_ms,
-                },
-                ensure_ascii=False,
-                default=str,
-            )
+    response = await llm.call_summary_narration(request)
+    model_output = SummaryNarrationModelOutput.model_validate_json(response.content)
+    payload = SummaryNarrationPayload.model_validate_json(
+        json.dumps(
+            {
+                "epoch": epoch_state.epoch,
+                "source": "llm",
+                "headline": model_output.headline,
+                "highlights": model_output.highlights.model_dump(mode="json"),
+                "rankings": [row.model_dump(mode="json") for row in model_output.rankings],
+                "model": response.model,
+                "generatedAtMs": epoch_state.generated_at_ms,
+            },
+            ensure_ascii=False,
+            default=str,
         )
-        return payload
-    except Exception:
-        return _fallback_summary_payload(epoch_state)
-
-
-def _fallback_epic_payload(epoch_state: EpochNarrationState) -> EpicNarrationPayload:
-    top_rank = epoch_state.rankings[0] if epoch_state.rankings else None
-    faction_name = _faction_name(top_rank.id if top_rank is not None else None)
-    seed = f"{epoch_state.room_id}:{epoch_state.epoch}:{epoch_state.turn}:{faction_name}"
-    selected = _pick_narration_templates(seed, count=5)
-    narrative_parts = [
-        template.format(faction_name=faction_name, epoch=epoch_state.epoch)
-        for template in selected
-    ]
-    if epoch_state.key_events:
-        narrative_parts.append(
-            "本纪元的关键落点包括：" + "；".join(epoch_state.key_events[:4]) + "。"
-        )
-    narrative = _join_paragraphs(narrative_parts)
-    narrative = _ensure_length(narrative, min_chars=200, max_chars=600, seed=seed, faction_name=faction_name, epoch=epoch_state.epoch)
-    return EpicNarrationPayload(
-        epoch=epoch_state.epoch,
-        source="template_fallback",
-        narrative=narrative,
-        tone=epoch_state.tone,
-        keyEvents=list(epoch_state.key_events[:6]) or [f"{faction_name} 收束纪元 {epoch_state.epoch}"],
-        model=None,
-        generatedAtMs=epoch_state.generated_at_ms,
     )
-
-
-def _fallback_summary_payload(epoch_state: EpochNarrationState) -> SummaryNarrationPayload:
-    top_rank = epoch_state.rankings[0] if epoch_state.rankings else None
-    faction_name = _faction_name(top_rank.id if top_rank is not None else None)
-    seed = f"{epoch_state.room_id}:{epoch_state.epoch}:{epoch_state.turn}:{len(epoch_state.key_events)}"
-    headline_template = _pick_summary_headline(seed)
-    headline = headline_template.format(faction_name=faction_name, epoch=epoch_state.epoch)
-    highlights = epoch_state.highlights.model_copy(deep=True)
-    if not highlights.majorEvents and epoch_state.key_events:
-        highlights.majorEvents = [
-            SummaryHighlightMajorEventPayload(
-                id=f"fallback-major-{epoch_state.epoch}",
-                kind="speech",
-                turn=epoch_state.turn,
-                priority="P1",
-                actor=top_rank.id if top_rank is not None else None,
-                target=None,
-                narration=epoch_state.key_events[0],
-            )
-        ]
-    if not highlights.wars and epoch_state.key_events:
-        actor = top_rank.id if top_rank is not None else FactionId.ironCrown
-        target = _next_faction(actor)
-        highlights.wars = [
-            SummaryHighlightBattlePayload(
-                id=f"fallback-war-{epoch_state.epoch}",
-                kind="battle",
-                turn=epoch_state.turn,
-                priority="P1",
-                actor=actor,
-                target=target,
-                regionId="unknown",
-                attackerLoss=0.0,
-                defenderLoss=0.0,
-                attackerRemainingTroops=0.0,
-                defenderRemainingTroops=0.0,
-                narration=epoch_state.key_events[0],
-            )
-        ]
-    if not highlights.betrayals and len(epoch_state.key_events) > 1:
-        actor = top_rank.id if top_rank is not None else FactionId.ironCrown
-        target = _next_faction(actor)
-        highlights.betrayals = [
-            SummaryHighlightBetrayalPayload(
-                id=f"fallback-betrayal-{epoch_state.epoch}",
-                kind="betrayal",
-                turn=epoch_state.turn,
-                priority="P1",
-                actor=actor,
-                target=target,
-                narration=epoch_state.key_events[1],
-            )
-        ]
-    return SummaryNarrationPayload(
-        epoch=epoch_state.epoch,
-        source="template_fallback",
-        headline=headline,
-        highlights=highlights,
-        rankings=list(epoch_state.rankings),
-        model=None,
-        generatedAtMs=epoch_state.generated_at_ms,
-    )
+    return payload
 
 
 def _build_rankings(
@@ -464,85 +369,8 @@ def _rank_by_power(values: dict[FactionId, float]) -> dict[FactionId, int]:
     return {faction_id: index + 1 for index, (faction_id, _value) in enumerate(ordered)}
 
 
-def _pick_narration_templates(seed: str, *, count: int) -> list[str]:
-    from app.data.narration_templates import pick_templates
-
-    return pick_templates(_EPIC_TEMPLATE_POOL, seed=seed, count=count)
-
-
-def _pick_summary_headline(seed: str) -> str:
-    from app.data.narration_templates import pick_template
-
-    return pick_template(_SUMMARY_HEADLINE_POOL, seed=seed)
-
-
-def _join_paragraphs(parts: list[str]) -> str:
-    text = "。".join(part.strip("。") for part in parts if part.strip())
-    return text if text.endswith("。") else f"{text}。"
-
-
-def _ensure_length(
-    text: str,
-    *,
-    min_chars: int,
-    max_chars: int,
-    seed: str,
-    faction_name: str,
-    epoch: int,
-) -> str:
-    from app.data.narration_templates import pick_templates
-
-    if len(text) < min_chars:
-        extra = pick_templates(_EPIC_TEMPLATE_POOL, seed=f"{seed}:extra", count=2)
-        for template in extra:
-            text = _join_paragraphs(
-                [
-                    text,
-                    template.format(faction_name=faction_name, epoch=epoch),
-                ]
-            )
-            if len(text) >= min_chars:
-                break
-    if len(text) > max_chars:
-        text = text[: max_chars - 1].rstrip("。") + "。"
-    return text
-
-
 def _faction_name(faction_id: FactionId | None) -> str:
     if faction_id is None:
         return "诸势力"
     meta = FACTION_META.get(faction_id)
     return meta.name if meta is not None else str(faction_id)
-
-
-def _next_faction(current: FactionId) -> FactionId:
-    members = list(FactionId)
-    index = members.index(current)
-    return members[(index + 1) % len(members)]
-
-
-_EPIC_TEMPLATE_POOL = [
-    "纪元 {epoch} 的余烬在 {faction_name} 的边界上缓慢升温，旧有的默契被战鼓一点点敲松。",
-    "{faction_name} 在纪元 {epoch} 里并未独占舞台，却始终站在权力重新分配的转折口。",
-    "当纪元 {epoch} 逼近终点，{faction_name} 目睹盟约、试探与反制同时压向同一条战线。",
-    "纪元 {epoch} 的风向变得锋利，{faction_name} 在喧哗与沉默之间重新丈量敌友。",
-    "旧秩序在纪元 {epoch} 并未碎裂成粉末，而是被 {faction_name} 与诸方博弈磨出裂缝。",
-    "纪元 {epoch} 的最后时刻，{faction_name} 的选择像钉子一样钉住了新的局势走向。",
-    "战火、背约与公开宣言在纪元 {epoch} 交错，{faction_name} 被迫在多条战线上同时回应。",
-    "{faction_name} 让纪元 {epoch} 的结尾更像一次缓慢燃烧的审判，而非轻巧的收束。",
-    "纪元 {epoch} 结束时，{faction_name} 身后堆起的是胜利的碎片，也是下一轮冲突的引信。",
-    "当纪元 {epoch} 收官，{faction_name} 没有完全赢下棋局，却足以让所有对手重新计算代价。",
-]
-
-_SUMMARY_HEADLINE_POOL = [
-    "纪元 {epoch}：{faction_name} 把节奏重新握回手中",
-    "纪元 {epoch}：{faction_name} 在乱局里压出新排序",
-    "纪元 {epoch}：{faction_name} 让局势重新定价",
-    "纪元 {epoch}：{faction_name} 站上新的权力刻度",
-    "纪元 {epoch}：{faction_name} 把风暴推回对手身上",
-    "纪元 {epoch}：{faction_name} 让旧盟约重新接受检验",
-    "纪元 {epoch}：{faction_name} 为下一阶段铺出硬边界",
-    "纪元 {epoch}：{faction_name} 把混乱压成可计算的局面",
-    "纪元 {epoch}：{faction_name} 让各方都不敢轻易下注",
-    "纪元 {epoch}：{faction_name} 在终局前抢下先手",
-]

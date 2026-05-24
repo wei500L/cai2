@@ -20,10 +20,10 @@ export function DevModeBanner() {
   const debug = useConnectionDebugSnapshot()
   const [collapsed, setCollapsed] = useState(false)
   const isProduction = import.meta.env.PROD
-  const isMockMode = !ENV.useWs || (ENV.useWs && connectionStatus === 'open' && lastHeartbeatTs === 0)
-  const isRealConnected = ENV.useWs && connectionStatus === 'open' && lastHeartbeatTs > 0
+  const isMockMode = ENV.allowMockFallback || (connectionStatus === 'open' && lastHeartbeatTs === 0)
+  const isRealConnected = !ENV.allowMockFallback && connectionStatus === 'open' && lastHeartbeatTs > 0
   const isRealDisconnected =
-    ENV.useWs && (connectionStatus === 'error' || connectionStatus === 'closed')
+    !ENV.allowMockFallback && (connectionStatus === 'error' || connectionStatus === 'closed')
 
   useEffect(() => {
     if (!isRealConnected) {

@@ -20,6 +20,7 @@ import { clearAIResponseTimers, triggerAIResponses } from '@/mock/aiResponder'
 import { createMockWorldGeometry } from '@/mock/worldGeometry'
 import { createMockDiplomaticVisuals } from '@/mock/diplomaticArcs'
 import { gameStoreApi } from '@/store/gameStore'
+import { factionMetaStore } from '@/store/factionMetaStore'
 import { createInitialState } from '@/store/gameStoreSeed'
 import { useUIStore } from '@/store/uiStore'
 import type { SubmitSpeechResult } from '@/features/commandTerminal/types'
@@ -450,7 +451,8 @@ function estimateCultureGain(content: string, toneHeat: number) {
 }
 
 function canDirectIntel(actor: FactionId) {
-  return actor === 'darkTide' || actor === 'starlight' || actor === 'voidChurch'
+  const meta = factionMetaStore.getState().byId[actor]
+  return meta?.intel_capable ?? false
 }
 
 function isDeclareWar(mode: CommandMode, content: string) {

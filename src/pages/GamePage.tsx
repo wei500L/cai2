@@ -404,7 +404,8 @@ export default function GamePage() {
     if (nextHudMode !== hudMode) {
       setHudMode(nextHudMode)
     }
-  }, [arbitratePhase, gamePhase, hudMode, setHudMode])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [arbitratePhase, gamePhase, setHudMode])
 
   useEffect(() => {
     if (isCompact) {

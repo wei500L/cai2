@@ -12,6 +12,7 @@ type BackendFactionMeta = Partial<FactionMeta> & {
   civilization_traits?: string[]
   ai_archetype?: string
   speech_style_label?: string
+  intel_capable?: boolean
 }
 
 type FactionMetaState = {
@@ -41,6 +42,7 @@ function normalizeFactionMeta(meta: BackendFactionMeta): FactionMeta {
     speech_style_description: meta.speech_style_description ?? '',
     slogan: meta.slogan ?? meta.speech_style_label ?? meta.name ?? meta.id,
     trigger_words: triggerWords,
+    intel_capable: meta.intel_capable ?? false,
     primary: meta.primary ?? meta.primary_color ?? '#7b8494',
     glow: meta.glow ?? meta.glow_color ?? '#8fcaff',
     shadow: meta.shadow ?? meta.shadow_color ?? 'rgba(51, 170, 255, 0.18)',

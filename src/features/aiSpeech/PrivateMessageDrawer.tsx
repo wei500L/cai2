@@ -75,7 +75,7 @@ export function PrivateMessageDrawer() {
   return (
     <div
       className={clsx(
-        'fixed bottom-[12.25rem] z-50 font-hud transition-all duration-300',
+        'absolute bottom-[12.25rem] z-50 font-hud transition-all duration-300',
         rightPanelOpen ? 'right-[calc(min(86vw,320px)+1rem)] max-xl:right-4' : 'right-4',
       )}
     >

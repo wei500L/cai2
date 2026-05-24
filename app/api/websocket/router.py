@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 from pydantic import BaseModel
@@ -36,6 +37,8 @@ from app.services.settlement_service import compute_border_tension
 from app.services.takeover_service import TakeoverService
 
 _RECONNECT_CATCHUP_LIMIT = max(10, get_settings().reconnect_catchup_max)
+
+logger = logging.getLogger(__name__)
 
 
 class InboundRouter:
@@ -101,7 +104,7 @@ class InboundRouter:
                 host_player_id=player_id,
             )
             await self._attach_and_snapshot(player_id, room.id)
-            await self._dispatch_factions_meta(room.id)
+            await self._dispatch_factions_meta_to_player(player_id, room.id)
             return self._dump(
                 "room.created",
                 RoomCreatedPayload(room_id=room.id, mode=room.mode),
@@ -114,7 +117,7 @@ class InboundRouter:
                 player_id=player_id,
             )
             await self._attach_and_snapshot(joined_player.id, room.id)
-            await self._dispatch_factions_meta(room.id)
+            await self._dispatch_factions_meta_to_player(player_id, room.id)
             return self._dump(
                 "room.joined",
                 RoomJoinedPayload(
@@ -312,15 +315,29 @@ class InboundRouter:
             return
 
         async def run() -> None:
-            if self._dispatcher is not None:
-                await self._dispatcher.dispatch_ai_thinking(room_id)
-            bundle = await self._settlement_service.run_turn_settlement(
-                room_id,
-                current.epoch,
-                current.turn,
-            )
-            if self._dispatcher is not None:
-                await self._dispatcher.dispatch_resolve_bundle(room_id, bundle)
+            try:
+                if self._dispatcher is not None:
+                    await self._dispatcher.dispatch_ai_thinking(room_id)
+                bundle = await self._settlement_service.run_turn_settlement(
+                    room_id,
+                    current.epoch,
+                    current.turn,
+                )
+                if self._dispatcher is not None:
+                    await self._dispatcher.dispatch_resolve_bundle(room_id, bundle)
+            except Exception as exc:
+                logger.error("settlement failed room_id=%s error=%s", room_id, exc)
+                if self._dispatcher is not None:
+                    await self._dispatcher.dispatch_to_room(
+                        room_id,
+                        {
+                            "type": "error.message",
+                            "p": {
+                                "reason": f"LLM调用失败: {exc}",
+                                "error_code": "LLM_CALL_FAILED",
+                            },
+                        },
+                    )
 
         task = asyncio.create_task(run())
         self._settlement_tasks.add(task)
@@ -366,6 +383,7 @@ class InboundRouter:
             await self._takeover_service.on_reconnect(player.room_id, player_id)
         else:
             await self._dispatch_room_snapshot(player.room_id)
+        await self._dispatch_factions_meta_to_player(player_id, player.room_id)
 
     async def _attach_and_snapshot(self, player_id: str, room_id: str) -> None:
         if self._connection_manager is not None:
@@ -382,6 +400,10 @@ class InboundRouter:
     async def _dispatch_factions_meta(self, room_id: str) -> None:
         if self._dispatcher is not None:
             await self._dispatcher.dispatch_factions_meta(room_id)
+
+    async def _dispatch_factions_meta_to_player(self, player_id: str, room_id: str) -> None:
+        if self._dispatcher is not None:
+            await self._dispatcher.dispatch_factions_meta_to_player(player_id, room_id)
 
     async def _dispatch_action_events(self, room_id: str, action_id: str | None) -> bool:
         if self._dispatcher is None or action_id is None:

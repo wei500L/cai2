@@ -34,6 +34,7 @@ export type FactionMeta = {
   speech_style_description: string
   slogan: string
   trigger_words: string[]
+  intel_capable: boolean
   primary: string
   glow: string
   shadow: string

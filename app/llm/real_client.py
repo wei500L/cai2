@@ -8,7 +8,6 @@ from urllib import request as urllib_request
 from pydantic import BaseModel
 
 from app.llm.client import LLMRequest, LLMResponse
-from app.llm.mock_client import MockLLMClient
 from app.llm.output_schema import (
     EpicNarrationModelOutput,
     ExplosionJudgeOutput,
@@ -25,13 +24,11 @@ class RealLLMClient:
         base_url: str,
         model: str,
         timeout_s: float = 60.0,
-        fallback_client: MockLLMClient | None = None,
     ) -> None:
         self.api_key = api_key
         self.base_url = base_url.rstrip("/")
         self.model = model
         self.timeout_s = timeout_s
-        self._fallback_client = fallback_client or MockLLMClient()
 
     async def call_settlement_model(self, request: LLMRequest) -> LLMResponse:
         return await self._call_json_model(
@@ -81,7 +78,10 @@ class RealLLMClient:
         payload_kind: str,
     ) -> LLMResponse:
         if not self._can_call_real():
-            return await self._fallback_response(request, payload_kind)
+            raise RuntimeError(
+                f"LLM not configured: api_key={bool(self.api_key)}, "
+                f"base_url={bool(self.base_url)}, model={bool(self.model)}"
+            )
 
         last_error: Exception | None = None
         for attempt in range(retries + 1):
@@ -108,18 +108,7 @@ class RealLLMClient:
                 if delay_s > 0:
                     await asyncio.sleep(delay_s)
 
-        if last_error is not None:
-            return await self._fallback_response(request, payload_kind)
-        return await self._fallback_response(request, payload_kind)
-
-    async def _fallback_response(self, request: LLMRequest, payload_kind: str) -> LLMResponse:
-        if payload_kind == "explosion":
-            return await self._fallback_client.call_explosion_judge(request.user)
-        if payload_kind == "epic_narration":
-            return await self._fallback_client.call_epic_narration(request)
-        if payload_kind == "summary_narration":
-            return await self._fallback_client.call_summary_narration(request)
-        return await self._fallback_client.call_settlement_model(request)
+        raise RuntimeError(f"LLM call failed after {retries + 1} attempts: {last_error}")
 
     def _can_call_real(self) -> bool:
         return bool(self.api_key and self.base_url and self.model)

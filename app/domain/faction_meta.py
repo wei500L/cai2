@@ -37,6 +37,7 @@ class FactionMeta(BaseModel):
     advantage: str = ""
     slogan: str = ""
     trigger_words: list[str] = Field(default_factory=list)
+    intel_capable: bool = False
     capital_hex_id: str | None = None
     primary: str | None = Field(default=None, pattern=r"^#[0-9A-F]{6}$")
     glow: str | None = Field(default=None, pattern=r"^#[0-9A-F]{6}$")

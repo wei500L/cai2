@@ -98,7 +98,7 @@ export function RealtimeConnection({
   const transportRef = useRef<Transport | null>(null)
   const handledFailureRef = useRef(false)
   const [transportMode] = useState<TransportMode>(() =>
-    ENV.useWs && consumeMockModeOverride() ? 'mock' : ENV.useWs ? 'ws' : 'mock',
+    consumeMockModeOverride() || ENV.allowMockFallback ? 'mock' : 'ws',
   )
   const [connectionRevision, setConnectionRevision] = useState(0)
   const [connectionAttemptAt, setConnectionAttemptAt] = useState(() => Date.now())
@@ -138,6 +138,8 @@ export function RealtimeConnection({
     let createRoomRequested = false
     let joinRequested = false
     let directGameStartRequested = false
+    let metadataTimeoutTimer: ReturnType<typeof setTimeout> | null = null
+    let restFallbackTimer: ReturnType<typeof setTimeout> | null = null
     const restFallbackAbortController = new AbortController()
 
     const requestSoloRoom = () => {
@@ -279,12 +281,72 @@ export function RealtimeConnection({
         } catch {
           // ignore
         }
+
+        if (!metadataTimeoutTimer) {
+          metadataTimeoutTimer = window.setTimeout(() => {
+            if (cancelled || factionMetaStore.getState().source !== 'pending') {
+              return
+            }
+            restFallbackAbortController.abort()
+            setConnectionFailureReason('FACTIONS_META_TIMEOUT')
+            setConnectionErrorCode('FACTIONS_META_TIMEOUT')
+            setConnectionStatus('error')
+            setShowConnectionErrorPanel(true)
+          }, 8_000)
+
+          restFallbackTimer = window.setTimeout(() => {
+            if (
+              cancelled ||
+              transportMode !== 'ws' ||
+              !roomId ||
+              factionMetaStore.getState().source !== 'pending'
+            ) {
+              return
+            }
+            showMetaFallbackToast(setToastMessage)
+            fetchFactionsMeta(roomId, restFallbackAbortController.signal)
+              .then((meta) => {
+                if (cancelled || factionMetaStore.getState().source !== 'pending') {
+                  return
+                }
+                factionMetaStore.getState().applyFromRest(meta)
+              })
+              .catch((error: unknown) => {
+                if (cancelled || restFallbackAbortController.signal.aborted) {
+                  return
+                }
+                const msg = error instanceof Error ? error.message : 'FACTIONS_META_REST_FAILED'
+                setConnectionAttemptAt(Date.now())
+                setConnectionFailureReason(msg)
+                setConnectionErrorCode('FACTIONS_META_REST_FAILED')
+                setConnectionStatus('error')
+                setShowConnectionErrorPanel(true)
+              })
+          }, 4_000)
+        }
+
         if (roomIdFromQuery && !playerIdFromQuery && !joinRequested) {
           joinRequested = true
           ActionDispatcher.joinRoom(roomIdFromQuery, displayNameFromQuery)
         } else if (!roomIdFromQuery) {
           requestSoloRoom()
         }
+      }
+
+      if (
+        message.t === 'action.rejected' &&
+        joinRequested &&
+        !createRoomRequested &&
+        factionMetaStore.getState().source === 'pending'
+      ) {
+        try {
+          window.localStorage.removeItem('diplomacy_current_room_id')
+        } catch {
+          // ignore
+        }
+        roomId = ''
+        createRoomRequested = true
+        ActionDispatcher.createRoom('solo_1v7', displayNameFromQuery)
       }
 
       if ('room_id' in message.p && typeof message.p.room_id === 'string') {
@@ -336,51 +398,6 @@ export function RealtimeConnection({
       }
     }, 0)
 
-    const metadataTimeoutTimer = window.setTimeout(() => {
-      if (cancelled || factionMetaStore.getState().source !== 'pending') {
-        return
-      }
-
-      restFallbackAbortController.abort()
-      setConnectionFailureReason('FACTIONS_META_TIMEOUT')
-      setConnectionErrorCode('FACTIONS_META_TIMEOUT')
-      setConnectionStatus('error')
-      setShowConnectionErrorPanel(true)
-    }, 5_000)
-
-    const restFallbackTimer = window.setTimeout(() => {
-      if (
-        cancelled ||
-        transportMode !== 'ws' ||
-        !roomId ||
-        factionMetaStore.getState().source !== 'pending'
-      ) {
-        return
-      }
-
-      showMetaFallbackToast(setToastMessage)
-      fetchFactionsMeta(roomId, restFallbackAbortController.signal)
-        .then((meta) => {
-          if (cancelled || factionMetaStore.getState().source !== 'pending') {
-            return
-          }
-
-          factionMetaStore.getState().applyFromRest(meta)
-        })
-        .catch((error: unknown) => {
-          if (cancelled || restFallbackAbortController.signal.aborted) {
-            return
-          }
-
-          const message = error instanceof Error ? error.message : 'FACTIONS_META_REST_FAILED'
-          setConnectionAttemptAt(Date.now())
-          setConnectionFailureReason(message)
-          setConnectionErrorCode('FACTIONS_META_REST_FAILED')
-          setConnectionStatus('error')
-          setShowConnectionErrorPanel(true)
-        })
-    }, 3000)
-
     if (transportMode === 'mock') {
       setConnectionStatus('open')
       setLastHeartbeatTs(0)
@@ -389,8 +406,8 @@ export function RealtimeConnection({
     return () => {
       cancelled = true
       window.clearTimeout(connectTimer)
-      window.clearTimeout(metadataTimeoutTimer)
-      window.clearTimeout(restFallbackTimer)
+      if (metadataTimeoutTimer) window.clearTimeout(metadataTimeoutTimer)
+      if (restFallbackTimer) window.clearTimeout(restFallbackTimer)
       restFallbackAbortController.abort()
       ActionDispatcher.setTransport(null)
       transport.off(handleTransportMessage)

@@ -426,6 +426,13 @@ class OutboundDispatcher:
             _envelope("room.factions_meta", payload.model_dump(mode="json")),
         )
 
+    async def dispatch_factions_meta_to_player(self, player_id: str, room_id: str) -> None:
+        payload = await self.build_factions_meta_payload(room_id)
+        await self.dispatch_to_player(
+            player_id,
+            _envelope("room.factions_meta", payload.model_dump(mode="json")),
+        )
+
     async def build_factions_meta_payload(self, room_id: str) -> RoomFactionsMetaPayload:
         factions_meta = await self._factions_meta_service.get_factions_meta(room_id)
         return RoomFactionsMetaPayload(room_id=room_id, factions=factions_meta)

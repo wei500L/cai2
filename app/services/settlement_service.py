@@ -353,27 +353,8 @@ class SettlementService:
         turn: int,
         request: LLMRequest,
     ) -> str:
-        try:
-            response = await call_with_retry(self._llm_client, request, max_retries=1)
-            return response.content
-        except Exception as error:
-            logger.error(
-                "settlement step failed room_id=%s epoch=%s turn=%s step=call_llm error=%s",
-                room_id,
-                epoch,
-                turn,
-                error,
-            )
-            return await self._mock_fallback_text(request)
-
-    async def _mock_fallback_text(self, request: LLMRequest) -> str:
-        from app.llm.mock_client import MockLLMClient
-
-        try:
-            response = await MockLLMClient().call_settlement_model(request)
-            return response.content
-        except Exception:
-            return ""
+        response = await call_with_retry(self._llm_client, request, max_retries=1)
+        return response.content
 
     async def _resolve_explosions(
         self,

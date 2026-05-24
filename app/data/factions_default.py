@@ -39,6 +39,7 @@ DEFAULT_FACTION_META: dict[FactionId, FactionMeta] = {
         advantage="科技系数+1",
         slogan="数据证明，合作是当前最优解。",
         trigger_words=["数据", "逻辑", "证据"],
+        intel_capable=True,
     ),
     FactionId.emerald: FactionMeta(
         id=FactionId.emerald,
@@ -93,6 +94,7 @@ DEFAULT_FACTION_META: dict[FactionId, FactionMeta] = {
         advantage="文化影响+40%",
         slogan="预言已经低语，命运正在靠近。",
         trigger_words=["命运", "预言", "信仰"],
+        intel_capable=True,
     ),
     FactionId.aurora: FactionMeta(
         id=FactionId.aurora,
@@ -147,6 +149,7 @@ DEFAULT_FACTION_META: dict[FactionId, FactionMeta] = {
         advantage="情报获取免费",
         slogan="每个秘密都有价格，关键是你拿什么交换。",
         trigger_words=["秘密", "情报", "交换"],
+        intel_capable=True,
     ),
 }
 

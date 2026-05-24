@@ -13,8 +13,6 @@ import type {
 } from './types'
 import type { Transport } from './transport'
 
-const DEFAULT_ROOM_ID = 'mock-room'
-
 let outboundSequence = 0
 
 function nextMessageId(type: string) {
@@ -84,7 +82,7 @@ function getActor(): FactionId {
   return gameStoreApi.getState().selectedFactionId ?? 'starlight'
 }
 
-function getRoomId(roomId?: string) {
+function getRoomId(roomId?: string): string | null {
   if (roomId) {
     return roomId
   }
@@ -105,12 +103,12 @@ function getRoomId(roomId?: string) {
     }
   }
 
-  return DEFAULT_ROOM_ID
+  return null
 }
 
 function buildOutgoingMessage(submission: CommandSubmission): OutgoingMessage {
   const actor = getActor()
-  const roomId = getRoomId()
+  const roomId = getRoomId()!
   const metadata = {
     player_faction: actor,
     tone: submission.tone,
@@ -190,6 +188,10 @@ export class ActionDispatcher {
       return { ok: false, error: '协议通道尚未连接' }
     }
 
+    if (!getRoomId()) {
+      return { ok: false, error: '房间未就绪，请稍后重试' }
+    }
+
     const result = ActionDispatcher.transport.send(buildOutgoingMessage(submission))
     return result ?? { ok: true }
   }
@@ -230,9 +232,14 @@ export class ActionDispatcher {
       return { ok: false, error: '协议通道尚未连接' }
     }
 
+    const resolvedRoomId = getRoomId(roomId)
+    if (!resolvedRoomId) {
+      return { ok: false, error: '房间未就绪，请稍后重试' }
+    }
+
     const result = ActionDispatcher.transport.send(
       envelope('room.select_faction', {
-        room_id: getRoomId(roomId),
+        room_id: resolvedRoomId,
         faction_id: factionId,
       }),
     )
@@ -245,9 +252,14 @@ export class ActionDispatcher {
       return { ok: false, error: '协议通道尚未连接' }
     }
 
+    const resolvedRoomId = getRoomId(roomId)
+    if (!resolvedRoomId) {
+      return { ok: false, error: '房间未就绪，请稍后重试' }
+    }
+
     const result = ActionDispatcher.transport.send(
       envelope('room.ready', {
-        room_id: getRoomId(roomId),
+        room_id: resolvedRoomId,
         ready,
       }),
     )
@@ -260,9 +272,14 @@ export class ActionDispatcher {
       return { ok: false, error: '协议通道尚未连接' }
     }
 
+    const resolvedRoomId = getRoomId(roomId)
+    if (!resolvedRoomId) {
+      return { ok: false, error: '房间未就绪，请稍后重试' }
+    }
+
     const result = ActionDispatcher.transport.send(
       envelope('room.start', {
-        room_id: getRoomId(roomId),
+        room_id: resolvedRoomId,
       }),
     )
 
@@ -274,9 +291,14 @@ export class ActionDispatcher {
       return { ok: false, error: '协议通道尚未连接' }
     }
 
+    const resolvedRoomId = getRoomId()
+    if (!resolvedRoomId) {
+      return { ok: false, error: '房间未就绪，请稍后重试' }
+    }
+
     const result = ActionDispatcher.transport.send(
       envelope('room.ready', {
-        room_id: getRoomId(),
+        room_id: resolvedRoomId,
         ready: true,
       }),
     )
