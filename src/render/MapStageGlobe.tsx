@@ -8,13 +8,27 @@ import {
   hexPolygonMargin,
   type HexPolygonInput,
 } from '@/render/globe/buildHexPolygons'
+import { buildArcsData, type GlobeCapitalDatum } from '@/render/globe/dataLayers'
 import { hexPolygonColor } from '@/render/globe/stylePresets'
 import { GlobeInstanceProvider } from '@/render/globe/GlobeInstanceProvider'
 import type { GlobeInstanceSnapshot } from '@/render/globe/globeTypes'
+import { useAllFactionMeta } from '@/store/factionMetaStore'
 import { useGameStore } from '@/store/gameStore'
 import { useMapStore } from '@/store/mapStore'
 
 const GLOBE_BASE_COLOR = '#101824'
+
+type GlobeApi = GlobeInstance & {
+  globeImageUrl(url: string | null): GlobeInstance
+  enablePointerInteraction?: (enabled: boolean) => GlobeInstance
+  arcsData: (data: unknown[]) => GlobeInstance
+  arcColor: (value: unknown) => GlobeInstance
+  arcStroke: (value: unknown) => GlobeInstance
+  arcDashLength: (value: unknown) => GlobeInstance
+  arcDashGap: (value: unknown) => GlobeInstance
+  arcDashAnimateTime: (value: unknown) => GlobeInstance
+  arcAltitude: (value: unknown) => GlobeInstance
+}
 
 function toSnapshot(globe: GlobeInstance): GlobeInstanceSnapshot {
   return {
@@ -34,9 +48,11 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
   const globeRef = useRef<GlobeInstance | null>(null)
   const [published, setPublished] = useState<GlobeInstanceSnapshot | null>(null)
 
+  const diplomaticArcs = useGameStore((state) => state.diplomaticArcs)
   const regions = useGameStore((state) => state.regions)
   const worldGeometry = useGameStore((state) => state.worldGeometry)
   const scorchedRegions = useMapStore((state) => state.scorchedRegions)
+  const factionMetaById = useAllFactionMeta()
 
   useEffect(() => {
     const container = containerRef.current
@@ -49,10 +65,7 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
     const h = Math.max(1, Math.round(container.clientHeight || 1))
     globe.width(w).height(h)
 
-    const globeApi = globe as GlobeInstance & {
-      globeImageUrl(url: string | null): GlobeInstance
-      enablePointerInteraction?: (enabled: boolean) => GlobeInstance
-    }
+    const globeApi = globe as GlobeApi
 
     globeApi.globeImageUrl(null)
     globeApi.enablePointerInteraction?.(false)
@@ -125,6 +138,36 @@ export function MapStageGlobe({ children }: { children?: ReactNode }) {
 
     return () => window.clearTimeout(timerId)
   }, [regions, scorchedRegions, worldGeometry])
+
+  useEffect(() => {
+    const globe = globeRef.current as GlobeApi | null
+    if (!globe) {
+      return undefined
+    }
+
+    const capitals = worldGeometry?.factions.length
+      ? worldGeometry.factions.map((capital) => {
+          const meta = factionMetaById.find((faction) => faction.id === capital.id)
+          return {
+            id: capital.id,
+            lat: capital.capital_lat,
+            lng: capital.capital_lng,
+            name: meta?.name ?? capital.id,
+            glow: meta?.glow ?? '#8fcaff',
+            badge: '中立' as const,
+          } satisfies GlobeCapitalDatum
+        })
+      : undefined
+
+    globe
+      .arcsData(buildArcsData(diplomaticArcs, capitals))
+      .arcColor('color')
+      .arcStroke('stroke')
+      .arcDashLength('dashLength')
+      .arcDashGap('dashGap')
+      .arcDashAnimateTime('dashAnimateTime')
+      .arcAltitude(() => 0.12)
+  }, [diplomaticArcs, factionMetaById, worldGeometry])
 
   return (
     <GlobeInstanceProvider value={published}>

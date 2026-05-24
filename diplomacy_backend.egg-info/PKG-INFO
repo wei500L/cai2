@@ -6,6 +6,7 @@ Requires-Python: >=3.11
 Requires-Dist: fastapi
 Requires-Dist: numpy
 Requires-Dist: pydantic>=2
+Requires-Dist: python-dotenv
 Requires-Dist: uvicorn[standard]
 Requires-Dist: python-multipart
 Provides-Extra: dev

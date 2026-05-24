@@ -78,6 +78,7 @@ app/services/dev_seed_globe.py
 app/services/epoch_narration_service.py
 app/services/explosion_dispatcher.py
 app/services/factions_meta_service.py
+app/services/opening_service.py
 app/services/phase_scheduler.py
 app/services/phase_service.py
 app/services/replay_service.py

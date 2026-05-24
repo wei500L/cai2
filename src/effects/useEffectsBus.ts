@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { factionIds, factionTokens } from '@/components/hudTheme'
 import { gameStoreApi, type GameStoreState } from '@/store/gameStore'
+import type { GlobeRenderer } from '@/render/globe/globeTypes'
 import { useUIStore, type MapQuality } from '@/store/uiStore'
 import { getParticleDensityMultiplier } from '@/utils/particleDensity'
 import type { FactionId } from '@/types/faction'
@@ -43,6 +44,7 @@ type ActiveEffects = {
 type UseEffectsBusOptions = {
   canvasRef: RefObject<HTMLCanvasElement | null>
   mapQuality: MapQuality
+  renderer: GlobeRenderer
 }
 
 function createPools(): EffectPools {
@@ -495,12 +497,13 @@ function resizeCanvas(canvas: HTMLCanvasElement) {
   return ctx
 }
 
-export function useEffectsBus({ canvasRef, mapQuality }: UseEffectsBusOptions) {
+export function useEffectsBus({ canvasRef, mapQuality, renderer }: UseEffectsBusOptions) {
   const [battleCard, setBattleCard] = useState<BattleResultCardData | null>(null)
   const poolsRef = useRef<EffectPools | null>(null)
   const activeRef = useRef<ActiveEffects | null>(null)
   const seenEventIdsRef = useRef<Set<string>>(new Set())
   const qualityRef = useRef<MapQuality>(mapQuality)
+  const rendererRef = useRef<GlobeRenderer>(renderer)
   const dismissBattleCard = useCallback((id: string) => {
     setBattleCard((current) => (current?.id === id ? null : current))
   }, [])
@@ -516,6 +519,10 @@ export function useEffectsBus({ canvasRef, mapQuality }: UseEffectsBusOptions) {
   useEffect(() => {
     qualityRef.current = mapQuality
   }, [mapQuality])
+
+  useEffect(() => {
+    rendererRef.current = renderer
+  }, [renderer])
 
   useEffect(() => {
     seenEventIdsRef.current = new Set(gameStoreApi.getState().events.map((event) => event.id))
@@ -537,6 +544,10 @@ export function useEffectsBus({ canvasRef, mapQuality }: UseEffectsBusOptions) {
     }
 
     const spawnPrivate = (state: GameStoreState, event: GameEvent) => {
+      if (rendererRef.current === 'globe') {
+        return
+      }
+
       const target = getEventTarget(event)
 
       if (!event.actor || !target || !activeRef.current || !poolsRef.current) {
@@ -554,6 +565,10 @@ export function useEffectsBus({ canvasRef, mapQuality }: UseEffectsBusOptions) {
     }
 
     const spawnAlliance = (state: GameStoreState, event: GameEvent) => {
+      if (rendererRef.current === 'globe') {
+        return
+      }
+
       const target = getEventTarget(event)
 
       if (!event.actor || !target || !activeRef.current || !poolsRef.current) {
@@ -571,6 +586,10 @@ export function useEffectsBus({ canvasRef, mapQuality }: UseEffectsBusOptions) {
     }
 
     const spawnTrade = (state: GameStoreState, event: GameEvent) => {
+      if (rendererRef.current === 'globe') {
+        return
+      }
+
       const target = getEventTarget(event)
 
       if (!event.actor || !target || !activeRef.current || !poolsRef.current) {

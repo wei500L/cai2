@@ -14,6 +14,7 @@ import { epochSummaryStore } from '@/store/epochSummaryStore'
 import { factionMetaStore } from '@/store/factionMetaStore'
 import { gameStoreApi } from '@/store/gameStore'
 import { useUIStore } from '@/store/uiStore'
+import { resolveTransportMode } from '@/app/transportMode'
 
 const FORCE_MOCK_SESSION_KEY = 'diplomacy_force_mock_once'
 
@@ -24,8 +25,6 @@ type ReconnectableTransport = Transport & {
     sessionToken?: string
   }) => void
 }
-
-type TransportMode = 'ws' | 'mock'
 
 function consumeMockModeOverride() {
   if (typeof window === 'undefined') {
@@ -97,9 +96,7 @@ export function RealtimeConnection({
 }) {
   const transportRef = useRef<Transport | null>(null)
   const handledFailureRef = useRef(false)
-  const [transportMode] = useState<TransportMode>(() =>
-    consumeMockModeOverride() || ENV.allowMockFallback ? 'mock' : 'ws',
-  )
+  const [forceMockMode] = useState(() => consumeMockModeOverride())
   const [connectionRevision, setConnectionRevision] = useState(0)
   const [connectionAttemptAt, setConnectionAttemptAt] = useState(() => Date.now())
   const [connectionErrorCode, setConnectionErrorCode] = useState<string | null>(null)
@@ -117,6 +114,12 @@ export function RealtimeConnection({
     () => getQueryParam('player_id') || getStoredSessionValue('diplomacy_current_player_id'),
     [],
   )
+  const transportMode = resolveTransportMode({
+    pathname,
+    roomIdFromQuery,
+    allowMockFallback: ENV.allowMockFallback,
+    forceMockMode,
+  })
   const displayNameFromQuery = useMemo(
     () => getQueryParam('display_name') || getStoredSessionValue('diplomacy_lobby_display_name') || 'Player',
     [],

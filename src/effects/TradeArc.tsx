@@ -83,17 +83,18 @@ export class TradeArc implements DiplomacyEffect {
     const fade = this.persist ? 1 : clamp(1 - this.elapsed / this.life, 0, 1)
 
     ctx.save()
-    ctx.globalCompositeOperation = 'lighter'
-    ctx.lineCap = 'butt'
+    ctx.globalCompositeOperation = 'screen'
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
     ctx.strokeStyle = '#CCAA33'
-    ctx.globalAlpha = 0.16 * fade
-    ctx.lineWidth = 8
+    ctx.globalAlpha = 0.08 * fade
+    ctx.lineWidth = 5
     this.traceArc(ctx, a, control, b)
     ctx.stroke()
 
     ctx.strokeStyle = '#FFD86B'
-    ctx.globalAlpha = 0.48 * fade
-    ctx.lineWidth = 2
+    ctx.globalAlpha = 0.26 * fade
+    ctx.lineWidth = 1.6
     this.traceArc(ctx, a, control, b)
     ctx.stroke()
 
@@ -140,8 +141,10 @@ export class TradeArc implements DiplomacyEffect {
     const y = point.y + (dx / length) * particle.offset
 
     ctx.fillStyle = colorAt(t)
-    ctx.globalAlpha = fade * (0.52 + seededUnit(particle.phase * 400) * 0.34)
-    ctx.fillRect(x, y, particle.size * 1.8, particle.size * 1.8)
+    ctx.globalAlpha = fade * (0.28 + seededUnit(particle.phase * 400) * 0.22)
+    ctx.beginPath()
+    ctx.arc(x, y, particle.size * 0.75, 0, Math.PI * 2)
+    ctx.fill()
   }
 
   onComplete() {

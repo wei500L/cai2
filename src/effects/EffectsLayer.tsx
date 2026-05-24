@@ -1,5 +1,6 @@
 import { useRef } from 'react'
 import type { MapQuality } from '@/store/uiStore'
+import { useMapStore } from '@/store/mapStore'
 import { useEffectsBus } from './useEffectsBus'
 import { BattleResultCard } from './war/BattleResultCard'
 
@@ -9,8 +10,9 @@ type EffectsLayerProps = {
 
 export function EffectsLayer({ mapQuality }: EffectsLayerProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
+  const renderer = useMapStore((state) => state.renderer)
 
-  const { battleCard, dismissBattleCard } = useEffectsBus({ canvasRef, mapQuality })
+  const { battleCard, dismissBattleCard } = useEffectsBus({ canvasRef, mapQuality, renderer })
 
   return (
     <>

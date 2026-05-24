@@ -246,4 +246,79 @@ describe('gameStore reconnect snapshot', () => {
     expect(useGameStore.getState().serverClockOffsetMs).toBe(2_500)
     expect(useGameStore.getState().serverClockSampleAtMs).toBe(2_000)
   })
+
+  it('compacts sparse region arrays when applying a snapshot', () => {
+    const snapshot: ReconnectFullState = {
+      room: {
+        id: 'room-9',
+        status: 'running',
+        mode: 'multi_4v4',
+        max_players: 4,
+        players: [],
+      },
+      current_turn: {
+        epoch: 3,
+        turn: 2,
+        phase: 'resolve',
+        arbitrate_phase: null,
+        phase_started_at_ms: 1_800,
+        phase_duration_ms: 30_000,
+      },
+      factions: [],
+      regions: [
+        {
+          id: 'region-1',
+          owner: 'ironCrown',
+          resourceValue: 24,
+          developmentLevel: 3,
+          resistance: 0.5,
+          capturedAtTurn: 2,
+          centerLatLng: [12, 34],
+          lat: 12.1,
+          lng: 34.2,
+          hex_id: 'hex-1',
+          terrain: 'plains',
+          minGarrison: 10,
+          supplyLines: 2,
+          neighbors: ['region-2'],
+        },
+        ,
+        {
+          id: 'region-2',
+          owner: 'starlight',
+          resourceValue: 42,
+          developmentLevel: 2,
+          resistance: 0.1,
+          capturedAtTurn: 1,
+          centerLatLng: [13, 35],
+          lat: 13.1,
+          lng: 35.2,
+          hex_id: 'hex-2',
+          terrain: 'river',
+          minGarrison: 8,
+          supplyLines: 1,
+          neighbors: ['region-1'],
+        },
+      ] as unknown as ReconnectFullState['regions'],
+      relationships: [],
+      treaties: [],
+      recent_events: [],
+      recent_messages: [],
+      ai_thinking_state: null,
+      border_tension: [],
+      winner: null,
+      final_narration: null,
+    }
+
+    useGameStore.getState()._applySnapshot({
+      room_id: 'room-9',
+      server_time_ms: 4_500,
+      full_state: snapshot,
+      seq: 100,
+    })
+
+    const state = useGameStore.getState()
+    expect(state.regions).toHaveLength(2)
+    expect(state.regions.map((region) => region.id)).toEqual(['region-1', 'region-2'])
+  })
 })

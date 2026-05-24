@@ -501,6 +501,23 @@ function normalizeLatLng(value: unknown): [number, number] {
   return [toNumberValue(value[0]), toNumberValue(value[1])]
 }
 
+function compactDefined<T>(value: readonly (T | null | undefined)[] | null | undefined): T[]
+function compactDefined(value: unknown): unknown[]
+function compactDefined(value: unknown): unknown[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  const items: unknown[] = []
+  for (const item of value) {
+    if (item != null) {
+      items.push(item)
+    }
+  }
+
+  return items
+}
+
 function normalizeBorderState(value: unknown): BorderTensionEntry['visual_state'] {
   if (
     value === 'watch' ||
@@ -831,7 +848,7 @@ function normalizeSnapshotPayload(payload: unknown) {
   return {
     currentTurn,
     factions: Array.isArray(raw.factions) ? raw.factions.map((faction) => normalizeFaction(faction)) : [],
-    regions: Array.isArray(raw.regions) ? raw.regions.map((region) => normalizeRegion(region)) : [],
+    regions: compactDefined(raw.regions).map((region) => normalizeRegion(region)),
     relationships: Array.isArray(raw.relationships)
       ? raw.relationships.map((relationship) => normalizeRelationship(relationship))
       : [],
@@ -864,7 +881,7 @@ function normalizeVisibleSnapshot(payload: unknown) {
   return {
     epoch,
     factions: Array.isArray(raw.factions) ? raw.factions.map((faction) => normalizeFaction(faction)) : [],
-    regions: Array.isArray(raw.regions) ? raw.regions.map((region) => normalizeRegion(region)) : [],
+    regions: compactDefined(raw.regions).map((region) => normalizeRegion(region)),
     relationships: Array.isArray(raw.relationships)
       ? raw.relationships.map((relationship) => normalizeRelationship(relationship))
     : [],
@@ -2096,7 +2113,7 @@ export const useGameStore = create<GameStoreState>((set, get) => ({
           capital_lng: capital.capital_lng,
         })),
       },
-      regions: payload.cells.map((cell) => ({
+      regions: compactDefined(payload.cells).map((cell) => ({
         id: cell.id,
         owner: cell.owner,
         resourceValue: cell.resourceValue,

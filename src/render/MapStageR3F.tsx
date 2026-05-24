@@ -84,6 +84,23 @@ const qualityConfig: Record<MapQuality, { particleLimit: number; particleStride:
   high: { particleLimit: 8_000, particleStride: 2 },
 }
 
+function compactDefined<T>(value: readonly (T | null | undefined)[] | null | undefined): T[]
+function compactDefined(value: unknown): unknown[]
+function compactDefined(value: unknown): unknown[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+
+  const items: unknown[] = []
+  for (const item of value) {
+    if (item != null) {
+      items.push(item)
+    }
+  }
+
+  return items
+}
+
 const borderStyle: Record<
   BorderTensionEntry['visual_state'],
   { color: string; glow: string; width: number; glowWidth: number; opacity: number; glowOpacity: number }
@@ -226,8 +243,20 @@ function pairKey(left: string, right: string) {
 
 function buildSceneData(state = gameStoreApi.getState(), quality: MapQuality): SceneData {
   const palette = buildPalette()
-  const regions = state.regions
+  const regions = compactDefined(state.regions)
   const borderMap = state.borderTensionMap
+
+  if (regions.length === 0) {
+    return {
+      regions: [],
+      borders: [],
+      lights: [],
+      particles: [],
+      inflows: [],
+      particleCount: 0,
+    }
+  }
+
   const transitionMap = new Map<string, RegionTransitionLogEntry>()
   for (const entry of state.regionTransitionLog) {
     if (!transitionMap.has(entry.region_id)) {
@@ -846,7 +875,7 @@ export function MapStageR3F() {
   const quality = useUIStore((state) => state.mapQuality)
   const factionMetaLoadedAt = factionMetaStore((state) => state.loadedAt)
   const regionSignature = useGameStore((state) =>
-    state.regions
+    compactDefined(state.regions)
       .map((region) => `${region.id}:${region.owner ?? 'none'}:${region.developmentLevel}:${region.neighbors.join(',')}`)
       .join('|'),
   )
